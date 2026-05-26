@@ -419,19 +419,14 @@ async function showApp() {
   await loadServerSettings();
   setEffort(state.effort, /*persist*/false);
   refreshChatList().then(() => {
-    // Priorität: URL-Hash > localStorage.lastCid > erster Chat > neuer Chat
+    // Cleaner Link öffnet immer einen neuen Chat (wie ChatGPT/Gemini Web).
+    // Vergangene Chats bleiben über die Sidebar erreichbar.
+    // Nur wenn ein konkreter Chat im URL-Hash steht (#/chat/<cid>), wird der geladen.
     const fromHash = cidFromHash();
     if (fromHash && state._allCids.includes(fromHash)) {
       openChat(fromHash, { fromHash: true });
     } else {
-      const wanted = localStorage.getItem(LS.lastCid);
-      if (wanted && state._allCids.includes(wanted)) {
-        openChat(wanted);
-      } else if (state._allCids.length) {
-        openChat(state._allCids[0]);
-      } else {
-        newChat();
-      }
+      newChat();
     }
   });
 }
