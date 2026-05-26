@@ -325,22 +325,63 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
     skills_dict = effective_skills.model_dump()
 
     async def event_gen() -> AsyncIterator[dict]:
-        if new_title:
-            yield {"event": "title", "data": json.dumps({"title": new_title})}
-        yield {"event": "user_saved", "data": json.dumps({"user_message_id": user_msg_id})}
-
+        # PC_SSE diagnostic logging — see PocketClaude "denkt"-bug investigation.
+        # Temporary, remove after root cause is fixed.
+        delta_count = 0
+        last_event = None
         assistant_msg_id: int | None = None
-        async for ev in claude_engine.stream_reply(
-            cid, user_msg_id,
-            effort=effort,
-            system_prompt=system_prompt,
-            skills=skills_dict,
-            user_id=user["id"],
-        ):
-            etype = ev.pop("type")
-            if etype == "done":
-                assistant_msg_id = ev.get("assistant_message_id") or ev.get("message_id")
-            yield {"event": etype, "data": json.dumps(ev)}
+        log.info("PC_SSE: event_gen START cid=%s user=%s", cid, user["id"])
+        try:
+            if new_title:
+                yield {"event": "title", "data": json.dumps({"title": new_title})}
+                log.info("PC_SSE: yield title cid=%s", cid)
+            yield {"event": "user_saved", "data": json.dumps({"user_message_id": user_msg_id})}
+            log.info("PC_SSE: yield user_saved cid=%s user_msg_id=%s", cid, user_msg_id)
+
+            async for ev in claude_engine.stream_reply(
+                cid, user_msg_id,
+                effort=effort,
+                system_prompt=system_prompt,
+                skills=skills_dict,
+                user_id=user["id"],
+            ):
+                etype = ev.pop("type")
+                last_event = etype
+                if etype == "delta":
+                    delta_count += 1
+                    if delta_count <= 3 or delta_count % 25 == 0:
+                        log.info("PC_SSE: yield delta #%d cid=%s len=%d",
+                                 delta_count, cid, len(ev.get("text", "")))
+                else:
+                    log.info("PC_SSE: yield event=%s cid=%s payload_keys=%s",
+                             etype, cid, list(ev.keys()))
+                if etype == "done":
+                    assistant_msg_id = ev.get("assistant_message_id") or ev.get("message_id")
+                yield {"event": etype, "data": json.dumps(ev)}
+
+            log.info(
+                "PC_SSE: event_gen FOR-LOOP-EXIT cid=%s deltas=%d last=%s assistant_msg_id=%s",
+                cid, delta_count, last_event, assistant_msg_id,
+            )
+        except BaseException as _sse_exc:  # noqa: BLE001 — catches GeneratorExit + cancels
+            import traceback as _tb
+            log.error(
+                "PC_SSE: event_gen EXCEPTION cid=%s deltas=%d last=%s exc=%s\n%s",
+                cid, delta_count, last_event, _sse_exc, _tb.format_exc(),
+            )
+            # Try to surface an error to the client if connection is still open
+            try:
+                yield {"event": "error", "data": json.dumps({
+                    "message": f"Stream interrupted: {type(_sse_exc).__name__}: {_sse_exc}",
+                })}
+            except BaseException:  # noqa: BLE001
+                pass
+            raise
+        finally:
+            log.info(
+                "PC_SSE: event_gen END cid=%s deltas=%d last=%s assistant_msg_id=%s",
+                cid, delta_count, last_event, assistant_msg_id,
+            )
 
         # Pre-Generation: wenn der Client TTS-Voice + Rate beim Senden
         # mitgeschickt hat, synthetisieren wir die Antwort jetzt im

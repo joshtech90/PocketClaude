@@ -330,6 +330,8 @@ async def stream_reply(
     # Fehler etc.) in den `except ProcessError`-Branch fällt, wo wir
     # `session_id` lesen, hätten wir sonst einen NameError.
     session_id: str | None = None
+    log.info("PC_SSE: stream_reply START cid=%s user_msg_id=%s effort=%s user_id=%s",
+             cid, user_message_id, effort, user_id)
     try:
         conv = await db.get_conversation(cid)
         if not conv:
@@ -614,6 +616,10 @@ async def stream_reply(
                 # Usage tracking must never break the user's chat reply.
                 log.warning("usage.record failed: %s", e)
 
+        log.info("PC_SSE: stream_reply ABOUT TO YIELD done cid=%s msg_id=%s "
+                 "in=%d out=%d cr=%d cw=%d full_text_len=%d",
+                 cid, msg_id, input_tokens, output_tokens,
+                 cache_read, cache_write, len(full_text))
         yield {
             "type": "done",
             "assistant_message_id": msg_id,
@@ -622,6 +628,7 @@ async def stream_reply(
             "tokens_cached_read": cache_read,
             "tokens_cached_write": cache_write,
         }
+        log.info("PC_SSE: stream_reply YIELDED done cid=%s msg_id=%s", cid, msg_id)
 
     except CLINotFoundError as exc:
         log.error("Claude-CLI nicht gefunden: %s (Pfad: %s)", exc, exc.cli_path)

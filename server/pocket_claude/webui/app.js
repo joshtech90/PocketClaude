@@ -1413,11 +1413,33 @@ els.inputForm.addEventListener('submit', async (e) => {
   els.sendBtn.disabled = true;
   renderMessages();
   scrollToBottom(true);
+  // PC_SSE diagnostic — see "denkt"-bug investigation
+  state._sseTurnStart = performance.now();
+  state._sseGotDone = false;
+  state._sseGotError = false;
+  state._sseDeltaCount = 0;
+  console.log('PC_SSE: submit START cid=%s content_len=%d', state.cid, content.length);
   try {
     await streamReply(content);
   } catch (e) {
+    console.log('PC_SSE: submit CATCH', e?.name, e?.message);
     if (e.name !== 'AbortError') toast(t('toast_reply_failed', e.message), { error: true });
   } finally {
+    const dt = (performance.now() - state._sseTurnStart).toFixed(0);
+    console.log('PC_SSE: submit FINALLY cid=%s gotDone=%s gotError=%s deltas=%d isStreaming=%s elapsed=%sms streamingTextLen=%d',
+      state.cid, state._sseGotDone, state._sseGotError,
+      state._sseDeltaCount, state.isStreaming, dt, state.streamingText.length);
+    // Safety net: if the stream ended without a `done` event but we have
+    // accumulated streaming text, the assistant message was very likely
+    // saved server-side. Force a reload so the dots-placeholder isn't
+    // stuck forever (matches the "refresh fixes it" workaround).
+    if (state.isStreaming && !state._sseGotDone && !state._sseGotError) {
+      console.warn('PC_SSE: submit RESCUE — stream ended without done; reloading messages');
+      const cidAtSubmit = state.cid;
+      state.isStreaming = false;
+      state.streamingText = '';
+      reloadChatMessages(cidAtSubmit);
+    }
     state.isStreaming = false;
     els.sendBtn.disabled = false;
     els.input.focus();
@@ -1470,21 +1492,41 @@ async function streamReply(content) {
   });
   if (!resp.ok) {
     const txt = await resp.text().catch(() => '');
+    console.log('PC_SSE: streamReply HTTP-FAIL status=%s body=%s', resp.status, txt.slice(0, 200));
     throw new Error(`HTTP ${resp.status}: ${txt}`);
   }
+  console.log('PC_SSE: streamReply HTTP-OK status=%s headers=%o',
+    resp.status, Object.fromEntries(resp.headers.entries()));
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buffer.indexOf('\n\n')) >= 0) {
-      const raw = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      handleSseEvent(raw);
+  let chunkCount = 0;
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        console.log('PC_SSE: streamReply READER-DONE chunks=%d bytes=%d buffer_remainder_len=%d gotDone=%s',
+          chunkCount, totalBytes, buffer.length, state._sseGotDone);
+        if (buffer.length > 0) {
+          console.warn('PC_SSE: streamReply UNFLUSHED-BUFFER (no trailing \\n\\n):', buffer.slice(0, 400));
+        }
+        break;
+      }
+      chunkCount += 1;
+      totalBytes += value?.byteLength || 0;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf('\n\n')) >= 0) {
+        const raw = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        handleSseEvent(raw);
+      }
     }
+  } catch (e) {
+    console.log('PC_SSE: streamReply READER-EXC', e?.name, e?.message,
+      'chunks=', chunkCount, 'bytes=', totalBytes);
+    throw e;
   }
 }
 
@@ -1497,6 +1539,15 @@ function handleSseEvent(raw) {
   }
   let payload = {};
   if (data) { try { payload = JSON.parse(data); } catch {} }
+  // PC_SSE diagnostic
+  if (event === 'delta') {
+    state._sseDeltaCount = (state._sseDeltaCount || 0) + 1;
+    if (state._sseDeltaCount <= 3 || state._sseDeltaCount % 25 === 0) {
+      console.log('PC_SSE: recv delta #%d len=%d', state._sseDeltaCount, (payload.text || '').length);
+    }
+  } else {
+    console.log('PC_SSE: recv event=%s payload=%o', event, payload);
+  }
   switch (event) {
     case 'title':
       state.title = payload.title || state.title;
@@ -1514,6 +1565,7 @@ function handleSseEvent(raw) {
       scrollToBottom();
       break;
     case 'done':
+      state._sseGotDone = true;
       state.messages.push({
         id: payload.assistant_message_id || payload.message_id,
         role: 'assistant',
@@ -1528,6 +1580,7 @@ function handleSseEvent(raw) {
       refreshChatList();
       break;
     case 'error':
+      state._sseGotError = true;
       toast(t('toast_server_error', payload.message || ''), { error: true });
       state.isStreaming = false;
       renderMessages();
