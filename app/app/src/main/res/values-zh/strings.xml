@@ -784,4 +784,8 @@
     <string name="profile_label_hint">例如 家庭服务器</string>
     <string name="profile_first_run_hint">欢迎!添加你的第一个服务器配置以开始使用。</string>
     <string name="no_profiles_yet">还没有配置</string>
+    <string name="time_just_now">刚刚</string>
+    <string name="time_minutes_ago">%1$d 分钟前</string>
+    <string name="time_yesterday">昨天</string>
+    <string name="time_days_ago">%1$d 天前</string>
 </resources>

@@ -1,0 +1,14 @@
+# OpenClaw TTS Kit — Dependencies
+# (extrahiert aus PocketClaude-Server Mai 2026, schlank gehalten)
+
+# Google Cloud Text-to-Speech (Service-Account-Pfad).
+# Version 2.31.0+ enthält das Gemini-TTS-Routing via model_name.
+google-cloud-texttospeech>=2.31.0
+
+# httpx wird vom google-cloud-Stack indirekt gebraucht; explizit für Klarheit.
+httpx>=0.27.0
+
+# Telegram-Bot Integration (eines der beiden reicht, je nachdem was OpenClaw nutzt)
+python-telegram-bot>=20.0
+# alternativ:
+# aiogram>=3.0

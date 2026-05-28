@@ -784,4 +784,8 @@
     <string name="profile_label_hint">z. B. Heim-Server</string>
     <string name="profile_first_run_hint">Willkommen! Füge dein erstes Server-Profil hinzu, um loszulegen.</string>
     <string name="no_profiles_yet">Noch keine Profile</string>
+    <string name="time_just_now">gerade eben</string>
+    <string name="time_minutes_ago">vor %1$d Min</string>
+    <string name="time_yesterday">gestern</string>
+    <string name="time_days_ago">vor %1$d Tagen</string>
 </resources>

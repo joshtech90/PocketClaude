@@ -1,6 +1,10 @@
 // =====================================================================
 // Pocket Claude Web-UI v2 — vanilla JS, neue DOM-Struktur.
 // =====================================================================
+// PC_SSE LOAD MARKER — bump this any time you change PC_SSE logging.
+// If you don't see this exact line in the console after reload, the
+// browser served a cached app.js.
+console.log('PC_SSE: app.js LOADED build=2026-05-26-tracker');
 // i18n helper — short alias for the global translator.
 const t = (k, ...args) => (window.PocketI18n ? window.PocketI18n.t(k, ...args) : k);
 

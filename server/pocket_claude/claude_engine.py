@@ -429,6 +429,17 @@ async def stream_reply(
         # for Pro/Max + API-key modes, which both speak the same model namespace).
         effective_model = model_override or (settings.claude_model or None)
 
+        # Without a stderr callback the SDK lets the CLI subprocess inherit
+        # our stderr (-> systemd journal) and synthesises a useless
+        # `stderr="Check stderr output for details"` on ProcessError. The most
+        # important failure mode we need to surface — "No conversation found
+        # with session ID: …" when a `--resume` references an unknown session
+        # — is written to *stderr* by the CLI, so we MUST capture it here to
+        # drive the auto-recovery below.
+        cli_stderr_lines: list[str] = []
+        def _capture_stderr(line: str) -> None:
+            cli_stderr_lines.append(line)
+
         # Permission mode: bypassPermissions skips per-tool prompts, which is
         # what we want for the read-only tools (WebSearch / WebFetch / Read).
         # The only way "destructive" tools reach this point is if the operator
@@ -445,6 +456,7 @@ async def stream_reply(
             model=effective_model,
             setting_sources=[],
             env=engine_env,
+            stderr=_capture_stderr,
         )
         # cli_path: global installiertes `claude` (Dein Login + Sessions) statt SDK-Bundle
         resolved_cli = settings.claude_binary or shutil.which("claude")
@@ -640,7 +652,11 @@ async def stream_reply(
             ),
         }
     except ProcessError as exc:
-        stderr_excerpt = (exc.stderr or "").strip()[:1200]
+        # exc.stderr from the SDK is the synthetic "Check stderr output for
+        # details" placeholder — the real CLI stderr is what we collected via
+        # our `_capture_stderr` callback above. Prefer the captured lines.
+        captured_stderr = "".join(cli_stderr_lines).strip()
+        stderr_excerpt = (captured_stderr or (exc.stderr or "")).strip()[:1200]
         log.error(
             "Claude-Subprocess abgestürzt (exit=%s):\n%s",
             exc.exit_code, stderr_excerpt or "(kein stderr)",

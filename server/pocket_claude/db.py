@@ -345,6 +345,12 @@ async def get_db() -> AsyncIterator[aiosqlite.Connection]:
     db.row_factory = aiosqlite.Row
     try:
         await db.execute("PRAGMA foreign_keys = ON;")
+        # Without a busy_timeout SQLite's default is 0: any contended write
+        # (concurrent SSE streams + background TTS pre-gen + per-chunk KV
+        # counter writes all hit the same file) fails *immediately* with
+        # "database is locked" instead of waiting. 5s lets the writer block
+        # until the holder commits — turns spurious crashes into a short wait.
+        await db.execute("PRAGMA busy_timeout = 5000;")
         yield db
     finally:
         await db.close()

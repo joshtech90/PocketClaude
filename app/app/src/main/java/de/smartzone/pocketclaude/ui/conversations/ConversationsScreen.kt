@@ -397,6 +397,7 @@ private fun ConversationRow(
     onTogglePin: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val shape = RoundedCornerShape(18.dp)
     val bgColor = if (selected) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
@@ -478,7 +479,7 @@ private fun ConversationRow(
                             de.smartzone.pocketclaude.R.string.convo_count_with_time,
                             conv.messageCount,
                             noun,
-                            formatRelative(conv.lastMessageAt ?: conv.createdAt),
+                            formatRelative(context, conv.lastMessageAt ?: conv.createdAt),
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

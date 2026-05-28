@@ -784,4 +784,8 @@
     <string name="profile_label_hint">例: 自宅サーバー</string>
     <string name="profile_first_run_hint">ようこそ！開始するには、最初のサーバープロファイルを追加してください。</string>
     <string name="no_profiles_yet">プロファイルがまだありません</string>
+    <string name="time_just_now">たった今</string>
+    <string name="time_minutes_ago">%1$d分前</string>
+    <string name="time_yesterday">昨日</string>
+    <string name="time_days_ago">%1$d日前</string>
 </resources>
