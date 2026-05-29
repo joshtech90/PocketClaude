@@ -511,6 +511,7 @@ button { cursor: pointer; }
 /* ----------- Main ----------- */
 .main {
   display: flex; flex-direction: column;
+  position: relative; /* Containing block für #drop-overlay */
   /* WICHTIG: min-width/min-height: 0, sonst dehnt sich die Grid-Zelle (default
      min-content) auf den gesamten Messages-Content aus → ganze Seite scrollt
      statt nur die Messages, Sidebar wandert mit. */
@@ -1285,3 +1286,24 @@ button { cursor: pointer; }
 .chat-nav::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* ── Drag-and-Drop: Datei-Overlay über dem Chat (#main) ───────────────── */
+.drop-overlay {
+  position: absolute; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(2px);
+  pointer-events: none; /* fängt keine Maus/Drag-Events ab */
+}
+.drop-overlay.hidden { display: none; }
+.drop-overlay-inner {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 34px 48px;
+  border: 2px dashed var(--brand-500);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.05rem; font-weight: 600; text-align: center;
+  box-shadow: 0 10px 44px rgba(0,0,0,0.28);
+}
+.drop-overlay-icon { width: 40px; height: 40px; color: var(--brand-500); }

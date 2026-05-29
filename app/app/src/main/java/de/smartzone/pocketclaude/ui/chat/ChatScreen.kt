@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -181,6 +182,48 @@ fun ChatScreen(
         if (uri != null) {
             val name = queryName(context, uri) ?: defaultDocName
             vm.addPending(uri, name)
+        }
+    }
+    // Chat als .md lokal speichern (Storage Access Framework). Inhalt wird beim
+    // Antippen via exportMarkdown geholt und hier nach Ziel-Auswahl geschrieben.
+    var pendingExportMd by remember { mutableStateOf<String?>(null) }
+    val saveMarkdownLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/markdown"),
+    ) { uri: Uri? ->
+        val md = pendingExportMd
+        pendingExportMd = null
+        if (uri != null && md != null) {
+            val ok = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use {
+                    it.write(md.toByteArray(Charsets.UTF_8))
+                }
+            }.isSuccess
+            android.widget.Toast.makeText(
+                context,
+                context.getString(
+                    if (ok) de.smartzone.pocketclaude.R.string.chat_export_saved
+                    else de.smartzone.pocketclaude.R.string.chat_export_save_failed
+                ),
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    // Share-to-PocketClaude: beim ersten Öffnen dieses Chats die per Intent
+    // geteilten Datei(en)/Text aus dem Container abholen und als Anhänge/Text
+    // übernehmen. Einmalig — pendingShare wird danach geleert.
+    LaunchedEffect(Unit) {
+        val container =
+            (context.applicationContext as de.smartzone.pocketclaude.PocketClaudeApp).container
+        val share = container.pendingShare ?: return@LaunchedEffect
+        container.pendingShare = null
+        for (uri in share.uris) {
+            val name = queryName(context, uri) ?: defaultDocName
+            vm.addPending(uri, name)
+        }
+        val sharedText = share.text
+        if (!sharedText.isNullOrBlank()) {
+            input = if (input.isBlank()) sharedText else "$input\n$sharedText"
         }
     }
 
@@ -565,6 +608,21 @@ fun ChatScreen(
                                     moreMenuOpen = false
                                     vm.exportMarkdown { title, md ->
                                         shareMarkdownIntent(context, title, md)
+                                    }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(de.smartzone.pocketclaude.R.string.save_as_markdown)) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Download, contentDescription = null)
+                                },
+                                onClick = {
+                                    moreMenuOpen = false
+                                    vm.exportMarkdown { title, md ->
+                                        pendingExportMd = md
+                                        val safe = title.replace(Regex("""[^\p{L}\p{N}\-_ ]"""), "_")
+                                            .take(60).trim().ifBlank { "chat" }
+                                        saveMarkdownLauncher.launch("$safe.md")
                                     }
                                 },
                             )

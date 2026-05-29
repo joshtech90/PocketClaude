@@ -46,7 +46,7 @@ fun formatTime(isoUtc: String): String {
     return try {
         OffsetDateTime.parse(isoUtc)
             .atZoneSameInstant(ZoneId.systemDefault())
-            .format(TIME_FMT)
+            .format(timeFormatter())
     } catch (_: Exception) {
         ""
     }

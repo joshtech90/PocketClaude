@@ -52,9 +52,24 @@ object Routes {
 }
 
 @Composable
-fun PocketNav(container: AppContainer, initialChatCid: String? = null) {
+fun PocketNav(container: AppContainer, initialChatCid: String? = null, shareNonce: Int = 0) {
     val nav = rememberNavController()
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // Share-to-PocketClaude bei BEREITS offener App: frischen Chat anlegen und
+    // dorthin navigieren. ChatScreen holt den geteilten Inhalt aus
+    // container.pendingShare ab. shareNonce == 0 ist der Kaltstart — der läuft
+    // über LaunchScreen, daher hier das Guard.
+    LaunchedEffect(shareNonce) {
+        if (shareNonce <= 0 || container.pendingShare == null) return@LaunchedEffect
+        runCatching { container.chatRepository.create() }
+            .onSuccess { fresh ->
+                nav.navigate(Routes.chat(fresh.id)) {
+                    popUpTo(Routes.CHAT) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+    }
 
     // Re-Open mit cid aus Notification, App war bereits geladen: zum Ziel-Chat
     // navigieren statt am Launch hängen zu bleiben.
@@ -205,6 +220,14 @@ private fun LaunchScreen(
         // anzulegen. Falls der Chat zwischenzeitlich gelöscht wurde, fängt
         // ChatScreen das ab und der User landet einfach auf Error/leer —
         // besser als überrascht in einem neuen Chat zu stehen.
+        // Share-Intent beim KALTSTART: frischen Chat für den geteilten Inhalt
+        // (nicht den letzten Chat wiederöffnen).
+        if (container.pendingShare != null) {
+            runCatching { container.chatRepository.create() }
+                .onSuccess { onChatReady(it.id) }
+                .onFailure { errorMessage = it.message ?: it::class.java.simpleName }
+            return@LaunchedEffect
+        }
         val lastCid = container.settingsRepository.getLastChatCid()
         if (!lastCid.isNullOrBlank()) {
             onChatReady(lastCid)

@@ -17,12 +17,26 @@ import javax.net.ssl.SSLException
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "pocket_claude_prefs")
 
 /**
+ * Inhalte aus einem ACTION_SEND/SEND_MULTIPLE-Intent (Datei/Text an PocketClaude
+ * geteilt). MainActivity legt sie hier ab, ChatScreen konsumiert sie einmalig.
+ */
+data class PendingShare(
+    val uris: List<android.net.Uri> = emptyList(),
+    val text: String? = null,
+)
+
+/**
  * Simple manual DI container — keeps things lightweight, no Hilt overhead.
  */
 class AppContainer(context: Context) {
 
     /** Application-Context, für Service-Starts u.ä. außerhalb von Composables. */
     val appContext: Context = context.applicationContext
+
+    /** Per Share-Intent hereingereichte Datei(en)/Text — von ChatScreen einmalig
+     *  abgeholt (dann auf null gesetzt). Kein DataStore: lebt nur im Prozess. */
+    @Volatile
+    var pendingShare: PendingShare? = null
 
     val settingsRepository: SettingsRepository = SettingsRepository(context.dataStore)
 

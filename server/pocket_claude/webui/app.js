@@ -1046,6 +1046,64 @@ els.fileInput.addEventListener('change', async (e) => {
   for (const f of files) await uploadAttachment(f);
 });
 
+// --- Drag & Drop: Dateien ins Chatfenster ziehen → Overlay + Upload ---
+(function setupDragDrop() {
+  const overlay = document.getElementById('drop-overlay');
+  if (!overlay) return;
+  let dragDepth = 0;
+  const accepted = (f) =>
+    !!f && (
+      (f.type || '').startsWith('image/') ||
+      f.type === 'application/pdf' ||
+      f.type === 'text/plain' ||
+      f.type === 'text/markdown' ||
+      /\.(txt|md)$/i.test(f.name || '')
+    );
+  const dragHasFiles = (e) =>
+    !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  // Nur im Chat-Mode droppen — nicht über Login, Settings-Modal oder Bild-Mode.
+  const canDrop = () => {
+    const login = document.getElementById('login');
+    const settings = document.getElementById('settings-modal');
+    const loginHidden = !login || login.classList.contains('hidden');
+    const settingsHidden = !settings || settings.classList.contains('hidden');
+    const imageMode = els.inputForm && els.inputForm.classList.contains('image-mode');
+    return loginHidden && settingsHidden && !imageMode;
+  };
+  const hideOverlay = () => { dragDepth = 0; overlay.classList.add('hidden'); };
+
+  window.addEventListener('dragenter', (e) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    if (!canDrop()) return;
+    dragDepth++;
+    overlay.classList.remove('hidden');
+  });
+  window.addEventListener('dragover', (e) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    if (canDrop()) { try { e.dataTransfer.dropEffect = 'copy'; } catch (_) {} }
+  });
+  window.addEventListener('dragleave', (e) => {
+    if (!dragHasFiles(e)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) overlay.classList.add('hidden');
+  });
+  window.addEventListener('drop', async (e) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();           // verhindert, dass der Browser die Datei öffnet
+    hideOverlay();
+    if (!canDrop()) return;
+    const files = Array.from(e.dataTransfer.files || []);
+    let skipped = 0;
+    for (const f of files) {
+      if (accepted(f)) await uploadAttachment(f);
+      else skipped++;
+    }
+    if (skipped) toast(t('drop_unsupported'), { error: true });
+  });
+})();
+
 async function uploadAttachment(file) {
   const placeholder = { id: 'pending-' + Math.random(), filename: file.name, _uploading: true, mime_type: file.type };
   // Local preview falls Bild

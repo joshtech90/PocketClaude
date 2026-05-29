@@ -61,6 +61,9 @@
     <string name="search_in_chat">Im Chat suchen</string>
     <string name="search_no_matches">Keine Treffer</string>
     <string name="share_as_markdown">Als Markdown teilen</string>
+    <string name="save_as_markdown">Als Markdown speichern</string>
+    <string name="chat_export_saved">Gespeichert.</string>
+    <string name="chat_export_save_failed">Datei konnte nicht gespeichert werden.</string>
 
     <!-- ─── Drawer / conversation list ────────────────────────────────── -->
     <string name="new_chat">Neuer Chat</string>
