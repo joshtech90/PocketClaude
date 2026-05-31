@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Vertraut dem System-Trust-Store PLUS den gebündelten Let's-Encrypt-Roots
+  (ISRG Root X1 + X2). Nötig für Geräte mit veraltetem/kuratiertem CA-Store
+  (z.B. Huawei/HarmonyOS), denen ISRG Root X2 fehlt — sonst schlägt der
+  TLS-Handshake zum Cloudflare-/Let's-Encrypt-Endpunkt mit
+  "unacceptable certificate: CN=ISRG Root X2" fehl.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/isrg_root_x1" />
+            <certificates src="@raw/isrg_root_x2" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
