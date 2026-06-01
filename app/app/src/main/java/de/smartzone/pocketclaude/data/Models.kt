@@ -3,6 +3,12 @@ package de.smartzone.pocketclaude.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/** Produkt-Default für die Denktiefe (CLAUDE_CODE_EFFORT_LEVEL). Eine einzige
+ *  Quelle der Wahrheit — DTO-Defaults, Repo-Default und Settings-Fallback
+ *  referenzieren diese Konstante, damit der Default nicht über mehrere
+ *  Dateien hinweg auseinanderdriften kann. */
+const val DEFAULT_EFFORT = "high"
+
 @Serializable
 data class HealthDto(
     val status: String,
@@ -74,7 +80,7 @@ data class SendMessageRequest(
     val content: String,
     @SerialName("attachment_ids") val attachmentIds: List<String> = emptyList(),
     /** off | low | medium | high | xhigh | max — steuert CLAUDE_CODE_EFFORT_LEVEL */
-    val effort: String = "high",
+    val effort: String = DEFAULT_EFFORT,
     /** Vom Client gewünschter System-Prompt (ersetzt Server-Default + Claude-Code-Default). */
     @SerialName("system_prompt") val systemPrompt: String? = null,
     /** TTS-Hints: Server startet nach Stream-Ende eine Pre-Generation in der
@@ -246,7 +252,7 @@ data class AppSettingsExportDto(
     @SerialName("tts_voice") val ttsVoice: String = "edge-de-DE-KatjaNeural",
     @SerialName("tts_auto_speak") val ttsAutoSpeak: Boolean = false,
     @SerialName("tts_speed") val ttsSpeed: Float = 1.0f,
-    val effort: String = "high",
+    val effort: String = DEFAULT_EFFORT,
     @SerialName("system_prompt_mode") val systemPromptMode: String = "STANDARD",
     @SerialName("custom_system_prompt") val customSystemPrompt: String = "",
     @SerialName("tts_auto_speak_per_chat") val ttsAutoSpeakPerChat: Map<String, Boolean> = emptyMap(),

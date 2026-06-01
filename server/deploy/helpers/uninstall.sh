@@ -46,10 +46,17 @@ c_blue "==> Backing up data"
 SUDO_USER_HOME="$(eval echo ~"${SUDO_USER:-root}")"
 TS=$(date +%Y%m%d-%H%M%S)
 BACKUP_FILE="$SUDO_USER_HOME/pocket-claude-backup-$TS.tar.gz"
-if [[ -d "$INSTALL_DIR/data" ]] || [[ -f "$INSTALL_DIR/.env" ]]; then
-    tar -czf "$BACKUP_FILE" -C "$INSTALL_DIR" data .env 2>/dev/null || true
-    chown "${SUDO_USER:-root}:${SUDO_USER:-root}" "$BACKUP_FILE" 2>/dev/null || true
-    c_green "    Backup: $BACKUP_FILE"
+MEMBERS=()
+[[ -d "$INSTALL_DIR/data" ]] && MEMBERS+=(data)
+[[ -f "$INSTALL_DIR/.env" ]] && MEMBERS+=(.env)
+if [[ ${#MEMBERS[@]} -gt 0 ]]; then
+    if tar -czf "$BACKUP_FILE" -C "$INSTALL_DIR" "${MEMBERS[@]}"; then
+        chown "${SUDO_USER:-root}:${SUDO_USER:-root}" "$BACKUP_FILE" 2>/dev/null || true
+        c_green "    Backup: $BACKUP_FILE"
+    else
+        c_red "    Backup FAILED — aborting before destructive removal."
+        exit 1
+    fi
 fi
 
 c_blue "==> Stopping services"
@@ -65,6 +72,7 @@ rm -rf "$INSTALL_DIR"
 
 c_blue "==> Removing service user"
 if id -u "$SERVICE_USER" >/dev/null 2>&1; then
+    c_yellow "    NOTE: the Claude OAuth login in /home/$SERVICE_USER/.claude is being permanently deleted and is NOT in the backup — a fresh 'claude login' will be required on reinstall."
     userdel -r "$SERVICE_USER" 2>/dev/null || userdel "$SERVICE_USER"
 fi
 

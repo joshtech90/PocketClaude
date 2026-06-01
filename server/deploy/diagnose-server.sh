@@ -25,12 +25,20 @@ exists() { [ -e "$1" ] && echo "EXISTS  $1" || echo "MISSING $1"; }
 echo "PocketClaude server diagnostic — $(date -u +%FT%TZ)" >> "$OUT"
 echo "host: $(hostname)   kernel: $(uname -r)   arch: $(uname -m)" >> "$OUT"
 
+# Firewall/OAuth/home sections need root. Without it they emit "(exit N)" and
+# the OAuth-credential probe returns a permission error — make that explicit.
+if [ "$(id -u)" -ne 0 ]; then
+    WARN="WARNING: not running as root — firewall/OAuth/home sections will be incomplete; re-run with sudo for a full dump."
+    echo "$WARN" >> "$OUT"
+    echo "$WARN" >&2
+fi
+
 s "OS / hardware"
 run cat /etc/os-release
 run uptime
 run free -h
 run df -h /
-run lscpu | head -20
+run bash -c 'lscpu | head -20'
 
 s "systemd service: $SERVICE"
 run systemctl is-enabled "$SERVICE"
@@ -131,7 +139,7 @@ run du -sh "$APP_DIR" "$APP_DIR"/* 2>/dev/null
 [ -d "/home/$APP_USER" ] && run sudo du -sh "/home/$APP_USER"/* 2>/dev/null
 
 s "Recent system errors (dmesg, last 50)"
-run dmesg -T --level=err,warn 2>/dev/null | tail -50
+run bash -c 'dmesg -T --level=err,warn 2>/dev/null | tail -50'
 
 echo "" >> "$OUT"
 echo "===== END OF DIAGNOSTIC ($(wc -l < "$OUT") lines) =====" >> "$OUT"

@@ -24,6 +24,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import time
@@ -201,6 +202,16 @@ def _filter_db_to_user(db_path: Path, user_id: str) -> None:
         cur.execute("DELETE FROM attachments WHERE user_id != ? OR user_id IS NULL", (user_id,))
         # KV-Settings nur des Users behalten
         cur.execute("DELETE FROM kv_settings WHERE scope != ?", (user_id,))
+        # Sessions anderer User raus — sessions.token IST das Bearer-Credential,
+        # darf NIE in ein fremdes Backup gelangen (sonst Account-Takeover).
+        cur.execute("DELETE FROM sessions WHERE user_id != ?", (user_id,))
+        # Eigene Tokens trotzdem entwerten, damit der Export keine Live-Credentials trägt.
+        cur.execute("UPDATE sessions SET token = '' WHERE user_id = ?", (user_id,))
+        # token_usage (wird von usage.ensure_schema lazy angelegt) anderer User raus.
+        if cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'"
+        ).fetchone():
+            cur.execute("DELETE FROM token_usage WHERE user_id != ?", (user_id,))
         conn.commit()
         # FTS reindex — die Trigger sind beim DELETE schon gefeuert, aber zur
         # Sicherheit einmal neu aufbauen
@@ -400,11 +411,15 @@ def _replace_db_and_uploads(zf) -> tuple[int, int, int]:  # noqa: ANN001
         shutil.rmtree(uploads_dir)
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    # Neue DB rüber
+    # Neue DB rüber — erst in eine Temp-Datei im selben Verzeichnis schreiben,
+    # dann atomar per os.replace tauschen. So bleiben evtl. noch offene
+    # aiosqlite-Handles auf dem alten Inode statt unter ihnen Bytes zu zerstören.
     if DB_FILENAME not in zf.namelist():
         raise ValueError(f"Backup enthält keine {DB_FILENAME}.")
-    with zf.open(DB_FILENAME) as src, open(target_db, "wb") as dst:
+    tmp_db = target_db.with_suffix(".import-tmp")
+    with zf.open(DB_FILENAME) as src, open(tmp_db, "wb") as dst:
         shutil.copyfileobj(src, dst)
+    os.replace(tmp_db, target_db)
 
     # Uploads
     att_count = 0

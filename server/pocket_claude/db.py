@@ -440,10 +440,11 @@ async def delete_conversation(cid: str, user_id: str | None = None) -> bool:
     async with get_db() as db:
         cur = await db.execute(sql, params)
         await db.commit()
-    return cur.rowcount > 0
+        affected = cur.rowcount
+    return affected > 0
 
 
-async def set_claude_session_id(cid: str, session_id: str) -> None:
+async def set_claude_session_id(cid: str, session_id: str | None) -> None:
     async with get_db() as db:
         await db.execute(
             "UPDATE conversations SET claude_session_id = ? WHERE id = ?",
@@ -480,7 +481,8 @@ async def set_conversation_skills_override(
     async with get_db() as db:
         cur = await db.execute(sql, params)
         await db.commit()
-    return cur.rowcount > 0
+        affected = cur.rowcount
+    return affected > 0
 
 
 # ---------- Messages ----------
@@ -856,7 +858,8 @@ async def delete_session(token: str) -> bool:
     async with get_db() as db:
         cur = await db.execute("DELETE FROM sessions WHERE token = ?", (token,))
         await db.commit()
-    return cur.rowcount > 0
+        affected = cur.rowcount
+    return affected > 0
 
 
 async def delete_sessions_for_user(user_id: str, except_token: str | None = None) -> int:
@@ -874,7 +877,8 @@ async def delete_sessions_for_user(user_id: str, except_token: str | None = None
         else:
             cur = await db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         await db.commit()
-    return cur.rowcount
+        affected = cur.rowcount
+    return affected
 
 
 async def list_sessions_for_user(user_id: str) -> list[dict]:

@@ -62,7 +62,7 @@ data class AppSettings(
     /** off | low | medium | high | xhigh | max — Denktiefe für Claude.
      *  `xhigh` ist Opus-4.7-only (fällt auf anderen Modellen auf `high` zurück);
      *  wir nutzen Opus 4.7, also ist es für uns ein echtes Extra-Level. */
-    val effort: String = "high",
+    val effort: String = DEFAULT_EFFORT,
     /** STANDARD | PERMISSIVE | CUSTOM — welcher System-Prompt soll Claude bekommen. */
     val systemPromptMode: SystemPromptMode = SystemPromptMode.STANDARD,
     /** Frei einzugebender Custom-System-Prompt (nur aktiv wenn mode = CUSTOM). */
@@ -138,7 +138,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             ttsVoice = prefs[keyTtsVoice].orEmpty().ifBlank { "edge-de-DE-KatjaNeural" },
             ttsAutoSpeak = (prefs[keyTtsAutoSpeak] ?: "false").toBooleanStrictOrNull() ?: false,
             ttsSpeed = (prefs[keyTtsSpeed] ?: 1.0f).coerceIn(0.25f, 2.0f),
-            effort = prefs[keyEffort]?.takeIf { it.isNotBlank() } ?: "high",
+            effort = prefs[keyEffort]?.takeIf { it.isNotBlank() } ?: DEFAULT_EFFORT,
             systemPromptMode = SystemPromptMode.fromString(prefs[keySystemPromptMode]),
             customSystemPrompt = prefs[keyCustomSystemPrompt].orEmpty(),
             collapseLongUserMessages =
@@ -355,7 +355,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             ttsVoice = prefs[keyTtsVoice].orEmpty().ifBlank { "edge-de-DE-KatjaNeural" },
             ttsAutoSpeak = (prefs[keyTtsAutoSpeak] ?: "false").toBooleanStrictOrNull() ?: false,
             ttsSpeed = (prefs[keyTtsSpeed] ?: 1.0f).coerceIn(0.25f, 2.0f),
-            effort = prefs[keyEffort]?.takeIf { it.isNotBlank() } ?: "high",
+            effort = prefs[keyEffort]?.takeIf { it.isNotBlank() } ?: DEFAULT_EFFORT,
             systemPromptMode = (prefs[keySystemPromptMode] ?: SystemPromptMode.STANDARD.name),
             customSystemPrompt = prefs[keyCustomSystemPrompt].orEmpty(),
             ttsAutoSpeakPerChat = parseAutoSpeakMap(prefs[keyTtsAutoSpeakPerChat]),

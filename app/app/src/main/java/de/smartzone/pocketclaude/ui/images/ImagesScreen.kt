@@ -60,6 +60,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +76,9 @@ import de.smartzone.pocketclaude.PocketClaudeApp
 import de.smartzone.pocketclaude.R
 import de.smartzone.pocketclaude.data.AppSettings
 import de.smartzone.pocketclaude.data.ImageGenerateAttachment
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -467,6 +471,7 @@ private fun ImageFullscreenDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val url = remember(serverBaseUrl, serverToken, attachment.id) {
         "$serverBaseUrl/attachments/${attachment.id}?token=${android.net.Uri.encode(serverToken)}"
     }
@@ -494,14 +499,14 @@ private fun ImageFullscreenDialog(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 FilledTonalButton(onClick = {
-                    shareImage(context, serverBaseUrl, serverToken, attachment)
+                    scope.launch { shareImage(context, serverBaseUrl, serverToken, attachment) }
                 }) {
                     Icon(Icons.Filled.IosShare, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.image_share_btn))
                 }
                 FilledTonalButton(onClick = {
-                    saveImageToGallery(context, serverBaseUrl, serverToken, attachment)
+                    scope.launch { saveImageToGallery(context, serverBaseUrl, serverToken, attachment) }
                 }) {
                     Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
@@ -514,67 +519,81 @@ private fun ImageFullscreenDialog(
 
 /**
  * Lädt das Bild via OkHttp (mit Bearer-Token im URL-Query), schreibt es in
- * den App-Cache und teilt es via ACTION_SEND. Synchron als minimaler Pfad —
- * Bilder sind klein (<5 MB typisch), Block auf Main-Thread ist erträglich.
+ * den App-Cache und teilt es via ACTION_SEND. Download + Datei-Schreiben laufen
+ * auf Dispatchers.IO (Netz auf dem Main-Thread wirft NetworkOnMainThreadException),
+ * der Chooser-Intent + Toast werden auf dem Main-Thread gepostet.
  */
-private fun shareImage(
+private suspend fun shareImage(
     context: Context,
     serverBaseUrl: String,
     serverToken: String,
     att: ImageGenerateAttachment,
 ) {
     try {
-        val bytes = downloadImageBytes(serverBaseUrl, serverToken, att.id)
-        val dir = java.io.File(context.cacheDir, "shared-images").apply { mkdirs() }
-        val safeName = att.filename.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        val file = java.io.File(dir, safeName).also { it.writeBytes(bytes) }
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            context, "${context.packageName}.fileprovider", file,
-        )
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = att.mimeType
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val intent = withContext(Dispatchers.IO) {
+            val bytes = downloadImageBytes(serverBaseUrl, serverToken, att.id)
+            val dir = java.io.File(context.cacheDir, "shared-images").apply { mkdirs() }
+            val safeName = att.filename.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val file = java.io.File(dir, safeName).also { it.writeBytes(bytes) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", file,
+            )
+            Intent(Intent.ACTION_SEND).apply {
+                type = att.mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         }
-        context.startActivity(Intent.createChooser(intent, context.getString(R.string.image_share_chooser_title)))
+        withContext(Dispatchers.Main) {
+            context.startActivity(Intent.createChooser(intent, context.getString(R.string.image_share_chooser_title)))
+        }
     } catch (e: Exception) {
-        Toast.makeText(context, context.getString(R.string.image_share_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, context.getString(R.string.image_share_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+        }
     }
 }
 
 /**
  * Speichert das Bild via MediaStore in die Galerie (Pictures/PocketClaude/).
  * Auf Android 10+ ist MediaStore der saubere Weg — keine WRITE_EXTERNAL_STORAGE-
- * Permission nötig, Scoped-Storage-konform.
+ * Permission nötig, Scoped-Storage-konform. Download + MediaStore-Write laufen
+ * auf Dispatchers.IO, der Toast wird auf dem Main-Thread gepostet.
  */
-private fun saveImageToGallery(
+private suspend fun saveImageToGallery(
     context: Context,
     serverBaseUrl: String,
     serverToken: String,
     att: ImageGenerateAttachment,
 ) {
     try {
-        val bytes = downloadImageBytes(serverBaseUrl, serverToken, att.id)
-        val ts = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(java.util.Date())
-        val ext = when {
-            att.mimeType.contains("png") -> "png"
-            att.mimeType.contains("webp") -> "webp"
-            else -> "jpg"
+        withContext(Dispatchers.IO) {
+            val bytes = downloadImageBytes(serverBaseUrl, serverToken, att.id)
+            val ts = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(java.util.Date())
+            val ext = when {
+                att.mimeType.contains("png") -> "png"
+                att.mimeType.contains("webp") -> "webp"
+                else -> "jpg"
+            }
+            val filename = "PocketClaude-$ts.$ext"
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, att.mimeType)
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PocketClaude")
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: throw java.io.IOException("MediaStore insert failed")
+            resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                ?: throw java.io.IOException("OutputStream null")
         }
-        val filename = "PocketClaude-$ts.$ext"
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
-            put(MediaStore.Images.Media.MIME_TYPE, att.mimeType)
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PocketClaude")
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, context.getString(R.string.image_save_success), Toast.LENGTH_SHORT).show()
         }
-        val resolver = context.contentResolver
-        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            ?: throw java.io.IOException("MediaStore insert failed")
-        resolver.openOutputStream(uri)?.use { it.write(bytes) }
-            ?: throw java.io.IOException("OutputStream null")
-        Toast.makeText(context, context.getString(R.string.image_save_success), Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {
-        Toast.makeText(context, context.getString(R.string.image_save_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, context.getString(R.string.image_save_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+        }
     }
 }
 

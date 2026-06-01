@@ -141,7 +141,7 @@ TMP_BUNDLE="$(mktemp /tmp/pocket-claude-migrate-XXXXXX.tar.gz)"
 trap "rm -f '$TMP_BUNDLE'" EXIT
 
 INCLUDE=()
-INCLUDE+=("data/pocket_claude.db")
+[[ -f "$DATA_DIR/pocket_claude.db" ]] && INCLUDE+=("data/pocket_claude.db")
 [[ -d "$DATA_DIR/uploads" ]] && INCLUDE+=("data/uploads")
 [[ -f "$DATA_DIR/google_tts_credentials.json" ]] && INCLUDE+=("data/google_tts_credentials.json")
 [[ -f "$ENV_FILE" ]] && INCLUDE+=(".env")
@@ -153,7 +153,7 @@ fi
 
 # `tar -C` keeps the paths relative; symlink dereferencing not needed
 # (everything is a real file). gzip-9 since it only runs once.
-tar -czf "$TMP_BUNDLE" -C "$LOCAL_DIR" "${INCLUDE[@]}" 2>/dev/null
+tar -czf "$TMP_BUNDLE" -C "$LOCAL_DIR" "${INCLUDE[@]}" || { c_red "    Bundle creation failed."; exit 1; }
 BUNDLE_SIZE=$(du -h "$TMP_BUNDLE" | awk '{print $1}')
 c_green "    Bundle: $BUNDLE_SIZE — ${#INCLUDE[@]} paths"
 for p in "${INCLUDE[@]}"; do echo "        - $p"; done

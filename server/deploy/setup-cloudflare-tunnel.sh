@@ -42,7 +42,10 @@ if ! command -v cloudflared >/dev/null 2>&1; then
         mkdir -p --mode=0755 /usr/share/keyrings
         curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
             | tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-        echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" \
+        . /etc/os-release
+        CODENAME="${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null)}"
+        [[ -n "$CODENAME" ]] || { c_red "Could not determine Debian codename"; exit 1; }
+        echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $CODENAME main" \
             | tee /etc/apt/sources.list.d/cloudflared.list
         apt-get update -qq
         apt-get install -y cloudflared

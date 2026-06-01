@@ -13,6 +13,8 @@
 #    - Your user is a member of the `pocket-claude` group (can write to
 #      /opt/pocket-claude)
 #    - NOPASSWD sudo for `systemctl * pocket-claude` (no password prompt)
+#    - NOPASSWD sudo for `-u pocket-claude .../pip` (needed only when
+#      requirements.txt changed — see step 2)
 #
 #  Configuration via env vars (e.g. in ~/.zshrc):
 #      export POCKET_CLAUDE_TARGET="your-user@minipc"
@@ -81,7 +83,7 @@ c_green "    Code in sync."
 # If requirements.txt changed: pip install in the server venv
 if [[ "$LOCAL_REQ_HASH" != "$REMOTE_REQ_HASH" ]]; then
     step "requirements.txt changed -> pip install in the server venv"
-    ssh "$TARGET" "sudo -u pocket-claude $REMOTE_PATH/.venv/bin/pip install --quiet --upgrade -r $REMOTE_PATH/requirements.txt" 2>&1 | head -10
+    ssh "$TARGET" "sudo -n -u pocket-claude $REMOTE_PATH/.venv/bin/pip install --quiet --upgrade -r $REMOTE_PATH/requirements.txt" 2>&1 | head -10
     c_green "    Dependencies updated."
 fi
 

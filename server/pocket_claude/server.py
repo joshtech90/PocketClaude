@@ -5,6 +5,8 @@ import asyncio
 import json
 import logging
 import mimetypes
+import time as _time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncIterator
@@ -17,6 +19,7 @@ from fastapi import (
     Header,
     HTTPException,
     Path as PathParam,
+    Query,
     UploadFile,
     status,
 )
@@ -291,7 +294,7 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
         if len(existing) != len(body.attachment_ids):
             raise HTTPException(400, "One or more attachment IDs are invalid.")
         for a in existing:
-            if a.get("user_id") and a["user_id"] != user["id"]:
+            if a.get("user_id") != user["id"]:
                 raise HTTPException(403, "Attachment belongs to a different user.")
 
     # User-Message speichern (Token-Schätzung machen wir grob über Zeichenlänge ÷ 4,
@@ -542,7 +545,7 @@ async def download_attachment(
 # ---------- Search ----------
 
 @app.get("/search", response_model=SearchResponseOut)
-async def search(q: str, limit: int = 30, user=Depends(require_user)) -> SearchResponseOut:
+async def search(q: str, limit: int = Query(30, ge=1, le=100), user=Depends(require_user)) -> SearchResponseOut:
     if not q or len(q.strip()) < 2:
         return SearchResponseOut(query=q, hits=[])
     rows = await db.search_messages(q, limit=limit, user_id=user["id"])
@@ -682,8 +685,9 @@ async def _load_tts_api_keys(user_id: str) -> list[dict]:
             "id": _gen_key_id(), "label": "(migriert)", "key": legacy,
             "tier_hint": "unknown", "success_count": 0,
         })
-    elif (kv.get(_KV_IMAGE_API_KEY_LEGACY_FALLBACK) or "").strip():
-        return []
+    # Hinweis: ein reiner Image-Gen-Key wird NICHT in den Pool migriert.
+    # Single-Key-Aufrufer holen ihn über _resolve_user_tts_api_key's eigenen
+    # Image-Fallback (source="image").
     return migrated
 
 
@@ -775,10 +779,16 @@ def mark_key_burned(api_key: str, retry_delay_sec: float, quota_id: str = "") ->
       Google reseted Daily-Quotas dann, NICHT 24h nach dem Burn — die alte
       Fixed-24h-Logik hätte den Key bis zu 16h unnötig länger gesperrt.
     - Andere Quotas (RPM): Server-suggested retryDelay (mind. 60s).
+    - Unbekannte/leere quota_id OHNE retryDelay-Hint: defensiv als RPD
+      behandeln (bis UTC-Mitternacht). Sonst würde ein RPD-erschöpfter Key
+      mit 60s viel zu früh wieder probiert und feuert sofort wieder 429.
     """
     if not api_key:
         return
     if "PerDay" in quota_id or "RequestsPerDay" in quota_id:
+        burn_sec = _seconds_until_utc_midnight()
+    elif not quota_id and retry_delay_sec <= 0:
+        # Kein Hinweis welcher Quota-Typ — vorsichtshalber bis Mitternacht.
         burn_sec = _seconds_until_utc_midnight()
     else:
         burn_sec = max(60.0, retry_delay_sec)
@@ -834,6 +844,11 @@ def _rl_remaining(api_key: str, now: float) -> int:
             return MAX_REQUESTS_PER_KEY_PER_MINUTE
         while dq and (now - dq[0]) > _RL_WINDOW_SEC:
             dq.popleft()
+        if not dq:
+            # Leere Deque (alle Timestamps gefallen) → Eintrag aufräumen,
+            # damit _rl_timestamps nicht unbegrenzt pro je gesehenem Key wächst.
+            del _rl_timestamps[api_key]
+            return MAX_REQUESTS_PER_KEY_PER_MINUTE
         return max(0, MAX_REQUESTS_PER_KEY_PER_MINUTE - len(dq))
 
 
@@ -846,6 +861,10 @@ def _rl_peek_wait(api_key: str, now: float) -> float:
             return 0.0
         while dq and (now - dq[0]) > _RL_WINDOW_SEC:
             dq.popleft()
+        if not dq:
+            # Leere Deque aufräumen (siehe _rl_remaining).
+            del _rl_timestamps[api_key]
+            return 0.0
         if len(dq) < MAX_REQUESTS_PER_KEY_PER_MINUTE:
             return 0.0
         return max(0.0, _RL_WINDOW_SEC - (now - dq[0]))
@@ -891,9 +910,6 @@ async def acquire_tts_key_for_call(api_keys: list[str], timeout_sec: float = 30.
         log.debug("acquire_tts_key: alle %d non-burned Keys voll, sleep %.2fs",
                   len(available), sleep_for)
         await _asyncio.sleep(sleep_for)
-
-
-import time as _time  # noqa: E402 — wird im Rate-Limiter benötigt
 
 
 async def _resolve_user_tts_provider(user_id: str) -> tuple[str, str | None]:
@@ -1657,28 +1673,36 @@ async def get_billing_status(user=Depends(require_user)) -> BillingStatusDto:
         )
 
     # Spend estimate: monthly Cloud TTS character counter × voice price.
-    # Multi-user aware: we sum across all users on the server.
+    # Multi-user aware: estimate per user (with that user's own voice tier
+    # and its own free-tier allowance) and sum the EUR results — pricing the
+    # global char SUM with a single user's voice would be wildly off across
+    # mixed tiers.
     from pocket_claude.db import get_db
-    total_chars = 0
-    voice_for_estimate: str | None = None
+    spend = 0.0
     try:
-        # Aktuelle User-Voice für die Preis-Annahme heranziehen
-        kv = await db.kv_get_all(scope=user["id"])
-        voice_for_estimate = kv.get("ui_tts_voice") or tts.DEFAULT_VOICE
-        # Summiere die monatlichen TTS-Zeichen-Counter ALLER User
         async with get_db() as conn:
             month_key = _current_month_key()
             cur = await conn.execute(
-                "SELECT SUM(CAST(value AS INTEGER)) FROM kv_settings WHERE key = ?",
+                """
+                SELECT c.value AS chars, v.value AS voice
+                FROM kv_settings c
+                LEFT JOIN kv_settings v
+                  ON v.scope = c.scope AND v.key = 'ui_tts_voice'
+                WHERE c.key = ?
+                """,
                 (month_key,),
             )
-            row = await cur.fetchone()
-            total_chars = int(row[0]) if row and row[0] else 0
+            rows = await cur.fetchall()
+        for row in rows:
+            try:
+                chars = int(row[0]) if row[0] else 0
+            except (TypeError, ValueError):
+                chars = 0
+            voice = row[1] or tts.DEFAULT_VOICE
+            spend += _estimate_tts_brutto_cost_eur(chars, voice)
     except Exception as exc:  # noqa: BLE001
         log.warning("Spend-Schätzung fehlgeschlagen: %s", exc)
 
-    spend = _estimate_tts_brutto_cost_eur(total_chars, voice_for_estimate)
-    credit = payload.get("credit_remaining") or 0.0
     # Verbleibender Credit = max(0, original − spend) (Brutto, nicht Echt-Kosten)
     credit_left = max(0.0, (payload.get("credit_original") or 0.0) - spend)
     estimated_real = max(0.0, spend - (payload.get("credit_original") or 0.0))
@@ -2880,10 +2904,13 @@ async def peek_backup(
 
 @app.exception_handler(Exception)
 async def fallback_error(_request, exc: Exception):  # noqa: ANN001
-    log.exception("Unbehandelter Server-Fehler")
+    # Details NUR ins Server-Log — niemals den rohen Exception-Text an den
+    # Client geben (kann Pfade/SQL/3rd-Party-URLs mit Credentials enthalten).
+    rid = uuid.uuid4().hex
+    log.exception("Unbehandelter Server-Fehler [%s]", rid)
     return JSONResponse(
         status_code=500,
-        content={"detail": f"{type(exc).__name__}: {exc}"},
+        content={"detail": "Internal server error", "request_id": rid},
     )
 
 

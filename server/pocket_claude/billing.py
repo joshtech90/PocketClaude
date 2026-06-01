@@ -103,8 +103,17 @@ async def _get_access_token() -> str:
         scopes=["https://www.googleapis.com/auth/cloud-platform"],
     )
     # `creds.refresh()` ist sync — in einen Thread auslagern damit der
-    # Event-Loop nicht blockiert.
-    await asyncio.to_thread(creds.refresh, _AuthRequest())
+    # Event-Loop nicht blockiert. Mit Timeout begrenzen (wie die httpx-Calls
+    # mit timeout=10.0), sonst kann ein hängender OAuth-Exchange den Request
+    # festfrieren.
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(creds.refresh, _AuthRequest()), timeout=15.0
+        )
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError(
+            "Service-Account-Token-Refresh hat das Timeout überschritten."
+        ) from exc
     if not creds.token:
         raise RuntimeError("Kein Access-Token vom Service-Account erhalten.")
     return creds.token
@@ -180,8 +189,11 @@ def _extract_budget_data(budget: dict) -> dict:
     name = budget.get("displayName", "")
     amount = budget.get("amount", {}).get("specifiedAmount", {})
     currency = amount.get("currencyCode", "EUR")
-    units = int(amount.get("units", 0))
-    nanos = int(amount.get("nanos", 0))
+    try:
+        units = int(amount.get("units") or 0)
+        nanos = int(amount.get("nanos") or 0)
+    except (TypeError, ValueError):
+        units = nanos = 0
     budget_eur = units + nanos / 1e9
     return {
         "displayName": name,
@@ -247,7 +259,12 @@ async def fetch_billing_status_uncached() -> dict:
             (b for b in budgets_result if "pocket" in (b.get("displayName") or "").lower()),
             budgets_result[0],
         )
-        info = _extract_budget_data(chosen)
+        # Budget-Parsing darf den ganzen Status nicht killen (siehe Docstring).
+        try:
+            info = _extract_budget_data(chosen)
+        except Exception as exc:  # noqa: BLE001
+            budget_warning = f"Budget-Daten unlesbar: {str(exc)[:160]}"
+            log.warning("billing: Budget-Parsing gescheitert (graceful): %s", exc)
 
     # Spend aus Cloud-Billing-Reports zu holen ist über die Public-API nicht
     # ohne weiteres möglich (nur via BigQuery-Export). Wir zeigen daher den
@@ -280,12 +297,16 @@ async def fetch_billing_status() -> dict:
     """Cached-Variante. TTL 5 min."""
     global _cache
     now = time.monotonic()
+    # Lock nur für den In-Memory-Cache-Zugriff halten — NICHT über den
+    # Netzwerk-Roundtrip, sonst serialisieren alle /billing/status-Requests
+    # hinter einem langsamen Google-Call.
     async with _cache_lock:
         if _cache is not None and now < _cache.expires_at:
             return dict(_cache.payload)  # shallow copy damit Caller nicht mutiert
-        payload = await fetch_billing_status_uncached()
-        _cache = _CacheEntry(payload=payload, expires_at=now + CACHE_TTL_SEC)
-        return dict(payload)
+    payload = await fetch_billing_status_uncached()
+    async with _cache_lock:
+        _cache = _CacheEntry(payload=payload, expires_at=time.monotonic() + CACHE_TTL_SEC)
+    return dict(payload)
 
 
 def invalidate_cache() -> None:

@@ -232,7 +232,7 @@ c_green "    Service enabled (starts automatically on boot)."
 step "Starting server"
 # Only start if `claude` is already logged in. Otherwise we end up in a crash
 # loop until the operator has run `claude login` as the pocket-claude user.
-if sudo -u "$SERVICE_USER" -H bash -c '[[ -f ~/.claude/credentials.json ]] || [[ -f ~/.config/claude/credentials.json ]]' 2>/dev/null; then
+if sudo -u "$SERVICE_USER" -H bash -c '[[ -f ~/.claude/.credentials.json ]] || [[ -f ~/.claude/credentials.json ]] || [[ -f ~/.config/claude/credentials.json ]]' 2>/dev/null; then
     systemctl restart "$SERVICE_NAME"
     sleep 2
     if systemctl is-active --quiet "$SERVICE_NAME"; then

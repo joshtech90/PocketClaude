@@ -138,6 +138,6 @@ echo
 echo "This URL survives any reboot — enter it in the Pocket Claude app."
 echo
 echo "Status:       tailscale funnel status"
-echo "Disable:      tailscale funnel --https=443 off"
-echo "Re-enable:    tailscale funnel --bg 443 on"
+echo "Disable:      tailscale funnel reset"
+echo "Re-enable:    tailscale funnel --bg http://localhost:$LOCAL_PORT"
 echo

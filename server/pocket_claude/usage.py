@@ -7,7 +7,7 @@ up on a real invoice, we persist daily aggregates per user.
 Schema (created on first call to `ensure_schema`):
 
   token_usage
-    user_id          INTEGER NOT NULL
+    user_id          TEXT    NOT NULL
     day              TEXT    NOT NULL   -- "YYYY-MM-DD"
     provider         TEXT    NOT NULL   -- "pro_max" | "api_key" | "bedrock"
     input_tokens     INTEGER NOT NULL DEFAULT 0
@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS token_usage (
-    user_id        INTEGER NOT NULL,
+    user_id        TEXT    NOT NULL,
     day            TEXT    NOT NULL,
     provider       TEXT    NOT NULL,
     input_tokens   INTEGER NOT NULL DEFAULT 0,
@@ -56,7 +56,7 @@ async def ensure_schema() -> None:
 
 
 async def record(
-    user_id: int,
+    user_id: str | None,
     provider: str,
     input_tokens: int = 0,
     output_tokens: int = 0,
@@ -69,7 +69,7 @@ async def record(
     no-ops on missing/None counters."""
     if user_id is None or not provider:
         return
-    day = _dt.date.today().isoformat()
+    day = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
     async with get_db() as db:
         await db.execute(
             """
@@ -92,7 +92,7 @@ async def record(
 
 
 async def stats_for(
-    user_id: int,
+    user_id: str | None,
     period: str = "month",
 ) -> dict:
     """Return aggregated usage for the given user.
@@ -105,7 +105,7 @@ async def stats_for(
     period_end, input_tokens, output_tokens, cache_create_tokens,
     cache_read_tokens, request_count, provider).
     """
-    today = _dt.date.today()
+    today = _dt.datetime.now(_dt.timezone.utc).date()
     if period == "month":
         start = today.replace(day=1).isoformat()
     else:

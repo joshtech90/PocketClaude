@@ -26,6 +26,7 @@ import asyncio
 import base64
 import json
 import logging
+import random
 import re
 import struct
 from dataclasses import dataclass
@@ -822,7 +823,15 @@ def _synthesize_gemini_api(
             err = (r.json() or {}).get("error") or {}
             msg = err.get("message") or msg
             status_code_str = err.get("status") or ""
+            # Google packt retryDelay und quotaId in SEPARATE Detail-Objekte:
+            # `google.rpc.RetryInfo` trägt retryDelay, `google.rpc.QuotaFailure`
+            # trägt die violations[].quotaId. Wir parsen typ-bewusst und nehmen
+            # den ERSTEN konkreten quotaId (statt den letzten zu überschreiben),
+            # damit RPD-vs-RPM-Burn korrekt klassifiziert wird.
             for d in err.get("details", []) or []:
+                if not isinstance(d, dict):
+                    continue
+                dtype = d.get("@type") or ""
                 if "retryDelay" in d and isinstance(d["retryDelay"], str):
                     # Format wie "23s" oder "23.5s"
                     raw = d["retryDelay"].rstrip("s")
@@ -830,10 +839,17 @@ def _synthesize_gemini_api(
                         retry_delay_sec = float(raw)
                     except ValueError:
                         pass
-                for v in d.get("violations", []) if isinstance(d, dict) else []:
-                    qi = v.get("quotaId") or ""
-                    if qi:
-                        quota_id = qi
+                if not quota_id:
+                    for v in d.get("violations", []) or []:
+                        qi = v.get("quotaId") if isinstance(v, dict) else ""
+                        if qi:
+                            quota_id = qi
+                            break
+                if not quota_id and "QuotaFailure" not in dtype:
+                    # quotaId taucht bei manchen Antworten in metadata auf
+                    meta = d.get("metadata")
+                    if isinstance(meta, dict) and meta.get("quota_metric"):
+                        quota_id = meta["quota_metric"]
         except Exception:  # noqa: BLE001
             pass
         prefix = f"[{status_code_str}] " if status_code_str else ""
@@ -1022,12 +1038,23 @@ def _synthesize_cloud_tts(
         # Server-side Glitch von Google (Gemini-TTS-Preview-Modelle haben das
         # öfter: "500 Unable to generate audio"). Transient — Retry kann
         # klappen. Cloud-TTS hat kein Key-Konzept, daher api_key="".
+        #
+        # Bevorzugt über den Exception-TYP klassifizieren statt über
+        # Substrings im str(exc) — das ist robust gegen Message-Bodies die
+        # zufällig "500"/"INTERNAL" enthalten ohne ein echtes 5xx zu sein.
+        is_transient_5xx = False
+        try:
+            from google.api_core import exceptions as _gexc  # type: ignore
+            is_transient_5xx = isinstance(
+                exc, (_gexc.InternalServerError, _gexc.ServiceUnavailable)
+            )
+        except Exception:  # noqa: BLE001 — google-api-core evtl. nicht da
+            pass
         exc_name = type(exc).__name__
         if (
-            "Unable to generate audio" in full
-            or exc_name == "InternalServerError"
-            or " 500 " in f" {full} "
-            or "INTERNAL" in full.upper().split("\n")[0]
+            is_transient_5xx
+            or "Unable to generate audio" in full
+            or exc_name in ("InternalServerError", "ServiceUnavailable")
         ):
             raise TtsTransientError(
                 api_key="",
@@ -1474,6 +1501,19 @@ def _split_into_chunks(
             if hard >= max_chars_field:
                 break  # nichts mehr zu vergrößern
 
+        # Falls wir trotz Hard-Limit immer noch über `max_chunks` liegen:
+        # Rest-Chunks zusammenfassen, damit die Anzahl nie das RPM-Budget
+        # (max_chunks) sprengt — sonst läuft der Aufrufer in Rate-Limits.
+        if len(all_chunks) > max_chunks:
+            log.warning(
+                "TTS chunking: %d Chunks > max_chunks=%d trotz Max-Caps — "
+                "führe überzählige Chunks zusammen",
+                len(all_chunks), max_chunks,
+            )
+            head = all_chunks[: max_chunks - 1]
+            tail = " ".join(all_chunks[max_chunks - 1:])
+            all_chunks = head + [tail]
+
     log.info(
         "TTS chunking: %d chunks (fast_start=%s, sizes=%s, total=%d chars, max_chunks=%s)",
         len(all_chunks), fast_start and first_chunk is not None,
@@ -1652,6 +1692,13 @@ async def synthesize_chunked(
             except TtsTransientError as e:
                 last_exc = e
                 log.warning("TTS-Single transient (kind=%s): %s", e.kind, str(e)[:120])
+                if _attempt < 2:
+                    # Backoff vor dem nächsten Versuch — sofortiges Re-Try (vor
+                    # allem im Single-Key-Modus, derselbe Endpoint) trifft ein
+                    # 5xx genau dann wenn es am ehesten wieder failt.
+                    await asyncio.sleep(
+                        min(2 ** _attempt * 0.5, 4) + random.uniform(0, 0.3)
+                    )
                 if key_picker is not None:
                     new_key = await key_picker()
                     if new_key is not None:
@@ -1801,6 +1848,12 @@ async def synthesize_chunked(
                     "TTS-Chunk transient (kind=%s, key=…%s): %s — Retry %d/%d",
                     e.kind, (e.api_key or "")[-6:], str(e)[:120],
                     next_try_num + 1, MAX_RETRIES_PER_CHUNK,
+                )
+                # Backoff vor dem nächsten Versuch — sofortiges Re-Try gegen
+                # ein 5xx hämmert die API genau dann wenn sie am ehesten
+                # weiter failt (im Single-Key-Modus derselbe Endpoint).
+                await asyncio.sleep(
+                    min(2 ** attempt * 0.5, 4) + random.uniform(0, 0.3)
                 )
                 if key_picker is not None:
                     new_key = await key_picker()

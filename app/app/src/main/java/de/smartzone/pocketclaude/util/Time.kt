@@ -27,12 +27,14 @@ fun formatRelative(context: Context, isoUtc: String): String {
         val instant = OffsetDateTime.parse(isoUtc).toInstant()
         val now = Instant.now()
         val diff = Duration.between(instant, now)
+        val sys = ZoneId.systemDefault()
+        val sameDay = instant.atZone(sys).toLocalDate() == now.atZone(sys).toLocalDate()
         when {
             diff.toMinutes() < 1 -> context.getString(R.string.time_just_now)
             diff.toMinutes() < 60 ->
                 context.getString(R.string.time_minutes_ago, diff.toMinutes())
-            diff.toHours() < 24 -> instant.atZone(ZoneId.systemDefault()).format(timeFormatter())
-            diff.toDays() < 1 -> context.getString(R.string.time_yesterday)
+            sameDay -> instant.atZone(sys).format(timeFormatter())
+            diff.toDays() < 2 -> context.getString(R.string.time_yesterday)
             diff.toDays() < 7 ->
                 context.getString(R.string.time_days_ago, diff.toDays())
             else -> instant.atZone(ZoneId.systemDefault()).format(dateFormatter())

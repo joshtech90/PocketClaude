@@ -111,7 +111,7 @@ class ChatRepository(
         id: String,
         content: String,
         attachmentIds: List<String>,
-        effort: String = "high",
+        effort: String = DEFAULT_EFFORT,
         systemPrompt: String? = null,
         ttsVoice: String? = null,
         ttsRate: Float? = null,

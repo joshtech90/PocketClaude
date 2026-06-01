@@ -314,7 +314,7 @@ async def stream_reply(
     effort: str = "high",
     system_prompt: str | None = None,
     skills: dict | None = None,
-    user_id: int | None = None,
+    user_id: str | None = None,
 ) -> AsyncIterator[dict]:
     """Yieldet SSE-kompatible Events:
       - {"type": "delta", "text": "..."}
@@ -333,7 +333,7 @@ async def stream_reply(
     log.info("PC_SSE: stream_reply START cid=%s user_msg_id=%s effort=%s user_id=%s",
              cid, user_message_id, effort, user_id)
     try:
-        conv = await db.get_conversation(cid)
+        conv = await db.get_conversation(cid, user_id=user_id)
         if not conv:
             yield {"type": "error", "message": "Konversation nicht gefunden."}
             return
@@ -675,7 +675,7 @@ async def stream_reply(
                 "Nächste Nachricht startet eine frische Session.",
                 session_id,
             )
-            await db.set_claude_session_id(cid, "")
+            await db.set_claude_session_id(cid, None)
             yield {
                 "type": "error",
                 "message": (

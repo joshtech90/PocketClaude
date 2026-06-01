@@ -658,13 +658,16 @@ class ChatViewModel(
     }
 
     private fun stopRecordingAndTranscribe() {
-        val file = voiceRecorder.stop()
-        if (file == null) {
-            _state.update { it.copy(voiceState = VoiceState.Idle) }
-            return
-        }
+        // voiceState sofort auf Transcribing — der teure VoiceRecorder.stop()
+        // (thread.join + MediaCodec-EOS-Drain + muxer.stop/release) darf NICHT
+        // auf dem Main-Thread laufen (ANR-Risiko), daher off-thread in der Coroutine.
         _state.update { it.copy(voiceState = VoiceState.Transcribing) }
         viewModelScope.launch {
+            val file = withContext(Dispatchers.IO) { voiceRecorder.stop() }
+            if (file == null) {
+                _state.update { it.copy(voiceState = VoiceState.Idle) }
+                return@launch
+            }
             try {
                 val bytes = withContext(Dispatchers.IO) { file.readBytes() }
                 runCatching { withContext(Dispatchers.IO) { file.delete() } }
@@ -768,10 +771,10 @@ class ChatViewModel(
                 // VAD-Schema:
                 //  - MediaRecorder.getMaxAmplitude() liefert Peak seit letztem
                 //    Aufruf (0..32767, -1 bei Fehler). Wir pollen alle 80 ms.
-                //  - Initial-Block 8 s: in dieser Zeit greift VAD GAR NICHT
+                //  - Initial-Block 5 s: in dieser Zeit greift VAD GAR NICHT
                 //    — User-Nachdenken am Anfang ist explizit erlaubt.
                 //  - Danach: amp < threshold → silence-counter += 80 ms,
-                //    sonst → reset. Threshold 800 ist empirisch geraten;
+                //    sonst → reset. Threshold 1500 ist empirisch geraten;
                 //    bei VOICE_RECOGNITION-Source mit AAC variieren die
                 //    maxAmplitude-Werte aber stark device-abhängig. Deshalb
                 //    PC_VAD-Logging: User schickt `adb logcat -s PC_VAD`

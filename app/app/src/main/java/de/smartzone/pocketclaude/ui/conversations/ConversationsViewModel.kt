@@ -11,6 +11,8 @@ import de.smartzone.pocketclaude.data.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -43,11 +45,20 @@ class ConversationsViewModel(
     private var searchJob: kotlinx.coroutines.Job? = null
 
     val settings: StateFlow<AppSettings> = MutableStateFlow(AppSettings()).also { flow ->
+        // Raw-Collector: nur den exponierten `settings`-State spiegeln. KEIN refresh()
+        // hier — settingsFlow emittiert bei JEDEM DataStore-Write (Theme, TTS-Speed,
+        // Effort, Image-History …), und ein voller GET /conversations pro Tastenanschlag
+        // wäre verschwendet (und kann einen laufenden Scroll/Search stören).
         viewModelScope.launch {
-            settingsRepo.settingsFlow.collect {
-                flow.value = it
-                refresh()
-            }
+            settingsRepo.settingsFlow.collect { flow.value = it }
+        }
+        // refresh() nur, wenn sich die Verbindungs-Identität ändert (aktives Profil /
+        // dessen URL+Token). distinctUntilChanged filtert die unrelated Settings-Churn.
+        viewModelScope.launch {
+            settingsRepo.settingsFlow
+                .map { Triple(it.activeProfileId, it.serverUrl, it.serverToken) }
+                .distinctUntilChanged()
+                .collect { refresh() }
         }
     }.asStateFlow()
 
