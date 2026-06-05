@@ -55,3 +55,6 @@ logs/
 CLAUDE.md
 **/CLAUDE.md
 docs/private/
+
+# ─── Lokale Artefakte / Exporte (nicht versionieren) ─────────────────────────
+OpenClaw-TTS-Kit.zip
