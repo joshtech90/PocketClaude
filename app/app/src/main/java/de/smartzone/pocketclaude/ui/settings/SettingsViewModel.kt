@@ -502,8 +502,14 @@ class SettingsViewModel(
         _ttsTest.value = TtsTestResult.Testing
         try {
             val conversations = chatRepo.list()
-            val testMsgId = conversations.firstOrNull()
-                ?.let { chatRepo.detail(it.id).messages.firstOrNull { m -> m.role == "assistant" }?.id }
+            // Suche über ALLE Konversationen (Liste ist most-recent-first sortiert) bis
+            // eine mit einer Assistant-Nachricht gefunden ist — nicht nur die erste.
+            var testMsgId: Long? = null
+            for (conv in conversations) {
+                testMsgId = chatRepo.detail(conv.id).messages
+                    .firstOrNull { m -> m.role == "assistant" }?.id
+                if (testMsgId != null) break
+            }
             if (testMsgId == null) {
                 _ttsTest.value = TtsTestResult.Failure(
                     "Kein Beispiel-Text vorhanden — schreib erst eine Nachricht im Chat, dann teste hier."

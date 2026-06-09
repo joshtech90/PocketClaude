@@ -1420,8 +1420,6 @@ private fun formatTokens(context: android.content.Context, n: Int): String = whe
     else -> context.getString(de.smartzone.pocketclaude.R.string.tokens_label_raw, n)
 }
 
-private val EFFORT_KEYS = listOf("off", "low", "medium", "high", "xhigh", "max")
-
 @Composable
 private fun effortOptions(): List<Pair<String, String>> = listOf(
     "off" to stringResource(de.smartzone.pocketclaude.R.string.effort_off_label),
