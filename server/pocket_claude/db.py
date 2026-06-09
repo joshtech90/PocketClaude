@@ -756,8 +756,10 @@ async def create_user(name: str, password: str, is_admin: bool = False,
     """Legt einen User mit Passwort an. `must_change_password=True` bedeutet:
     User MUSS sein Passwort beim ersten Login ändern.
 
-    Returnt das User-dict OHNE password_hash. Der Caller hat das Klartext-PW
-    sowieso schon — der Server-Endpoint zeigt es einmal im Admin-UI an.
+    Returnt das User-dict inkl. password_hash, damit `_user_public()` beim
+    Caller has_password korrekt meldet — der Hash wird dort gefiltert und nie
+    über die Wire geschickt. Der Caller hat das Klartext-PW sowieso schon, der
+    Server-Endpoint zeigt es einmal im Admin-UI an.
     """
     user_id = _new_id("usr")
     legacy_token = secrets.token_urlsafe(24)  # token-Spalte ist NOT NULL
@@ -773,6 +775,9 @@ async def create_user(name: str, password: str, is_admin: bool = False,
         await db.commit()
     return {
         "id": user_id, "name": name,
+        # Include the hash so `_user_public()` reports has_password correctly;
+        # _user_public strips it out and only emits the bool, never the value.
+        "password_hash": pw_hash,
         "must_change_password": 1 if must_change_password else 0,
         "is_admin": 1 if is_admin else 0, "created_at": created_at,
     }

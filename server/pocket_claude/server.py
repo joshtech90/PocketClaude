@@ -264,7 +264,26 @@ async def patch_conversation(cid: str, body: ConversationPatch, user=Depends(req
     for r in rows:
         if r["id"] == cid:
             return _row_to_conv_out(r)
-    raise HTTPException(404, "Konversation verschwunden.")
+    # list_conversations only returns chats that already have at least one
+    # message. A freshly created (still empty) chat that gets patched
+    # (renamed/pinned) is therefore absent from that list — re-fetch it
+    # directly and build the response, instead of falsely 404-ing a write
+    # that actually succeeded.
+    updated = await db.get_conversation(cid, user_id=user["id"])
+    if updated is None:
+        raise HTTPException(404, "Konversation verschwunden.")
+    return ConversationOut(
+        id=updated["id"],
+        title=updated["title"],
+        created_at=datetime.fromisoformat(updated["created_at"]),
+        last_message_at=(
+            datetime.fromisoformat(updated["last_message_at"])
+            if updated["last_message_at"] else None
+        ),
+        message_count=0,
+        total_tokens=updated["total_tokens"],
+        pinned=bool(updated.get("pinned", 0)),
+    )
 
 
 @app.delete(
@@ -2518,7 +2537,13 @@ async def update_claude_auth(body: ClaudeAuthUpdateRequest, user=Depends(require
             continue
         # Empty string = clear. Strip whitespace to avoid leading/trailing
         # spaces on copied credentials.
-        updates[kv_key] = val.strip()
+        val = val.strip()
+        # The alias was validated lowercased above; persist it lowercased too,
+        # otherwise a stored "Sonnet" misses the lowercase lookup downstream
+        # and silently falls back to opus.
+        if attr == "bedrock_model_alias":
+            val = val.lower()
+        updates[kv_key] = val
 
     if updates:
         await db.kv_set_many(updates, scope=user["id"])
