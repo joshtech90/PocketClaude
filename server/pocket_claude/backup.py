@@ -28,6 +28,7 @@ import os
 import shutil
 import sqlite3
 import time
+import uuid
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -377,14 +378,19 @@ def peek_manifest(zip_bytes: bytes, password: Optional[str] = None) -> BackupMan
 def _save_pre_import_backup() -> Path:
     """Speichert den aktuellen Zustand als ZIP, BEVOR wir importieren —
     Notfall-Rückweg. Returnt den Pfad."""
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # uuid-Suffix zusätzlich zum Sekunden-Timestamp: zwei Imports in derselben
+    # Sekunde dürfen sich weder die Safety-ZIP noch das Snapshot-.db gegenseitig
+    # überschreiben.
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
     target = settings.data_dir / f"backup-before-import-{ts}.zip"
     # Synchron, weil wir gerade dabei sind den Import zu starten und kein
     # async-context da ist
     snapshot_db = settings.data_dir / f".pre-import-snapshot-{ts}.db"
     _vacuum_to(snapshot_db)
     try:
-        with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # "x" = exklusives Erstellen, kein stilles Truncate einer bereits
+        # existierenden Safety-ZIP.
+        with zipfile.ZipFile(target, "x", compression=zipfile.ZIP_DEFLATED) as zf:
             zf.write(snapshot_db, arcname=DB_FILENAME)
             uploads_dir = settings.data_dir / "uploads"
             if uploads_dir.exists():

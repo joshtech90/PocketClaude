@@ -78,6 +78,14 @@ class AppContainer(context: Context) {
      */
     private val retryInterceptor = Interceptor { chain ->
         val request = chain.request()
+        // Nur idempotente Methoden automatisch wiederholen. Ein blindes Retry
+        // auf POST würde nicht-idempotente Mutationen (Nachricht senden, Login,
+        // Passwort ändern, Backup-Import, Bild-Generierung) doppelt absetzen —
+        // der Server hat keine Dedup/Idempotency-Keys, also entstünde z.B. eine
+        // doppelte User-Nachricht + zweite Generierung.
+        if (request.method !in setOf("GET", "HEAD", "PUT", "DELETE")) {
+            return@Interceptor chain.proceed(request)
+        }
         var lastError: IOException? = null
         for (attempt in 0..2) {
             try {

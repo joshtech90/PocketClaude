@@ -478,6 +478,10 @@ async def stream_reply(
         output_tokens = 0
         cache_read = 0
         cache_write = 0
+        # Persistenter Akkumulator über alle Messages: ein partielles
+        # ResultMessage-Feld (z.B. output_tokens=None) darf einen bereits aus
+        # AssistantMessage gelesenen Wert NICHT auf 0 zurücksetzen.
+        usage_acc: dict = {}
         emitted_via_stream = False
 
         async for message in query(prompt=prompt, options=options):
@@ -544,20 +548,20 @@ async def stream_reply(
                                 yield {"type": "thinking_delta", "text": thinking_str}
                 # Usage-Stats von AssistantMessage auch ablesen (ResultMessage hat sie
                 # nochmal, aber je nach SDK-Version kann eines davon None sein)
-                _accumulate_usage(message.usage, locals_dict := {})
-                input_tokens = locals_dict.get("input_tokens", input_tokens)
-                output_tokens = locals_dict.get("output_tokens", output_tokens)
-                cache_read = locals_dict.get("cache_read", cache_read)
-                cache_write = locals_dict.get("cache_write", cache_write)
+                _accumulate_usage(message.usage, usage_acc)
+                input_tokens = usage_acc.get("input_tokens", input_tokens)
+                output_tokens = usage_acc.get("output_tokens", output_tokens)
+                cache_read = usage_acc.get("cache_read", cache_read)
+                cache_write = usage_acc.get("cache_write", cache_write)
 
             elif isinstance(message, ResultMessage):
                 # Final stats — autoritativ wenn vorhanden
                 if message.usage:
-                    _accumulate_usage(message.usage, locals_dict := {})
-                    input_tokens = locals_dict.get("input_tokens", input_tokens)
-                    output_tokens = locals_dict.get("output_tokens", output_tokens)
-                    cache_read = locals_dict.get("cache_read", cache_read)
-                    cache_write = locals_dict.get("cache_write", cache_write)
+                    _accumulate_usage(message.usage, usage_acc)
+                    input_tokens = usage_acc.get("input_tokens", input_tokens)
+                    output_tokens = usage_acc.get("output_tokens", output_tokens)
+                    cache_read = usage_acc.get("cache_read", cache_read)
+                    cache_write = usage_acc.get("cache_write", cache_write)
                 if message.is_error:
                     err_msg = (message.errors or ["unbekannter Fehler"])[0]
                     yield {"type": "error", "message": f"Claude: {err_msg}"}

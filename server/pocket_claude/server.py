@@ -1706,7 +1706,7 @@ async def get_billing_status(user=Depends(require_user)) -> BillingStatusDto:
                 SELECT c.value AS chars, v.value AS voice
                 FROM kv_settings c
                 LEFT JOIN kv_settings v
-                  ON v.scope = c.scope AND v.key = 'ui_tts_voice'
+                  ON v.scope = c.scope AND v.key = 'ttsVoice'
                 WHERE c.key = ?
                 """,
                 (month_key,),
