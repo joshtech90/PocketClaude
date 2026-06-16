@@ -63,6 +63,13 @@ data class ChatUiState(
     val lastTurnCachedWrite: Int = 0,
     val pending: List<PendingAttachment> = emptyList(),
     val pinned: Boolean = false,
+    // Gem-Bindung dieses Chats (falls „mit einem Gem" gestartet). Für Header
+    // + Starter-Chips im leeren Chat.
+    val gemId: String? = null,
+    val gemEmoji: String = "",
+    val gemName: String = "",
+    val gemDescription: String = "",
+    val gemStarters: List<String> = emptyList(),
     // (Image-Gen-State wurde nach ui/images/ImageGenViewModel ausgelagert —
     // Bild-Generation läuft jetzt in eigenem Screen, nicht mehr im Chat.)
     // Skills für diesen Chat: effektive Werte (Override oder User-Default).
@@ -234,7 +241,45 @@ class ChatViewModel(
                 hasMidSummary = detail.hasMidSummary,
                 hasLongSummary = detail.hasLongSummary,
                 pinned = detail.pinned,
+                gemId = detail.gemId,
             )
+        }
+        loadGemMeta(detail.gemId)
+    }
+
+    // Zuletzt geladenes Gem — verhindert Refetch bei jedem refresh() (die gem_id
+    // eines Chats ändert sich nie).
+    private var lastGemMetaId: String? = null
+
+    /** Lädt Emoji/Name/Beschreibung/Starter des gebundenen Gems (Header + leerer Chat). */
+    private fun loadGemMeta(gemId: String?) {
+        if (gemId.isNullOrBlank()) {
+            lastGemMetaId = null
+            _state.update {
+                it.copy(gemEmoji = "", gemName = "", gemDescription = "", gemStarters = emptyList())
+            }
+            return
+        }
+        if (gemId == lastGemMetaId) return  // schon geladen
+        lastGemMetaId = gemId
+        viewModelScope.launch {
+            runCatching { repo.getGem(gemId) }
+                .onSuccess { g ->
+                    _state.update {
+                        it.copy(
+                            gemEmoji = g.emoji,
+                            gemName = g.name,
+                            gemDescription = g.description,
+                            gemStarters = g.conversationStarters,
+                        )
+                    }
+                }
+                .onFailure {
+                    // z.B. Gem wurde gelöscht → keine Geister-Meta zeigen (kein Retry-Spam).
+                    _state.update {
+                        it.copy(gemEmoji = "", gemName = "", gemDescription = "", gemStarters = emptyList())
+                    }
+                }
         }
     }
 

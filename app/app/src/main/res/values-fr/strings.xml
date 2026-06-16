@@ -788,4 +788,36 @@
     <string name="time_minutes_ago">il y a %1$d min</string>
     <string name="time_yesterday">hier</string>
     <string name="time_days_ago">il y a %1$d jours</string>
+    <!-- Gems (Custom Agents) + globales Standard-Modell -->
+    <string name="model_automatic">Automatique</string>
+    <string name="settings_default_model_label">Modèle par défaut</string>
+    <string name="settings_default_model_hint">Le modèle Claude utilisé par vos discussions (Pro/Max + clé API).</string>
+    <string name="section_gems">Gems</string>
+    <string name="section_gems_subtitle">Agents personnalisés avec leurs propres instructions</string>
+    <string name="gem_builtin_badge">Intégré</string>
+    <string name="gem_new">Nouveau Gem</string>
+    <string name="gem_editor_title_new">Nouveau Gem</string>
+    <string name="gem_editor_title_edit">Modifier le Gem</string>
+    <string name="gem_save">Enregistrer</string>
+    <string name="gem_field_emoji">Icône</string>
+    <string name="gem_field_name">Nom</string>
+    <string name="gem_field_description">Description</string>
+    <string name="gem_field_instructions">Instructions (prompt système)</string>
+    <string name="gem_field_instructions_hint">Comment ce Gem doit-il se comporter ? Persona, tâche, style…</string>
+    <string name="gem_starters_label">Amorces de conversation</string>
+    <string name="gem_starters_hint">Exemples de prompts affichés comme puces dans un chat vide.</string>
+    <string name="gem_add_starter">Ajouter une amorce</string>
+    <string name="gem_model_label">Modèle</string>
+    <string name="gem_model_global_default">Défaut global</string>
+    <string name="gem_effort_label">Niveau de réflexion</string>
+    <string name="gem_effort_chat_default">Défaut du chat</string>
+    <string name="gem_skills_label">Capacités</string>
+    <string name="gem_skill_web_search">Recherche web</string>
+    <string name="gem_skill_web_fetch">Lire des pages web</string>
+    <string name="gem_skill_code">Code/Bash</string>
+    <string name="gem_knowledge_label">Fichiers de connaissances</string>
+    <string name="gem_knowledge_hint">Fichiers (PDF, TXT, …) que ce Gem peut utiliser à chaque message.</string>
+    <string name="gem_add_file">Ajouter un fichier</string>
+    <string name="gem_builtin_readonly">Gem intégré — lecture seule.</string>
+    <string name="gem_duplicate">Dupliquer</string>
 </resources>

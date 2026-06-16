@@ -788,4 +788,36 @@
     <string name="time_minutes_ago">%1$d分前</string>
     <string name="time_yesterday">昨日</string>
     <string name="time_days_ago">%1$d日前</string>
+    <!-- Gems (Custom Agents) + globales Standard-Modell -->
+    <string name="model_automatic">自動</string>
+    <string name="settings_default_model_label">デフォルトモデル</string>
+    <string name="settings_default_model_hint">チャットで使う Claude モデル（Pro/Max + API キー）。</string>
+    <string name="section_gems">Gems</string>
+    <string name="section_gems_subtitle">独自の指示を持つカスタムエージェント</string>
+    <string name="gem_builtin_badge">組み込み</string>
+    <string name="gem_new">新しい Gem</string>
+    <string name="gem_editor_title_new">新しい Gem</string>
+    <string name="gem_editor_title_edit">Gem を編集</string>
+    <string name="gem_save">保存</string>
+    <string name="gem_field_emoji">アイコン</string>
+    <string name="gem_field_name">名前</string>
+    <string name="gem_field_description">説明</string>
+    <string name="gem_field_instructions">指示（システムプロンプト）</string>
+    <string name="gem_field_instructions_hint">この Gem はどう振る舞うべき？ペルソナ、タスク、スタイル…</string>
+    <string name="gem_starters_label">会話のきっかけ</string>
+    <string name="gem_starters_hint">空のチャットでチップとして表示される例のプロンプト。</string>
+    <string name="gem_add_starter">きっかけを追加</string>
+    <string name="gem_model_label">モデル</string>
+    <string name="gem_model_global_default">グローバルデフォルト</string>
+    <string name="gem_effort_label">思考の深さ</string>
+    <string name="gem_effort_chat_default">チャットのデフォルト</string>
+    <string name="gem_skills_label">機能</string>
+    <string name="gem_skill_web_search">ウェブ検索</string>
+    <string name="gem_skill_web_fetch">ウェブページを読む</string>
+    <string name="gem_skill_code">コード/Bash</string>
+    <string name="gem_knowledge_label">ナレッジファイル</string>
+    <string name="gem_knowledge_hint">この Gem が毎回のメッセージで使えるファイル（PDF、TXT…）。</string>
+    <string name="gem_add_file">ファイルを追加</string>
+    <string name="gem_builtin_readonly">組み込み Gem — 読み取り専用。</string>
+    <string name="gem_duplicate">複製</string>
 </resources>

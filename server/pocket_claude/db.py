@@ -132,6 +132,35 @@ CREATE TABLE IF NOT EXISTS kv_settings (
     updated_at  TEXT NOT NULL,
     PRIMARY KEY (scope, key)
 );
+
+-- Gems = Custom Agents (wie ChatGPT-GPTs / Gemini-Gems). user_id=NULL +
+-- is_builtin=1 → vom Server ausgeliefert (z.B. „Meme-Finder"), read-only und
+-- für alle User sichtbar. Sonst gehört das Gem genau einem User.
+CREATE TABLE IF NOT EXISTS gems (
+    id                    TEXT PRIMARY KEY,
+    user_id               TEXT,
+    name                  TEXT NOT NULL,
+    emoji                 TEXT,
+    description           TEXT,
+    instructions          TEXT NOT NULL,
+    conversation_starters TEXT,                  -- JSON-Array[String]
+    model                 TEXT,                  -- NULL = globaler Default
+    effort                TEXT,                  -- NULL = Chat-Default
+    skills                TEXT,                  -- NULL = User-Default; sonst JSON SkillsDto
+    is_builtin            INTEGER NOT NULL DEFAULT 0,
+    created_at            TEXT NOT NULL,
+    updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gems_user ON gems(user_id);
+
+-- Wissens-/Referenzdateien eines Gems. Verknüpft eine vorhandene attachments-
+-- Zeile mit dem Gem (Upload läuft über dieselbe Pipeline wie Chat-Anhänge).
+CREATE TABLE IF NOT EXISTS gem_files (
+    gem_id        TEXT NOT NULL,
+    attachment_id TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    PRIMARY KEY (gem_id, attachment_id)
+);
 """
 
 
@@ -157,6 +186,9 @@ async def _ensure_columns(db: aiosqlite.Connection) -> None:
     # (NULL = User-Default greift).
     if "skills_override" not in conv_cols:
         await db.execute("ALTER TABLE conversations ADD COLUMN skills_override TEXT")
+    # Gem-Bindung: wenn gesetzt, ist der Chat „mit einem Gem" gestartet.
+    if "gem_id" not in conv_cols:
+        await db.execute("ALTER TABLE conversations ADD COLUMN gem_id TEXT")
     cur = await db.execute("PRAGMA table_info(attachments)")
     att_cols = {row[1] for row in await cur.fetchall()}
     if "user_id" not in att_cols:
@@ -324,6 +356,7 @@ async def init_db() -> None:
             log.info("  (steht auch in %s)", settings.data_dir / "INITIAL_PASSWORD.txt")
             log.info("  Beim ersten Login musst Du es ändern.")
             log.info("=" * 60)
+        await _seed_builtin_gems(db)
         await db.commit()
     # Falls die DB schon Messages hatte als FTS-Tabelle frisch angelegt wurde,
     # einmalig reindexieren — sonst sind alte Chats nicht durchsuchbar.
@@ -358,12 +391,15 @@ async def get_db() -> AsyncIterator[aiosqlite.Connection]:
 
 # ---------- Conversations ----------
 
-async def create_conversation(title: str | None = None, user_id: str | None = None) -> str:
+async def create_conversation(
+    title: str | None = None, user_id: str | None = None, gem_id: str | None = None,
+) -> str:
     cid = _new_id("conv")
     async with get_db() as db:
         await db.execute(
-            "INSERT INTO conversations(id, title, created_at, user_id) VALUES (?, ?, ?, ?)",
-            (cid, title or "Neuer Chat", _now_iso(), user_id),
+            "INSERT INTO conversations(id, title, created_at, user_id, gem_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (cid, title or "Neuer Chat", _now_iso(), user_id, gem_id),
         )
         await db.commit()
     return cid
@@ -382,7 +418,7 @@ async def list_conversations(user_id: str | None = None) -> list[dict]:
             f"""
             SELECT
                 c.id, c.title, c.created_at, c.last_message_at, c.total_tokens,
-                c.claude_session_id, c.pinned, c.user_id,
+                c.claude_session_id, c.pinned, c.user_id, c.gem_id,
                 (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS msg_count
             FROM conversations c
             {where}
@@ -610,6 +646,253 @@ async def get_attachments(ids: list[str]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+# ---------- Gems (Custom Agents) ----------
+
+async def create_gem(
+    *,
+    user_id: str | None,
+    name: str,
+    emoji: str = "",
+    description: str = "",
+    instructions: str = "",
+    conversation_starters: str | None = None,  # JSON-Array-String
+    model: str | None = None,
+    effort: str | None = None,
+    skills: str | None = None,                  # JSON SkillsDto-String
+    is_builtin: bool = False,
+    gem_id: str | None = None,
+) -> str:
+    gid = gem_id or _new_id("gem")
+    now = _now_iso()
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO gems(id, user_id, name, emoji, description, instructions,
+                             conversation_starters, model, effort, skills,
+                             is_builtin, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (gid, user_id, name, emoji, description, instructions,
+             conversation_starters, model, effort, skills,
+             1 if is_builtin else 0, now, now),
+        )
+        await db.commit()
+    return gid
+
+
+async def get_gem(gem_id: str, user_id: str | None = None) -> dict | None:
+    """Liefert das Gem, wenn es dem User gehört ODER ein Built-in ist."""
+    sql = "SELECT * FROM gems WHERE id = ?"
+    params: tuple = (gem_id,)
+    if user_id is not None:
+        sql += " AND (user_id = ? OR is_builtin = 1)"
+        params = (gem_id, user_id)
+    async with get_db() as db:
+        cur = await db.execute(sql, params)
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def list_gems(user_id: str) -> list[dict]:
+    """Alle Gems des Users plus alle Built-ins. Eigene zuerst, Built-ins zuletzt."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT * FROM gems
+            WHERE user_id = ? OR is_builtin = 1
+            ORDER BY is_builtin ASC, updated_at DESC
+            """,
+            (user_id,),
+        )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def update_gem(
+    gem_id: str, user_id: str, *,
+    name: str, emoji: str, description: str, instructions: str,
+    conversation_starters: str | None, model: str | None,
+    effort: str | None, skills: str | None,
+) -> bool:
+    """Voll-Update. Nur eigene, nicht-eingebaute Gems. Returnt False wenn nichts
+    getroffen (fremd / built-in / nicht existent)."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            UPDATE gems SET name=?, emoji=?, description=?, instructions=?,
+                            conversation_starters=?, model=?, effort=?, skills=?,
+                            updated_at=?
+            WHERE id=? AND user_id=? AND is_builtin=0
+            """,
+            (name, emoji, description, instructions, conversation_starters,
+             model, effort, skills, _now_iso(), gem_id, user_id),
+        )
+        await db.commit()
+        return (cur.rowcount or 0) > 0
+
+
+def _unlink_all(paths: list[str]) -> None:
+    for p in paths:
+        try:
+            Path(p).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+async def _orphan_gem_attachments(
+    db: aiosqlite.Connection, attachment_ids: list[str],
+) -> list[str]:
+    """Löscht attachments-Zeilen für Gem-Dateien, die von KEINER gem_files-Zeile
+    mehr referenziert werden, und gibt ihre Disk-Pfade zurück (Caller unlinkt
+    nach dem Commit). Läuft innerhalb einer offenen `db`-Connection."""
+    paths: list[str] = []
+    for aid in attachment_ids:
+        cur = await db.execute(
+            "SELECT COUNT(*) FROM gem_files WHERE attachment_id=?", (aid,),
+        )
+        if (await cur.fetchone())[0]:
+            continue  # noch von einem anderen Gem referenziert → behalten
+        cur = await db.execute("SELECT path FROM attachments WHERE id=?", (aid,))
+        row = await cur.fetchone()
+        if row and row[0]:
+            paths.append(row[0])
+        await db.execute("DELETE FROM attachments WHERE id=?", (aid,))
+    return paths
+
+
+async def delete_gem(gem_id: str, user_id: str) -> bool:
+    """Löscht ein eigenes Gem inkl. gem_files-Verknüpfungen, räumt verwaiste
+    Wissensdateien (attachments-Zeile + Disk-Datei) auf und entkoppelt
+    Conversations, die auf dieses Gem zeigten. Built-ins bleiben."""
+    paths: list[str] = []
+    async with get_db() as db:
+        cur = await db.execute(
+            "DELETE FROM gems WHERE id=? AND user_id=? AND is_builtin=0",
+            (gem_id, user_id),
+        )
+        affected = cur.rowcount or 0
+        if affected:
+            cur = await db.execute(
+                "SELECT attachment_id FROM gem_files WHERE gem_id=?", (gem_id,),
+            )
+            aids = [r[0] for r in await cur.fetchall()]
+            await db.execute("DELETE FROM gem_files WHERE gem_id=?", (gem_id,))
+            paths = await _orphan_gem_attachments(db, aids)
+            # Conversations entkoppeln → werden zu normalen Chats (kein dangling gem_id).
+            await db.execute(
+                "UPDATE conversations SET gem_id=NULL WHERE gem_id=?", (gem_id,),
+            )
+        await db.commit()
+    _unlink_all(paths)
+    return affected > 0
+
+
+async def add_gem_file(gem_id: str, attachment_id: str) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO gem_files(gem_id, attachment_id, created_at) "
+            "VALUES (?, ?, ?)",
+            (gem_id, attachment_id, _now_iso()),
+        )
+        await db.commit()
+
+
+async def remove_gem_file(gem_id: str, attachment_id: str) -> bool:
+    """Entkoppelt eine Datei vom Gem und räumt die attachments-Zeile + Disk-Datei
+    weg, falls sie von keinem Gem mehr referenziert wird."""
+    paths: list[str] = []
+    async with get_db() as db:
+        cur = await db.execute(
+            "DELETE FROM gem_files WHERE gem_id=? AND attachment_id=?",
+            (gem_id, attachment_id),
+        )
+        affected = (cur.rowcount or 0) > 0
+        if affected:
+            paths = await _orphan_gem_attachments(db, [attachment_id])
+        await db.commit()
+    _unlink_all(paths)
+    return affected
+
+
+async def get_gem_file_ids(gem_id: str) -> list[str]:
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT attachment_id FROM gem_files WHERE gem_id=? ORDER BY created_at ASC",
+            (gem_id,),
+        )
+        rows = await cur.fetchall()
+    return [r["attachment_id"] for r in rows]
+
+
+async def get_gem_files(gem_id: str) -> list[dict]:
+    """Attachment-Zeilen für alle Dateien eines Gems (für die UI-Liste)."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT a.* FROM gem_files gf
+            JOIN attachments a ON a.id = gf.attachment_id
+            WHERE gf.gem_id = ?
+            ORDER BY gf.created_at ASC
+            """,
+            (gem_id,),
+        )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# Eingebautes Beispiel-Gem: findet ein passendes Meme aus dem Netz und
+# verlinkt/bettet es im Chat ein. Fester ID, damit der Seed idempotent ist.
+_BUILTIN_MEME_GEM_ID = "gem_builtin_meme"
+
+_MEME_GEM_DESC = (
+    "Beschreib mir eine Situation — ich such dir ein passendes Meme aus dem "
+    "Netz und verlinke es hier im Chat."
+)
+
+_MEME_GEM_INSTRUCTIONS = """Du bist „Meme-Finder". Der User beschreibt dir eine Situation, Stimmung oder einen Moment — du findest dazu ein passendes, bekanntes Meme aus dem Internet und teilst es im Chat.
+
+Vorgehen:
+1. Nutze die Websuche, um ein passendes, möglichst bekanntes Meme zur beschriebenen Situation zu finden.
+2. Besorge eine DIREKTE Bild-URL (endet auf .jpg, .jpeg, .png, .gif oder .webp) von einer seriösen Quelle (z.B. imgflip.com, i.redd.it, bekannte Meme-Seiten). Wenn du nur eine Seiten-URL hast, öffne sie mit dem WebFetch-Tool und zieh die direkte Bild-URL heraus.
+3. Antworte KURZ und humorvoll auf Deutsch:
+   - Ein Satz, warum das Meme passt.
+   - Dann das Bild als Markdown einbetten: ![Meme](DIREKTE_BILD_URL)
+   - Und ZUSÄTZLICH als klickbaren Link darunter: [Meme öffnen](DIREKTE_BILD_URL)
+
+Regeln:
+- Gib IMMER beides aus (eingebettetes Bild UND Link) — falls das Bild nicht lädt, funktioniert wenigstens der Link.
+- Keine beleidigenden, hasserfüllten oder NSFW-Memes. Bleib freundlich und lustig.
+- Wenn du partout kein gutes Meme findest, sag das ehrlich und beschreib stattdessen kurz ein passendes Meme in Worten.
+- Halte dich kurz — kein langer Text, das Meme ist der Star."""
+
+_MEME_GEM_STARTERS = [
+    "Mein Code kompiliert endlich nach 3 Stunden",
+    "Wenn das Meeting auch eine E-Mail hätte sein können",
+    "Montagmorgen-Stimmung",
+    "Wenn der Kunde sagt: nur eine kleine Änderung",
+]
+
+
+async def _seed_builtin_gems(db: aiosqlite.Connection) -> None:
+    """Legt eingebaute Gems an (idempotent). Läuft mit der init_db-Connection."""
+    cur = await db.execute("SELECT id FROM gems WHERE id = ?", (_BUILTIN_MEME_GEM_ID,))
+    if await cur.fetchone():
+        return
+    now = _now_iso()
+    starters = json.dumps(_MEME_GEM_STARTERS, ensure_ascii=False)
+    skills = json.dumps({"web_search": True, "web_fetch": True, "code_execution": False})
+    await db.execute(
+        """
+        INSERT INTO gems(id, user_id, name, emoji, description, instructions,
+                         conversation_starters, model, effort, skills,
+                         is_builtin, created_at, updated_at)
+        VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?, ?, 1, ?, ?)
+        """,
+        (_BUILTIN_MEME_GEM_ID, "Meme-Finder", "😂", _MEME_GEM_DESC,
+         _MEME_GEM_INSTRUCTIONS, starters, "low", skills, now, now),
+    )
+
+
 # ---------- Search ----------
 
 def _escape_fts_query(q: str) -> str:
@@ -824,6 +1107,13 @@ async def delete_user(user_id: str) -> None:
         await db.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
         await db.execute("DELETE FROM kv_settings WHERE scope = ?", (user_id,))
         await db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        # Gems des Users + deren Datei-Verknüpfungen (die Attachment-Dateien
+        # selbst hängen an user_id und werden oben schon mit-gelöscht/-unlinkt).
+        await db.execute(
+            "DELETE FROM gem_files WHERE gem_id IN (SELECT id FROM gems WHERE user_id = ?)",
+            (user_id,),
+        )
+        await db.execute("DELETE FROM gems WHERE user_id = ?", (user_id,))
         await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         await db.commit()
     for p in paths:

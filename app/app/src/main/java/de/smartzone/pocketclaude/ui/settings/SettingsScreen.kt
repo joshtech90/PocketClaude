@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Error
@@ -100,9 +101,14 @@ import androidx.compose.ui.unit.dp
 import android.app.Activity
 import de.smartzone.pocketclaude.data.BillingStatusDto
 import de.smartzone.pocketclaude.data.ClaudeAuthUpdateRequest
+import de.smartzone.pocketclaude.data.ClaudeModels
+import de.smartzone.pocketclaude.data.GemDto
 import de.smartzone.pocketclaude.data.LocalePrefs
 import de.smartzone.pocketclaude.data.SystemPromptMode
 import de.smartzone.pocketclaude.data.ThemeMode
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.smartzone.pocketclaude.ui.components.InfoBulletParagraph
 import de.smartzone.pocketclaude.ui.components.InfoButton
 import de.smartzone.pocketclaude.ui.components.InfoParagraph
@@ -113,9 +119,20 @@ import de.smartzone.pocketclaude.ui.theme.PocketTheme
 fun SettingsScreen(
     vm: SettingsViewModel,
     onBack: () -> Unit,
+    onEditGem: (String?) -> Unit = {},
+    onDuplicateGem: (String) -> Unit = {},
 ) {
     val settings by vm.settings.collectAsState()
     val testResult by vm.testResult.collectAsState()
+    // Gem-Liste bei jeder Rückkehr (z.B. aus dem Gem-Editor) neu laden.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refreshGems()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     // ttsStatus auf Top-Level der Settings — wird vom Quick-Setup-Banner gelesen
     // (Edge-Provider ist „ready" auch ohne Setup), und von TtsSection selbst
     // weiter intern wieder collected. Doppelte Subscriptions sind in Compose
@@ -178,6 +195,23 @@ fun SettingsScreen(
             //     alles was Claudes Verhalten direkt steuert.
             // ═════════════════════════════════════════════════════════════
             ClaudeBehaviorCard(vm = vm, settings = settings)
+
+            // ═════════════════════════════════════════════════════════════
+            //  GEMS — Custom Agents (wie ChatGPT-GPTs / Gemini-Gems)
+            // ═════════════════════════════════════════════════════════════
+            val gems by vm.gems.collectAsState()
+            ExpandableSection(
+                title = stringResource(de.smartzone.pocketclaude.R.string.section_gems),
+                subtitle = stringResource(de.smartzone.pocketclaude.R.string.section_gems_subtitle),
+                initiallyExpanded = false,
+            ) {
+                GemsSection(
+                    gems = gems,
+                    onEdit = onEditGem,
+                    onDuplicate = onDuplicateGem,
+                    onDelete = vm::deleteGem,
+                )
+            }
 
             // ═════════════════════════════════════════════════════════════
             //  3-7. Sekundäre Sektionen — alle als ExpandableSection für
@@ -698,6 +732,82 @@ private fun LanguageCard() {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun GemsSection(
+    gems: List<GemDto>,
+    onEdit: (String?) -> Unit,
+    onDuplicate: (String) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        gems.forEach { gem ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(enabled = !gem.isBuiltin) { onEdit(gem.id) }
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    gem.emoji.ifBlank { "🤖" },
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(end = 10.dp),
+                )
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            gem.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FW.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (gem.isBuiltin) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                stringResource(de.smartzone.pocketclaude.R.string.gem_builtin_badge),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    if (gem.description.isNotBlank()) {
+                        Text(
+                            gem.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                IconButton(onClick = { onDuplicate(gem.id) }) {
+                    Icon(
+                        Icons.Filled.ContentCopy,
+                        contentDescription = stringResource(de.smartzone.pocketclaude.R.string.gem_duplicate),
+                    )
+                }
+                if (!gem.isBuiltin) {
+                    IconButton(onClick = { onDelete(gem.id) }) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = stringResource(de.smartzone.pocketclaude.R.string.chat_remove),
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        FilledTonalButton(onClick = { onEdit(null) }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(de.smartzone.pocketclaude.R.string.gem_new))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun ClaudeAuthSection(vm: SettingsViewModel) {
     val auth by vm.claudeAuth.collectAsState()
     val busy by vm.claudeAuthBusy.collectAsState()
@@ -752,6 +862,68 @@ private fun ClaudeAuthSection(vm: SettingsViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // ── Globales Standard-Modell (Pro/Max + API-Key) ──
+            // Im Bedrock-Modus ausgeblendet: dort steuert der Alias/die IDs
+            // unten die Modellwahl.
+            if (current != "bedrock") {
+                var modelMenuOpen by remember { mutableStateOf(false) }
+                val curModel = auth?.defaultModel.orEmpty()
+                val automaticLabel =
+                    stringResource(de.smartzone.pocketclaude.R.string.model_automatic)
+                val curModelLabel = ClaudeModels.labelFor(curModel) ?: automaticLabel
+                SubsectionLabel(
+                    stringResource(de.smartzone.pocketclaude.R.string.settings_default_model_label)
+                )
+                ExposedDropdownMenuBox(
+                    expanded = modelMenuOpen,
+                    onExpandedChange = { modelMenuOpen = it },
+                ) {
+                    OutlinedTextField(
+                        value = curModelLabel,
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuOpen)
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                    )
+                    DropdownMenu(
+                        expanded = modelMenuOpen,
+                        onDismissRequest = { modelMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(automaticLabel) },
+                            onClick = {
+                                modelMenuOpen = false
+                                if (curModel.isNotEmpty()) {
+                                    vm.updateClaudeAuth(ClaudeAuthUpdateRequest(defaultModel = ""))
+                                }
+                            },
+                        )
+                        ClaudeModels.all.forEach { opt ->
+                            DropdownMenuItem(
+                                text = { Text(opt.label) },
+                                onClick = {
+                                    modelMenuOpen = false
+                                    if (curModel != opt.id) {
+                                        vm.updateClaudeAuth(
+                                            ClaudeAuthUpdateRequest(defaultModel = opt.id)
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+                Text(
+                    stringResource(de.smartzone.pocketclaude.R.string.settings_default_model_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             when (current) {
                 "api_key" -> {

@@ -51,6 +51,9 @@ from pocket_claude.models import (
     ConversationPatch,
     ConversationSkillsRequest,
     ConversationSkillsResponse,
+    GemDto,
+    GemFileDto,
+    GemUpsertRequest,
     HealthOut,
     MessageOut,
     SearchHitOut,
@@ -161,6 +164,7 @@ def _row_to_conv_out(row: dict) -> ConversationOut:
         message_count=row["msg_count"],
         total_tokens=row["total_tokens"],
         pinned=bool(row.get("pinned", 0)),
+        gem_id=row.get("gem_id"),
     )
 
 
@@ -217,7 +221,12 @@ async def list_conversations(user=Depends(require_user)) -> list[ConversationOut
     status_code=status.HTTP_201_CREATED,
 )
 async def create_conversation(body: ConversationCreate, user=Depends(require_user)) -> ConversationOut:
-    cid = await db.create_conversation(body.title, user_id=user["id"])
+    gem_id = (body.gem_id or "").strip() or None
+    if gem_id is not None:
+        gem = await db.get_gem(gem_id, user_id=user["id"])
+        if not gem:
+            raise HTTPException(404, "Gem nicht gefunden.")
+    cid = await db.create_conversation(body.title, user_id=user["id"], gem_id=gem_id)
     conv = await db.get_conversation(cid, user_id=user["id"])
     assert conv is not None
     return ConversationOut(
@@ -227,6 +236,7 @@ async def create_conversation(body: ConversationCreate, user=Depends(require_use
         last_message_at=None,
         message_count=0,
         total_tokens=0,
+        gem_id=conv.get("gem_id"),
     )
 
 
@@ -247,6 +257,7 @@ async def get_conversation(cid: str = PathParam(...), user=Depends(require_user)
         message_count=len(messages),
         total_tokens=conv["total_tokens"],
         pinned=bool(conv.get("pinned", 0)),
+        gem_id=conv.get("gem_id"),
         messages=messages,
     )
 
@@ -283,6 +294,7 @@ async def patch_conversation(cid: str, body: ConversationPatch, user=Depends(req
         message_count=0,
         total_tokens=updated["total_tokens"],
         pinned=bool(updated.get("pinned", 0)),
+        gem_id=updated.get("gem_id"),
     )
 
 
@@ -330,21 +342,58 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
     new_title = await db.auto_rename_if_needed(cid, body.content, user_id=user["id"])
 
     effort = (body.effort or "high").lower().strip()
-    # Wenn der Client einen Mode mitschickt (Web-UI), löst der Server hier auf.
-    # Sonst nimmt der raw String (App-Pfad). Sonst Server-Default.
-    if body.system_prompt_mode:
+
+    # Gem-Auflösung: wenn der Chat „mit einem Gem" gestartet wurde, speist der
+    # Server dessen Instructions/Skills/Modell/Wissensdateien ein (server-
+    # autoritativ). Effort bleibt app-getrieben (die App lädt gem.effort als
+    # Startwert in den Chat-Picker).
+    gem = None
+    if conv.get("gem_id"):
+        gem = await db.get_gem(conv["gem_id"], user_id=user["id"])
+
+    # Effort: Gem-Default (falls gesetzt) gewinnt — ein Gem definiert seine
+    # Denktiefe wie ein GPT. Sonst der vom Client geschickte Wert.
+    if gem and (gem.get("effort") or "").strip():
+        effort = gem["effort"].strip().lower()
+
+    # System-Prompt: Gem-Instructions gewinnen. Sonst: Mode (Web-UI) bzw. roher
+    # String (App). Sonst Server-Default (in claude_engine).
+    if gem and (gem.get("instructions") or "").strip():
+        # Gem-Instructions wie andere Prompts durch die Platzhalter-Ersetzung
+        # schicken, damit z.B. {{currentDateTime}} im Gem funktioniert.
+        system_prompt = system_prompts._substitute_placeholders(gem["instructions"])
+    elif body.system_prompt_mode:
         system_prompt = system_prompts.resolve_system_prompt(
             body.system_prompt_mode, body.system_prompt,
         )
     else:
         system_prompt = body.system_prompt
 
-    # Skills auflösen: Per-Chat-Override hat Vorrang, sonst User-Default,
-    # sonst Server-Default. `conv` ist oben schon geladen.
+    # Skills: Per-Chat-Override > Gem-Skills > User-Default > Server-Default.
     effective_skills, _is_override = await _resolve_effective_skills(
         user["id"], conv.get("skills_override"),
+        gem_skills_override=(gem.get("skills") if gem else None),
     )
     skills_dict = effective_skills.model_dump()
+
+    # Globales Standard-Modell: Gem-Modell > User-KV-Default (Pro/Max + API;
+    # im Bedrock-Modus gewinnt weiter der Bedrock-Alias in claude_engine).
+    user_kv = await db.kv_get_all(scope=user["id"])
+    default_model = (
+        (gem.get("model") if gem else None)
+        or user_kv.get(auth_modes.KV_DEFAULT_MODEL)
+        or None
+    )
+    default_model = (default_model or "").strip() or None
+
+    # Gem-Wissensdateien an jede Nachricht des Gem-Chats anhängen.
+    extra_attachment_ids = (
+        await db.get_gem_file_ids(conv["gem_id"]) if gem else []
+    )
+    log.info(
+        "PC_GEM: send cid=%s gem=%s default_model=%s gem_files=%d",
+        cid, (gem["id"] if gem else None), default_model, len(extra_attachment_ids),
+    )
 
     async def event_gen() -> AsyncIterator[dict]:
         # PC_SSE diagnostic logging — see PocketClaude "denkt"-bug investigation.
@@ -366,6 +415,8 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
                 system_prompt=system_prompt,
                 skills=skills_dict,
                 user_id=user["id"],
+                default_model=default_model,
+                extra_attachment_ids=extra_attachment_ids,
             ):
                 etype = ev.pop("type")
                 last_event = etype
@@ -511,8 +562,9 @@ async def _pregen_tts(
 
 # ---------- Attachments ----------
 
-@app.post("/attachments", response_model=AttachmentOut)
-async def upload_attachment(file: UploadFile = File(...), user=Depends(require_user)) -> AttachmentOut:
+async def _store_upload(file: UploadFile, user_id: str) -> dict:
+    """Schreibt einen Upload auf Disk + legt die attachments-Zeile an. Gibt die
+    Attachment-Row zurück. Geteilt von /attachments und /me/gems/{id}/files."""
     contents = await file.read()
     max_bytes = settings.max_upload_mb * 1024 * 1024
     if len(contents) > max_bytes:
@@ -530,9 +582,15 @@ async def upload_attachment(file: UploadFile = File(...), user=Depends(require_u
     target = settings.uploads_dir / disk_name
     await _asyncio.to_thread(target.write_bytes, contents)
 
-    aid = await db.add_attachment(filename, mime, len(contents), target, user_id=user["id"])
+    aid = await db.add_attachment(filename, mime, len(contents), target, user_id=user_id)
     att = await db.get_attachment(aid)
     assert att
+    return att
+
+
+@app.post("/attachments", response_model=AttachmentOut)
+async def upload_attachment(file: UploadFile = File(...), user=Depends(require_user)) -> AttachmentOut:
+    att = await _store_upload(file, user["id"])
     return AttachmentOut(
         id=att["id"],
         filename=att["filename"],
@@ -2244,16 +2302,21 @@ async def _resolve_user_default_skills(user_id: str) -> SkillsDto:
 
 async def _resolve_effective_skills(
     user_id: str, conv_skills_override: str | None,
+    gem_skills_override: str | None = None,
 ) -> tuple[SkillsDto, bool]:
     """Effektive Skills für eine bestimmte Conversation.
 
+    Reihenfolge: Per-Chat-Override > Gem-Skills > User-Default > Server-Default.
     Returnt `(skills, is_override)`. `is_override=True` heißt: der Chat hat
-    eine eigene Einstellung, die von User-Default abweicht (oder der User-
-    Default existiert nicht und der Chat-Override greift trotzdem).
+    eine eigene Einstellung (Chat-Override oder Gem), die vom User-Default
+    abweichen kann.
     """
     override = _skills_from_json(conv_skills_override)
     if override is not None:
         return override, True
+    gem_skills = _skills_from_json(gem_skills_override)
+    if gem_skills is not None:
+        return gem_skills, True
     return await _resolve_user_default_skills(user_id), False
 
 
@@ -2465,6 +2528,7 @@ async def get_claude_auth(user=Depends(require_user)):
         bedrock_sonnet_model=kv.get(auth_modes.KV_BEDROCK_SONNET) or auth_modes.DEFAULT_BEDROCK_SONNET,
         bedrock_haiku_model=kv.get(auth_modes.KV_BEDROCK_HAIKU) or auth_modes.DEFAULT_BEDROCK_HAIKU,
         bedrock_model_alias=kv.get(auth_modes.KV_BEDROCK_ALIAS) or auth_modes.DEFAULT_BEDROCK_ALIAS,
+        default_model=kv.get(auth_modes.KV_DEFAULT_MODEL) or "",
         api_key_set=bool(kv.get(auth_modes.KV_API_KEY)),
         aws_access_key_set=bool(kv.get(auth_modes.KV_AWS_ACCESS_KEY_ID)),
         aws_secret_set=bool(kv.get(auth_modes.KV_AWS_SECRET_ACCESS_KEY)),
@@ -2530,6 +2594,7 @@ async def update_claude_auth(body: ClaudeAuthUpdateRequest, user=Depends(require
         ("bedrock_sonnet_model", auth_modes.KV_BEDROCK_SONNET),
         ("bedrock_haiku_model", auth_modes.KV_BEDROCK_HAIKU),
         ("bedrock_model_alias", auth_modes.KV_BEDROCK_ALIAS),
+        ("default_model", auth_modes.KV_DEFAULT_MODEL),
     )
     for attr, kv_key in field_map:
         val = getattr(body, attr)
@@ -2556,6 +2621,174 @@ async def update_claude_auth(body: ClaudeAuthUpdateRequest, user=Depends(require
         await db.clear_user_session_ids(user["id"])
 
     return await get_claude_auth(user=user)
+
+
+# ---------- Gems (Custom Agents) ----------
+
+def _json_str_list(raw: str | None) -> list[str]:
+    """Parsed ein JSON-Array von Strings. Leere/kaputte Werte → []."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [str(x) for x in data if isinstance(x, str) and x.strip()]
+
+
+async def _gem_to_dto(row: dict) -> GemDto:
+    files = await db.get_gem_files(row["id"])
+    return GemDto(
+        id=row["id"],
+        name=row["name"],
+        emoji=row.get("emoji") or "",
+        description=row.get("description") or "",
+        instructions=row.get("instructions") or "",
+        conversation_starters=_json_str_list(row.get("conversation_starters")),
+        model=(row.get("model") or None),
+        effort=(row.get("effort") or None),
+        skills=_skills_from_json(row.get("skills")),
+        is_builtin=bool(row.get("is_builtin", 0)),
+        files=[
+            GemFileDto(
+                id=f["id"], filename=f["filename"],
+                mime_type=f["mime_type"], size_bytes=f["size_bytes"],
+            )
+            for f in files
+        ],
+        created_at=(
+            datetime.fromisoformat(row["created_at"]) if row.get("created_at") else None
+        ),
+        updated_at=(
+            datetime.fromisoformat(row["updated_at"]) if row.get("updated_at") else None
+        ),
+    )
+
+
+def _gem_starters_json(starters: list[str]) -> str:
+    return json.dumps([s.strip() for s in starters if s.strip()], ensure_ascii=False)
+
+
+@app.get("/me/gems", response_model=list[GemDto])
+async def list_gems(user=Depends(require_user)) -> list[GemDto]:
+    rows = await db.list_gems(user["id"])
+    return [await _gem_to_dto(r) for r in rows]
+
+
+@app.post("/me/gems", response_model=GemDto, status_code=status.HTTP_201_CREATED)
+async def create_gem(body: GemUpsertRequest, user=Depends(require_user)) -> GemDto:
+    name = body.name.strip()
+    instructions = body.instructions.strip()
+    if not name:
+        raise HTTPException(400, "Name ist erforderlich.")
+    if not instructions:
+        raise HTTPException(400, "Instructions sind erforderlich.")
+    gid = await db.create_gem(
+        user_id=user["id"],
+        name=name,
+        emoji=(body.emoji or "").strip(),
+        description=(body.description or "").strip(),
+        instructions=instructions,
+        conversation_starters=_gem_starters_json(body.conversation_starters),
+        model=(body.model or "").strip() or None,
+        effort=(body.effort or "").strip() or None,
+        skills=_skills_to_json(body.skills) if body.skills is not None else None,
+    )
+    row = await db.get_gem(gid, user_id=user["id"])
+    assert row is not None
+    return await _gem_to_dto(row)
+
+
+@app.get("/me/gems/{gem_id}", response_model=GemDto)
+async def get_gem(gem_id: str, user=Depends(require_user)) -> GemDto:
+    row = await db.get_gem(gem_id, user_id=user["id"])
+    if not row:
+        raise HTTPException(404, "Gem nicht gefunden.")
+    return await _gem_to_dto(row)
+
+
+@app.put("/me/gems/{gem_id}", response_model=GemDto)
+async def update_gem(gem_id: str, body: GemUpsertRequest, user=Depends(require_user)) -> GemDto:
+    name = body.name.strip()
+    instructions = body.instructions.strip()
+    if not name:
+        raise HTTPException(400, "Name ist erforderlich.")
+    if not instructions:
+        raise HTTPException(400, "Instructions sind erforderlich.")
+    ok = await db.update_gem(
+        gem_id, user["id"],
+        name=name,
+        emoji=(body.emoji or "").strip(),
+        description=(body.description or "").strip(),
+        instructions=instructions,
+        conversation_starters=_gem_starters_json(body.conversation_starters),
+        model=(body.model or "").strip() or None,
+        effort=(body.effort or "").strip() or None,
+        skills=_skills_to_json(body.skills) if body.skills is not None else None,
+    )
+    if not ok:
+        raise HTTPException(404, "Gem nicht gefunden oder nicht editierbar.")
+    row = await db.get_gem(gem_id, user_id=user["id"])
+    assert row is not None
+    return await _gem_to_dto(row)
+
+
+@app.delete(
+    "/me/gems/{gem_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=JSONResponse,
+)
+async def delete_gem(gem_id: str, user=Depends(require_user)):
+    ok = await db.delete_gem(gem_id, user["id"])
+    if not ok:
+        raise HTTPException(404, "Gem nicht gefunden oder nicht löschbar.")
+    return JSONResponse(status_code=204, content=None)
+
+
+@app.get("/me/gems/{gem_id}/files", response_model=list[GemFileDto])
+async def list_gem_files(gem_id: str, user=Depends(require_user)) -> list[GemFileDto]:
+    row = await db.get_gem(gem_id, user_id=user["id"])
+    if not row:
+        raise HTTPException(404, "Gem nicht gefunden.")
+    files = await db.get_gem_files(gem_id)
+    return [
+        GemFileDto(
+            id=f["id"], filename=f["filename"],
+            mime_type=f["mime_type"], size_bytes=f["size_bytes"],
+        )
+        for f in files
+    ]
+
+
+@app.post("/me/gems/{gem_id}/files", response_model=GemFileDto)
+async def upload_gem_file(
+    gem_id: str, file: UploadFile = File(...), user=Depends(require_user),
+) -> GemFileDto:
+    row = await db.get_gem(gem_id, user_id=user["id"])
+    if not row or bool(row.get("is_builtin", 0)):
+        # Built-ins sind read-only.
+        raise HTTPException(404, "Gem nicht gefunden oder nicht editierbar.")
+    att = await _store_upload(file, user["id"])
+    await db.add_gem_file(gem_id, att["id"])
+    return GemFileDto(
+        id=att["id"], filename=att["filename"],
+        mime_type=att["mime_type"], size_bytes=att["size_bytes"],
+    )
+
+
+@app.delete(
+    "/me/gems/{gem_id}/files/{aid}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=JSONResponse,
+)
+async def delete_gem_file(gem_id: str, aid: str, user=Depends(require_user)):
+    row = await db.get_gem(gem_id, user_id=user["id"])
+    if not row or bool(row.get("is_builtin", 0)):
+        raise HTTPException(404, "Gem nicht gefunden oder nicht editierbar.")
+    await db.remove_gem_file(gem_id, aid)
+    return JSONResponse(status_code=204, content=None)
 
 
 # ---------- Token usage ----------

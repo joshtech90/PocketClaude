@@ -260,8 +260,8 @@ class ApiClient(
 
     suspend fun listConversations(): List<ConversationDto> = get("/conversations")
 
-    suspend fun createConversation(title: String? = null): ConversationDto =
-        postJson("/conversations", CreateConversationRequest(title))
+    suspend fun createConversation(title: String? = null, gemId: String? = null): ConversationDto =
+        postJson("/conversations", CreateConversationRequest(title, gemId))
 
     suspend fun getConversation(id: String): ConversationDetailDto = get("/conversations/$id")
 
@@ -400,6 +400,47 @@ class ApiClient(
     /** `skills=null` löscht den Override → User-Default greift wieder. */
     suspend fun setConversationSkills(cid: String, skills: SkillsDto?): ConversationSkillsResponse =
         putJson("/conversations/$cid/skills", ConversationSkillsRequest(skills))
+
+    // ---------- Gems (Custom Agents) ----------
+
+    suspend fun listGems(): List<GemDto> = get("/me/gems")
+
+    suspend fun getGem(id: String): GemDto = get("/me/gems/$id")
+
+    suspend fun createGem(req: GemUpsertRequest): GemDto = postJson("/me/gems", req)
+
+    suspend fun updateGem(id: String, req: GemUpsertRequest): GemDto = putJson("/me/gems/$id", req)
+
+    suspend fun deleteGem(id: String) = delete("/me/gems/$id")
+
+    suspend fun listGemFiles(gemId: String): List<GemFileDto> = get("/me/gems/$gemId/files")
+
+    suspend fun deleteGemFile(gemId: String, attachmentId: String) =
+        delete("/me/gems/$gemId/files/$attachmentId")
+
+    /** Lädt eine Wissens-/Referenzdatei zu einem Gem hoch (gleiche Multipart-
+     *  Pipeline wie Chat-Anhänge, nur anderer Endpoint). */
+    suspend fun uploadGemFile(
+        gemId: String,
+        filename: String,
+        mime: String,
+        bytes: ByteArray,
+    ): GemFileDto {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                "file",
+                filename,
+                bytes.toRequestBody(mime.toMediaType()),
+            )
+            .build()
+        val req = Request.Builder()
+            .url("${baseUrl()}/me/gems/$gemId/files")
+            .header("Authorization", authHeader())
+            .post(body)
+            .build()
+        return execute(req)
+    }
 
     /** Setzt den TTS-Provider per User: "gemini_api" (8 € Hard-Cap) oder
      *  "cloud_tts" (Service-Account, kein Hard-Cap). */

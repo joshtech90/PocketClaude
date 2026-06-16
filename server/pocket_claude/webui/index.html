@@ -138,6 +138,17 @@
       </div>
     </div>
 
+    <!-- Gems (Custom Agents) — wie ChatGPT-GPTs / Gemini-Gems -->
+    <div class="sidebar-section gems-block" id="gems-block">
+      <div class="gems-head">
+        <span data-i18n="gems_title">Gems</span>
+        <button id="gems-new-sidebar" class="icon-btn" data-i18n-title="gem_new" title="New Gem">
+          <svg class="icon"><use href="#icon-plus"/></svg>
+        </button>
+      </div>
+      <nav id="gems-nav" class="chat-nav gems-nav"></nav>
+    </div>
+
     <nav id="chat-nav" class="chat-nav"></nav>
     <nav id="search-nav" class="chat-nav hidden"></nav>
 
@@ -447,6 +458,13 @@
         </div>
         <p class="hint" id="claude-auth-mode-hint" style="margin-top:4px"></p>
 
+        <!-- Globales Standard-Modell (Pro/Max + API-Key; im Bedrock-Modus ausgeblendet) -->
+        <label class="field" id="claude-default-model-field" style="margin-top:8px">
+          <span data-i18n="default_model">Default model</span>
+          <select id="claude-default-model"></select>
+          <p class="hint" data-i18n="default_model_hint">Which Claude model your chats use.</p>
+        </label>
+
         <!-- Anthropic API key form -->
         <div id="claude-auth-apikey-form" class="hidden" style="margin-top:8px">
           <p class="hint" id="claude-auth-apikey-current"></p>
@@ -499,6 +517,16 @@
         <div id="claude-auth-status" class="backup-status"></div>
       </section>
 
+      <!-- Gems (Custom Agents) -->
+      <section class="settings-section" id="gems-section">
+        <h3 data-i18n="gems_title">Gems</h3>
+        <p class="hint" data-i18n="gems_settings_hint">Custom agents with their own instructions, model and tools.</p>
+        <div id="gems-list" class="gems-list"></div>
+        <button id="gems-new-btn" class="btn-secondary" type="button" style="margin-top:8px">
+          <svg class="icon"><use href="#icon-plus"/></svg> <span data-i18n="gem_new">New Gem</span>
+        </button>
+      </section>
+
       <!-- Token usage widget -->
       <section class="settings-section" id="usage-section">
         <h3 data-i18n="token_usage">Token usage</h3>
@@ -542,6 +570,75 @@
     <div class="modal-footer">
       <button id="prompt-cancel" type="button" class="btn-ghost" data-i18n="cancel">Abbrechen</button>
       <button id="prompt-ok" type="button" class="btn-primary" data-i18n="ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
+     Gem-Editor-Modal (Custom Agents)
+     ========================================================= -->
+<div id="gem-editor-modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2 id="gem-editor-title" data-i18n="gem_editor_title_new">New Gem</h2>
+      <button id="gem-editor-close" class="icon-btn"><svg class="icon"><use href="#icon-close"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="row-gap" style="gap:10px;align-items:flex-end">
+        <label class="field" style="width:84px;flex:none">
+          <span data-i18n="gem_field_emoji">Icon</span>
+          <input id="gem-emoji" type="text" maxlength="8" placeholder="🤖">
+        </label>
+        <label class="field" style="flex:1">
+          <span data-i18n="gem_field_name">Name</span>
+          <input id="gem-name" type="text">
+        </label>
+      </div>
+      <label class="field">
+        <span data-i18n="gem_field_description">Description</span>
+        <input id="gem-description" type="text">
+      </label>
+      <label class="field">
+        <span data-i18n="gem_field_instructions">Instructions (system prompt)</span>
+        <textarea id="gem-instructions" rows="6" data-i18n-placeholder="gem_field_instructions_hint"></textarea>
+      </label>
+      <div class="field">
+        <span data-i18n="gem_starters_label">Conversation starters</span>
+        <p class="hint" data-i18n="gem_starters_hint">Example prompts shown as chips in an empty chat.</p>
+        <div id="gem-starters" class="gem-starters-edit"></div>
+        <button id="gem-add-starter" class="btn-ghost" type="button" style="margin-top:6px">
+          <svg class="icon"><use href="#icon-plus"/></svg> <span data-i18n="gem_add_starter">Add starter</span>
+        </button>
+      </div>
+      <label class="field">
+        <span data-i18n="gem_model_label">Model</span>
+        <select id="gem-model"></select>
+      </label>
+      <label class="field">
+        <span data-i18n="gem_effort_label">Reasoning effort</span>
+        <select id="gem-effort"></select>
+      </label>
+      <div class="field">
+        <span data-i18n="gem_skills_label">Capabilities</span>
+        <label class="gem-chk"><input type="checkbox" id="gem-skill-web-search"> <span data-i18n="gem_skill_web_search">Web search</span></label>
+        <label class="gem-chk"><input type="checkbox" id="gem-skill-web-fetch"> <span data-i18n="gem_skill_web_fetch">Read web pages</span></label>
+        <label class="gem-chk"><input type="checkbox" id="gem-skill-code"> <span data-i18n="gem_skill_code">Code/Bash</span></label>
+      </div>
+      <div class="field">
+        <span data-i18n="gem_knowledge_label">Knowledge files</span>
+        <p class="hint" data-i18n="gem_knowledge_hint">Files this Gem can use on every message.</p>
+        <div id="gem-files" class="gem-files"></div>
+        <p class="hint" id="gem-files-savefirst" data-i18n="gem_files_save_first">Save the Gem first, then reopen it to add files.</p>
+        <button id="gem-add-file" class="btn-ghost" type="button" style="margin-top:6px">
+          <svg class="icon"><use href="#icon-upload"/></svg> <span data-i18n="gem_add_file">Add file</span>
+        </button>
+        <input id="gem-file-input" type="file" hidden>
+      </div>
+      <div id="gem-editor-status" class="backup-status"></div>
+    </div>
+    <div class="modal-footer">
+      <button id="gem-editor-cancel" class="btn-ghost" type="button" data-i18n="cancel">Cancel</button>
+      <button id="gem-editor-save" class="btn-primary" type="button" data-i18n="gem_save">Save</button>
     </div>
   </div>
 </div>

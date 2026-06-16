@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -37,6 +38,8 @@ import de.smartzone.pocketclaude.ui.chat.ChatScreen
 import de.smartzone.pocketclaude.ui.chat.ChatViewModel
 import de.smartzone.pocketclaude.ui.conversations.ConversationsScreen
 import de.smartzone.pocketclaude.ui.conversations.ConversationsViewModel
+import de.smartzone.pocketclaude.ui.gems.GemEditorScreen
+import de.smartzone.pocketclaude.ui.gems.GemsViewModel
 import de.smartzone.pocketclaude.ui.settings.SettingsScreen
 import de.smartzone.pocketclaude.ui.settings.SettingsViewModel
 
@@ -48,7 +51,12 @@ object Routes {
     const val SETTINGS = "settings"
     /** Standalone-Screen für die Bild-Generation (Gemini/Nano Banana). */
     const val IMAGES = "images"
+    /** Gem-Editor (Create ohne Args; Edit mit gemId; Duplizieren mit dup=Quell-ID). */
+    const val GEM_EDITOR = "gem_editor?gemId={gemId}&dup={dup}"
     fun chat(cid: String) = "chat/$cid"
+    fun gemEditor(gemId: String? = null) =
+        if (gemId == null) "gem_editor" else "gem_editor?gemId=$gemId"
+    fun gemDuplicate(sourceId: String) = "gem_editor?dup=$sourceId"
 }
 
 @Composable
@@ -160,6 +168,18 @@ fun PocketNav(container: AppContainer, initialChatCid: String? = null, shareNonc
                         }
                     }
                 },
+                onStartGemChat = { gemId ->
+                    // Frischen Chat „mit einem Gem" anlegen und hinein-navigieren.
+                    coroutineScope.launch {
+                        runCatching { container.chatRepository.create(gemId = gemId) }
+                            .onSuccess { fresh ->
+                                nav.navigate(Routes.chat(fresh.id)) {
+                                    popUpTo(Routes.CHAT) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                    }
+                },
             )
         }
 
@@ -169,6 +189,37 @@ fun PocketNav(container: AppContainer, initialChatCid: String? = null, shareNonc
             )
             SettingsScreen(
                 vm = vm,
+                onBack = { nav.popBackStack() },
+                onEditGem = { gemId -> nav.navigate(Routes.gemEditor(gemId)) },
+                onDuplicateGem = { sourceId -> nav.navigate(Routes.gemDuplicate(sourceId)) },
+            )
+        }
+
+        composable(
+            Routes.GEM_EDITOR,
+            arguments = listOf(
+                navArgument("gemId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("dup") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { backStack ->
+            val gemId = backStack.arguments?.getString("gemId")
+            val dup = backStack.arguments?.getString("dup")
+            val vm: GemsViewModel = viewModel(
+                factory = GemsViewModel.factory(container),
+                key = "gem_editor_${dup?.let { "dup_$it" } ?: gemId ?: "new"}",
+            )
+            GemEditorScreen(
+                vm = vm,
+                gemId = gemId,
+                dupFrom = dup,
                 onBack = { nav.popBackStack() },
             )
         }
@@ -240,15 +291,26 @@ private fun LaunchScreen(
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (errorMessage != null) {
-            Text(
-                stringResource(
-                    de.smartzone.pocketclaude.R.string.connection_failed_prefix,
-                    errorMessage ?: "",
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
+            // Verbindungs-/Auth-Fehler beim Start: NICHT in der Sackgasse hängen
+            // bleiben. Ein Weg in die Einstellungen erlaubt Re-Login (z.B. wenn
+            // der Session-Token serverseitig nicht mehr gültig ist → HTTP 401).
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(24.dp),
-            )
+            ) {
+                Text(
+                    stringResource(
+                        de.smartzone.pocketclaude.R.string.connection_failed_prefix,
+                        errorMessage ?: "",
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(16.dp))
+                OutlinedButton(onClick = onNeedsSettings) {
+                    Text(stringResource(de.smartzone.pocketclaude.R.string.title_settings))
+                }
+            }
         } else {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,

@@ -315,6 +315,8 @@ async def stream_reply(
     system_prompt: str | None = None,
     skills: dict | None = None,
     user_id: str | None = None,
+    default_model: str | None = None,
+    extra_attachment_ids: list[str] | None = None,
 ) -> AsyncIterator[dict]:
     """Yieldet SSE-kompatible Events:
       - {"type": "delta", "text": "..."}
@@ -344,12 +346,20 @@ async def stream_reply(
             yield {"type": "error", "message": "User-Message in DB nicht gefunden."}
             return
 
-        # Anhänge laden für Inline-Einbettung
-        attach_ids = user_msg.get("attachment_ids") or []
+        # Anhänge laden für Inline-Einbettung. Gem-Wissensdateien
+        # (extra_attachment_ids) werden zusätzlich an JEDE Nachricht des
+        # Gem-Chats gehängt — Text inline, Binär per Read-Tool.
+        own_ids = user_msg.get("attachment_ids") or []
+        own_set = set(own_ids)
+        gem_ids = [x for x in (extra_attachment_ids or []) if x not in own_set]
+        attach_ids = own_ids + gem_ids
         attachments = await db.get_attachments(attach_ids) if attach_ids else []
         attachments_by_id = {a["id"]: a for a in attachments}
 
-        prompt = _build_prompt_text(user_msg, attachments_by_id)
+        # Prompt-Bau über die kombinierte ID-Liste (user_msg trägt nur die
+        # eigenen Anhänge des Nutzers).
+        msg_for_prompt = {**user_msg, "attachment_ids": attach_ids}
+        prompt = _build_prompt_text(msg_for_prompt, attachments_by_id)
         need_read_tool = _has_binary_attachments(attach_ids, attachments_by_id)
         session_id = conv.get("claude_session_id")
 
@@ -423,11 +433,22 @@ async def stream_reply(
             len(sp),
         )
 
-        # For Bedrock mode the user pinned a specific Bedrock model ID
-        # (`us.anthropic.claude-opus-4-7` etc.) — pass it as the explicit
-        # model. Otherwise stick with the server-default (`claude-opus-4-7[1m]`
-        # for Pro/Max + API-key modes, which both speak the same model namespace).
-        effective_model = model_override or (settings.claude_model or None)
+        # Modell-Kette:
+        #   1. model_override  → Bedrock-Pin (build_provider_env), gewinnt im
+        #      Bedrock-Modus immer (eigener IDs-Namespace).
+        #   2. default_model   → globales User-Standard-Modell bzw. Gem-Modell
+        #      (Pro/Max + API-Key), z.B. "claude-opus-4-8".
+        #   3. settings.claude_model → Server-Default aus der .env.
+        #   4. None            → SDK-Default.
+        effective_model = (
+            model_override
+            or (default_model or None)
+            or (settings.claude_model or None)
+        )
+        log.info(
+            "PC_RESOLVE: model bedrock=%s default=%s server=%s effective=%s",
+            model_override, default_model, settings.claude_model, effective_model,
+        )
 
         # Without a stderr callback the SDK lets the CLI subprocess inherit
         # our stderr (-> systemd journal) and synthesises a useless

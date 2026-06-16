@@ -791,4 +791,36 @@
     <string name="time_minutes_ago">vor %1$d Min</string>
     <string name="time_yesterday">gestern</string>
     <string name="time_days_ago">vor %1$d Tagen</string>
+    <!-- Gems (Custom Agents) + globales Standard-Modell -->
+    <string name="model_automatic">Automatisch</string>
+    <string name="settings_default_model_label">Standard-Modell</string>
+    <string name="settings_default_model_hint">Legt fest, mit welchem Claude-Modell Deine Chats laufen (Pro/Max + API-Key).</string>
+    <string name="section_gems">Gems</string>
+    <string name="section_gems_subtitle">Eigene Agenten mit eigenen Anweisungen</string>
+    <string name="gem_builtin_badge">Eingebaut</string>
+    <string name="gem_new">Neues Gem</string>
+    <string name="gem_editor_title_new">Neues Gem</string>
+    <string name="gem_editor_title_edit">Gem bearbeiten</string>
+    <string name="gem_save">Speichern</string>
+    <string name="gem_field_emoji">Symbol</string>
+    <string name="gem_field_name">Name</string>
+    <string name="gem_field_description">Beschreibung</string>
+    <string name="gem_field_instructions">Anweisungen (System-Prompt)</string>
+    <string name="gem_field_instructions_hint">Wie soll sich dieses Gem verhalten? Persona, Aufgabe, Stil…</string>
+    <string name="gem_starters_label">Gesprächs-Starter</string>
+    <string name="gem_starters_hint">Beispiel-Prompts, die im leeren Chat als Chips erscheinen.</string>
+    <string name="gem_add_starter">Starter hinzufügen</string>
+    <string name="gem_model_label">Modell</string>
+    <string name="gem_model_global_default">Globaler Standard</string>
+    <string name="gem_effort_label">Denktiefe (Effort)</string>
+    <string name="gem_effort_chat_default">Chat-Standard</string>
+    <string name="gem_skills_label">Fähigkeiten</string>
+    <string name="gem_skill_web_search">Websuche</string>
+    <string name="gem_skill_web_fetch">Webseiten lesen</string>
+    <string name="gem_skill_code">Code/Bash</string>
+    <string name="gem_knowledge_label">Wissensdateien</string>
+    <string name="gem_knowledge_hint">Dateien (PDF, TXT, …), die dieses Gem bei jeder Nachricht nutzen kann.</string>
+    <string name="gem_add_file">Datei hinzufügen</string>
+    <string name="gem_builtin_readonly">Eingebautes Gem — schreibgeschützt.</string>
+    <string name="gem_duplicate">Duplizieren</string>
 </resources>

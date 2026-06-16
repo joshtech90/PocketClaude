@@ -50,6 +50,10 @@ const state = {
   abort:          null,
   _ttsLoaded:     false,
   _allCids:       [],
+  // Gems (Custom Agents): das aktuell gebundene Gem des offenen Chats + die
+  // Liste der Gems des Users (für die Sidebar).
+  gem:            null,
+  gems:           [],
 };
 
 // =========================================================
@@ -422,6 +426,7 @@ async function showApp() {
   // Server-Settings holen (überschreibt lokales), dann UI initialisieren
   await loadServerSettings();
   setEffort(state.effort, /*persist*/false);
+  if (window.PocketGems) window.PocketGems.load();
   refreshChatList().then(() => {
     // Cleaner Link öffnet immer einen neuen Chat (wie ChatGPT/Gemini Web).
     // Vergangene Chats bleiben über die Sidebar erreichbar.
@@ -722,6 +727,8 @@ async function openChat(cid, opts = {}) {
     state.messages = detail.messages || [];
     state.streamingText = '';
     state.isStreaming = false;
+    // Gem-Bindung wiederherstellen (für Header-Emoji + Starter im leeren Chat).
+    state.gem = detail.gem_id ? await gemFetch(detail.gem_id).catch(() => null) : null;
     updateTopbar(detail.total_tokens || 0);
     renderMessages();
     scrollToVeryBottom();
@@ -737,6 +744,7 @@ async function newChat() {
     state.cid = c.id;
     state.title = c.title;
     state.pinned = false;
+    state.gem = null;
     state.messages = [];
     state.streamingText = '';
     state.isStreaming = false;
@@ -752,7 +760,8 @@ async function newChat() {
 }
 
 function updateTopbar(tokens) {
-  els.topbarTitle.textContent = state.title || 'Pocket Claude';
+  const gemPrefix = (state.gem && state.gem.emoji) ? state.gem.emoji + '  ' : '';
+  els.topbarTitle.textContent = gemPrefix + (state.title || 'Pocket Claude');
   const pct = Math.round((tokens / 200000) * 100);
   if (state.messages.length) {
     els.topbarMeta.textContent = t('messages_context_format', state.messages.length, pct);
@@ -871,6 +880,8 @@ function renderMessages() {
   els.messages.appendChild(inner);
 
   if (!state.messages.length && !state.isStreaming) {
+    // Leerer Gem-Chat: Gem-Kopf + tappbare Gesprächs-Starter (statt generischem Hinweis).
+    if (state.gem) { inner.appendChild(gemWelcomeEl(state.gem)); return; }
     inner.innerHTML = `
       <div class="empty-hint">
         <div class="e-logo">
@@ -2225,6 +2236,27 @@ if (imgKeyDelete) imgKeyDelete.addEventListener('click', async () => {
       document.querySelectorAll('input[name="bedrock-alias"]').forEach((el) => {
         el.checked = (el.value === (data.bedrock_model_alias || 'opus'));
       });
+
+      // Globales Standard-Modell (Pro/Max + API-Key). Im Bedrock-Modus
+      // ausgeblendet, weil dort der Alias/die Modell-IDs greifen.
+      const dmSel = $('claude-default-model');
+      const dmField = $('claude-default-model-field');
+      if (dmSel) {
+        const cur = data.default_model || '';
+        dmSel.innerHTML = '';
+        const optAuto = document.createElement('option');
+        optAuto.value = '';
+        optAuto.textContent = t('model_automatic');
+        dmSel.appendChild(optAuto);
+        (window.PC_CLAUDE_MODELS || []).forEach((m) => {
+          const o = document.createElement('option');
+          o.value = m.id;
+          o.textContent = m.label;
+          dmSel.appendChild(o);
+        });
+        dmSel.value = cur;
+      }
+      if (dmField) dmField.style.display = (mode === 'bedrock') ? 'none' : '';
     } catch (e) { /* not signed in yet */ }
   }
 
@@ -2317,6 +2349,19 @@ if (imgKeyDelete) imgKeyDelete.addEventListener('click', async () => {
       catch (e) { $('claude-auth-status').textContent = t('toast_error_prefix', e.message); }
     });
   });
+
+  // Standard-Modell ändern → sofort speichern.
+  const dmSel = $('claude-default-model');
+  if (dmSel) {
+    dmSel.addEventListener('change', async () => {
+      try {
+        await putClaudeAuth({ default_model: dmSel.value });
+        $('claude-auth-status').textContent = t('saved');
+      } catch (e) {
+        $('claude-auth-status').textContent = t('toast_error_prefix', e.message);
+      }
+    });
+  }
 
   async function loadUsage() {
     try {
@@ -2893,4 +2938,302 @@ window.PocketVoice = (() => {
 
   setMicState('idle');
   return { toggleAutoMode, resetForChatSwitch };
+})();
+
+// =========================================================
+// Gems (Custom Agents) — wie ChatGPT-GPTs / Gemini-Gems
+// =========================================================
+
+const CLAUDE_MODELS = [
+  { id: 'claude-opus-4-8',   label: 'Opus 4.8' },
+  { id: 'claude-opus-4-7',   label: 'Opus 4.7' },
+  { id: 'claude-opus-4-6',   label: 'Opus 4.6' },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { id: 'claude-haiku-4-5',  label: 'Haiku 4.5' },
+  { id: 'claude-fable-5',    label: 'Fable 5' },
+];
+window.PC_CLAUDE_MODELS = CLAUDE_MODELS;
+const GEM_EFFORTS = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+// Top-Level (hoisted), weil von openChat()/renderMessages() aufgerufen.
+function gemFetch(id) { return api('GET', '/me/gems/' + id); }
+
+/** Empty-State eines Gem-Chats: Emoji + Name + Beschreibung + Starter-Chips. */
+function gemWelcomeEl(gem) {
+  const wrap = document.createElement('div');
+  wrap.className = 'gem-welcome';
+  const emoji = document.createElement('div');
+  emoji.className = 'gem-welcome-emoji';
+  emoji.textContent = gem.emoji || '🤖';
+  wrap.appendChild(emoji);
+  const h = document.createElement('h3');
+  h.textContent = gem.name || '';
+  wrap.appendChild(h);
+  if (gem.description) {
+    const p = document.createElement('p');
+    p.textContent = gem.description;
+    wrap.appendChild(p);
+  }
+  const starters = gem.conversation_starters || [];
+  if (starters.length) {
+    const row = document.createElement('div');
+    row.className = 'gem-starter-chips';
+    starters.forEach((s) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'gem-starter-chip';
+      chip.textContent = s;
+      chip.addEventListener('click', () => {
+        els.input.value = s;
+        els.inputForm.requestSubmit();
+      });
+      row.appendChild(chip);
+    });
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+(function initGems() {
+  const $ = (id) => document.getElementById(id);
+
+  async function loadGems() {
+    try { state.gems = await api('GET', '/me/gems'); }
+    catch (e) { state.gems = []; }
+    renderGemsSidebar();
+    renderGemsSettingsList();
+  }
+
+  function renderGemsSidebar() {
+    const nav = $('gems-nav');
+    const block = $('gems-block');
+    if (!nav) return;
+    nav.innerHTML = '';
+    if (!state.gems.length) { if (block) block.style.display = 'none'; return; }
+    if (block) block.style.display = '';
+    state.gems.forEach((g) => {
+      const item = document.createElement('div');
+      item.className = 'chat-item gem-item';
+      item.innerHTML =
+        `<span class="gem-emoji">${escapeHtml(g.emoji || '🤖')}</span>` +
+        `<span class="chat-item-title">${escapeHtml(g.name)}</span>`;
+      item.addEventListener('click', () => startGemChat(g));
+      nav.appendChild(item);
+    });
+  }
+
+  function renderGemsSettingsList() {
+    const list = $('gems-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!state.gems.length) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = t('gems_empty');
+      list.appendChild(p);
+      return;
+    }
+    state.gems.forEach((g) => {
+      const row = document.createElement('div');
+      row.className = 'gem-row';
+      const main = document.createElement('div');
+      main.className = 'gem-row-main';
+      const badge = g.is_builtin
+        ? ` <em class="gem-badge">${escapeHtml(t('gem_builtin_badge'))}</em>` : '';
+      main.innerHTML =
+        `<span class="gem-emoji">${escapeHtml(g.emoji || '🤖')}</span>` +
+        `<span class="gem-row-text"><span class="gem-row-name">${escapeHtml(g.name)}${badge}</span>` +
+        `<span class="gem-row-desc">${escapeHtml(g.description || '')}</span></span>`;
+      if (!g.is_builtin) main.addEventListener('click', () => openGemEditor(g, {}));
+      row.appendChild(main);
+
+      const dup = document.createElement('button');
+      dup.type = 'button'; dup.className = 'icon-btn'; dup.title = t('gem_duplicate');
+      dup.innerHTML = '<svg class="icon"><use href="#icon-copy"/></svg>';
+      dup.addEventListener('click', () => openGemEditor(g, { duplicate: true }));
+      row.appendChild(dup);
+
+      if (!g.is_builtin) {
+        const del = document.createElement('button');
+        del.type = 'button'; del.className = 'icon-btn'; del.title = t('delete');
+        del.innerHTML = '<svg class="icon"><use href="#icon-trash"/></svg>';
+        del.addEventListener('click', async () => {
+          if (!confirm(t('gem_delete_confirm', g.name))) return;
+          try { await api('DELETE', '/me/gems/' + g.id); await loadGems(); }
+          catch (err) { toast(t('toast_error_prefix', err.message), { error: true }); }
+        });
+        row.appendChild(del);
+      }
+      list.appendChild(row);
+    });
+  }
+
+  async function startGemChat(gem) {
+    try {
+      abortStream();
+      const c = await api('POST', '/conversations', { gem_id: gem.id });
+      state.cid = c.id;
+      state.title = c.title;
+      state.pinned = false;
+      state.gem = gem;
+      state.messages = [];
+      state.streamingText = '';
+      state.isStreaming = false;
+      updateTopbar(0);
+      renderMessages();
+      await refreshChatList();
+      localStorage.setItem(LS.lastCid, c.id);
+      history.replaceState(null, '', '#/chat/' + c.id);
+      els.sidebar.classList.remove('open');
+      els.input.focus();
+    } catch (e) {
+      toast(t('toast_new_chat_failed', e.message), { error: true });
+    }
+  }
+
+  // ---- Editor ----
+  let editorGemId = null;   // null = neues Gem
+  let editorFiles = [];     // bereits gespeicherte Dateien (Edit-Modus)
+
+  function setSel(sel, options, value) {
+    sel.innerHTML = '';
+    options.forEach((o) => {
+      const opt = document.createElement('option');
+      opt.value = o.value; opt.textContent = o.label;
+      sel.appendChild(opt);
+    });
+    sel.value = value;
+  }
+
+  function openGemEditor(gem, opts) {
+    opts = opts || {};
+    const dup = !!opts.duplicate;
+    editorGemId = (gem && !dup) ? gem.id : null;
+    editorFiles = (gem && !dup) ? (gem.files || []) : [];
+    $('gem-editor-title').textContent = editorGemId ? t('gem_editor_title_edit') : t('gem_editor_title_new');
+    $('gem-emoji').value = gem ? (gem.emoji || '') : '';
+    $('gem-name').value = gem ? (dup ? gem.name + ' (Kopie)' : gem.name) : '';
+    $('gem-description').value = gem ? (gem.description || '') : '';
+    $('gem-instructions').value = gem ? (gem.instructions || '') : '';
+    $('gem-starters').innerHTML = '';
+    ((gem && gem.conversation_starters) || []).forEach((s) => addStarterRow(s));
+    setSel($('gem-model'),
+      [{ value: '', label: t('gem_model_global_default') }]
+        .concat(CLAUDE_MODELS.map((m) => ({ value: m.id, label: m.label }))),
+      (gem && gem.model) ? gem.model : '');
+    setSel($('gem-effort'),
+      [{ value: '', label: t('gem_effort_chat_default') }]
+        .concat(GEM_EFFORTS.map((e) => ({ value: e, label: e }))),
+      (gem && gem.effort) ? gem.effort : '');
+    const sk = (gem && gem.skills) ? gem.skills : { web_search: true, web_fetch: true, code_execution: false };
+    $('gem-skill-web-search').checked = sk.web_search !== false;
+    $('gem-skill-web-fetch').checked = sk.web_fetch !== false;
+    $('gem-skill-code').checked = !!sk.code_execution;
+    renderEditorFiles();
+    $('gem-files-savefirst').style.display = editorGemId ? 'none' : '';
+    $('gem-add-file').style.display = editorGemId ? '' : 'none';
+    $('gem-editor-status').textContent = '';
+    $('gem-editor-modal').classList.remove('hidden');
+  }
+
+  function addStarterRow(value) {
+    const row = document.createElement('div');
+    row.className = 'gem-starter-row';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.value = value || '';
+    const rm = document.createElement('button');
+    rm.type = 'button'; rm.className = 'icon-btn';
+    rm.innerHTML = '<svg class="icon"><use href="#icon-close"/></svg>';
+    rm.addEventListener('click', () => row.remove());
+    row.appendChild(inp); row.appendChild(rm);
+    $('gem-starters').appendChild(row);
+  }
+
+  function collectStarters() {
+    return Array.from($('gem-starters').querySelectorAll('input'))
+      .map((i) => i.value.trim()).filter((v) => v);
+  }
+
+  function renderEditorFiles() {
+    const wrap = $('gem-files');
+    wrap.innerHTML = '';
+    editorFiles.forEach((f) => {
+      const row = document.createElement('div');
+      row.className = 'gem-file-row';
+      row.innerHTML = `<svg class="icon"><use href="#icon-file"/></svg><span>${escapeHtml(f.filename)}</span>`;
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'icon-btn';
+      rm.innerHTML = '<svg class="icon"><use href="#icon-close"/></svg>';
+      rm.addEventListener('click', async () => {
+        try {
+          await api('DELETE', '/me/gems/' + editorGemId + '/files/' + f.id);
+          editorFiles = editorFiles.filter((x) => x.id !== f.id);
+          renderEditorFiles();
+        } catch (e) { $('gem-editor-status').textContent = t('toast_error_prefix', e.message); }
+      });
+      row.appendChild(rm);
+      wrap.appendChild(row);
+    });
+  }
+
+  async function saveGem() {
+    const name = $('gem-name').value.trim();
+    const instructions = $('gem-instructions').value.trim();
+    if (!name || !instructions) { $('gem-editor-status').textContent = t('gem_validation'); return; }
+    const payload = {
+      name,
+      emoji: $('gem-emoji').value.trim(),
+      description: $('gem-description').value.trim(),
+      instructions,
+      conversation_starters: collectStarters(),
+      model: $('gem-model').value || null,
+      effort: $('gem-effort').value || null,
+      skills: {
+        web_search: $('gem-skill-web-search').checked,
+        web_fetch: $('gem-skill-web-fetch').checked,
+        code_execution: $('gem-skill-code').checked,
+      },
+    };
+    try {
+      if (editorGemId) await api('PUT', '/me/gems/' + editorGemId, payload);
+      else await api('POST', '/me/gems', payload);
+      $('gem-editor-modal').classList.add('hidden');
+      await loadGems();
+    } catch (e) {
+      $('gem-editor-status').textContent = t('toast_error_prefix', e.message);
+    }
+  }
+
+  // ---- wiring ----
+  if ($('gems-new-btn')) $('gems-new-btn').addEventListener('click', () => openGemEditor(null, {}));
+  if ($('gems-new-sidebar')) $('gems-new-sidebar').addEventListener('click', () => openGemEditor(null, {}));
+  if ($('gem-editor-close')) $('gem-editor-close').addEventListener('click', () => $('gem-editor-modal').classList.add('hidden'));
+  if ($('gem-editor-cancel')) $('gem-editor-cancel').addEventListener('click', () => $('gem-editor-modal').classList.add('hidden'));
+  if ($('gem-editor-save')) $('gem-editor-save').addEventListener('click', saveGem);
+  if ($('gem-add-starter')) $('gem-add-starter').addEventListener('click', () => addStarterRow(''));
+  const gemModal = $('gem-editor-modal');
+  if (gemModal) gemModal.addEventListener('click', (e) => { if (e.target === gemModal) gemModal.classList.add('hidden'); });
+  if ($('gem-add-file')) $('gem-add-file').addEventListener('click', () => $('gem-file-input').click());
+  if ($('gem-file-input')) $('gem-file-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file || !editorGemId) return;
+    $('gem-editor-status').textContent = t('gem_uploading');
+    try {
+      const fd = new FormData();
+      fd.append('file', file, file.name);
+      const f = await api('POST', '/me/gems/' + editorGemId + '/files', fd);
+      editorFiles.push(f);
+      renderEditorFiles();
+      $('gem-editor-status').textContent = '';
+    } catch (err) {
+      $('gem-editor-status').textContent = t('toast_error_prefix', err.message);
+    }
+  });
+
+  const settingsBtn = $('settings-btn');
+  if (settingsBtn) settingsBtn.addEventListener('click', loadGems);
+
+  window.PocketGems = { load: loadGems };
+  if (state.token) loadGems();
 })();

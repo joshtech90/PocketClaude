@@ -135,6 +135,7 @@ fun ChatScreen(
     onOpenImages: () -> Unit,
     onNewChat: () -> Unit,
     onSwitchChat: (String) -> Unit,
+    onStartGemChat: (String) -> Unit = {},
 ) {
     val state by vm.state.collectAsState()
     val audioState by vm.audioState.collectAsState()
@@ -159,10 +160,13 @@ fun ChatScreen(
     // Drawer-State + Chat-Liste fürs Drawer (wird beim Öffnen aktualisiert)
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var drawerChats by remember { mutableStateOf<List<ConversationDto>>(emptyList()) }
+    var drawerGems by remember { mutableStateOf<List<de.smartzone.pocketclaude.data.GemDto>>(emptyList()) }
     LaunchedEffect(drawerState.currentValue, state.title) {
         if (drawerState.currentValue == DrawerValue.Open) {
             runCatching { container.chatRepository.list() }
                 .onSuccess { drawerChats = it.take(40) }
+            runCatching { container.chatRepository.listGems() }
+                .onSuccess { drawerGems = it }
         }
     }
 
@@ -357,9 +361,14 @@ fun ChatScreen(
             ChatDrawerContent(
                 currentCid = state.conversationId,
                 chats = drawerChats,
+                gems = drawerGems,
                 onNewChat = {
                     scope.launch { drawerState.close() }
                     onNewChat()
+                },
+                onStartGem = { gemId ->
+                    scope.launch { drawerState.close() }
+                    onStartGemChat(gemId)
                 },
                 onGenerateImages = {
                     scope.launch { drawerState.close() }
@@ -400,8 +409,9 @@ fun ChatScreen(
                     } else {
                         Column {
                             val appName = stringResource(de.smartzone.pocketclaude.R.string.app_name)
+                            val baseTitle = state.title.ifBlank { appName }
                             Text(
-                                state.title.ifBlank { appName },
+                                if (state.gemEmoji.isNotBlank()) "${state.gemEmoji}  $baseTitle" else baseTitle,
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -677,6 +687,20 @@ fun ChatScreen(
                             item {
                                 CompactionNotice(
                                     text = stringResource(de.smartzone.pocketclaude.R.string.chat_compaction_notice),
+                                )
+                            }
+                        }
+                        // Leerer Gem-Chat: Gem-Kopf + tappbare Gesprächs-Starter.
+                        if (state.messages.isEmpty() && !state.isStreaming &&
+                            (state.gemName.isNotBlank() || state.gemStarters.isNotEmpty())
+                        ) {
+                            item {
+                                GemWelcome(
+                                    emoji = state.gemEmoji,
+                                    name = state.gemName,
+                                    description = state.gemDescription,
+                                    starters = state.gemStarters,
+                                    onStarter = { vm.send(it) },
                                 )
                             }
                         }
@@ -1078,11 +1102,62 @@ private fun ChatAutoSpeakDialog(
     )
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun GemWelcome(
+    emoji: String,
+    name: String,
+    description: String,
+    starters: List<String>,
+    onStarter: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(emoji.ifBlank { "🤖" }, style = MaterialTheme.typography.displaySmall)
+        if (name.isNotBlank()) {
+            Text(
+                name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        if (description.isNotBlank()) {
+            Text(
+                description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
+        if (starters.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                starters.forEach { s ->
+                    AssistChip(
+                        onClick = { onStarter(s) },
+                        label = { Text(s) },
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ChatDrawerContent(
     currentCid: String,
     chats: List<ConversationDto>,
+    gems: List<de.smartzone.pocketclaude.data.GemDto>,
     onNewChat: () -> Unit,
+    onStartGem: (String) -> Unit,
     onGenerateImages: () -> Unit,
     onSwitch: (String) -> Unit,
     onAllChats: () -> Unit,
@@ -1176,6 +1251,36 @@ private fun ChatDrawerContent(
             ),
             modifier = Modifier.padding(horizontal = 12.dp),
         )
+
+        // Gems (Custom Agents) — Tippen startet einen frischen Chat mit dem Gem.
+        if (gems.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(de.smartzone.pocketclaude.R.string.section_gems),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp),
+            )
+            gems.forEach { gem ->
+                NavigationDrawerItem(
+                    icon = {
+                        Text(
+                            gem.emoji.ifBlank { "🤖" },
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    },
+                    label = {
+                        Text(gem.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    selected = false,
+                    onClick = { onStartGem(gem.id) },
+                    colors = NavigationDrawerItemDefaults.colors(
+                        unselectedContainerColor = MaterialTheme.colorScheme.background,
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        }
 
         Spacer(Modifier.height(8.dp))
         Text(

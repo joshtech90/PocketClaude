@@ -44,7 +44,8 @@ class ChatRepository(
 
     suspend fun list(): List<ConversationDto> = api.listConversations()
 
-    suspend fun create(title: String? = null): ConversationDto = api.createConversation(title)
+    suspend fun create(title: String? = null, gemId: String? = null): ConversationDto =
+        api.createConversation(title, gemId)
 
     suspend fun detail(id: String): ConversationDetailDto = api.getConversation(id)
 
@@ -64,6 +65,20 @@ class ChatRepository(
     /** `skills=null` löscht den Override → User-Default greift. */
     suspend fun setConversationSkills(cid: String, skills: SkillsDto?): ConversationSkillsResponse =
         api.setConversationSkills(cid, skills)
+
+    // Gems (Custom Agents)
+    suspend fun listGems(): List<GemDto> = api.listGems()
+    suspend fun getGem(id: String): GemDto = api.getGem(id)
+    suspend fun createGem(req: GemUpsertRequest): GemDto = api.createGem(req)
+    suspend fun updateGem(id: String, req: GemUpsertRequest): GemDto = api.updateGem(id, req)
+    suspend fun deleteGem(id: String) = api.deleteGem(id)
+    suspend fun listGemFiles(gemId: String): List<GemFileDto> = api.listGemFiles(gemId)
+    suspend fun deleteGemFile(gemId: String, attachmentId: String) =
+        api.deleteGemFile(gemId, attachmentId)
+    suspend fun uploadGemFileFromUri(gemId: String, uri: Uri): GemFileDto {
+        val (filename, mime, bytes) = readUpload(uri)
+        return api.uploadGemFile(gemId, filename, mime, bytes)
+    }
 
     // Billing (Cloud-Spend + Credit)
     suspend fun billingStatus(): BillingStatusDto = api.getBillingStatus()
@@ -125,21 +140,28 @@ class ChatRepository(
             ttsRate = ttsRate,
         ))
 
-    suspend fun uploadFromUri(uri: Uri): AttachmentDto = withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        val rawMime = resolver.getType(uri)
-            ?: MimeTypeMap.getSingleton()
-                .getMimeTypeFromExtension(uri.lastPathSegment?.substringAfterLast('.').orEmpty())
-            ?: "application/octet-stream"
-        val rawName = queryDisplayName(uri) ?: "upload_${System.currentTimeMillis()}"
-        val rawBytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: error("Anhang nicht lesbar.")
-        // Bei Bildern clientseitig runterskalieren + JPEG-recodieren — spart
-        // 80–95% Speicher gegenüber Handy-Originalen, und Claude/Gemini-Vision
-        // resizen eh auf ~1568px-Kante.
-        val (filename, mime, bytes) = ImageCompressor.maybeCompress(rawName, rawMime, rawBytes)
-        api.uploadAttachment(filename, mime, bytes)
+    suspend fun uploadFromUri(uri: Uri): AttachmentDto {
+        val (filename, mime, bytes) = readUpload(uri)
+        return api.uploadAttachment(filename, mime, bytes)
     }
+
+    /** Liest einen content-URI in (filename, mime, bytes) — inkl. Bild-Kompression.
+     *  Geteilt von Chat-Anhängen und Gem-Wissensdateien. */
+    private suspend fun readUpload(uri: Uri): ImageCompressor.Result =
+        withContext(Dispatchers.IO) {
+            val resolver = context.contentResolver
+            val rawMime = resolver.getType(uri)
+                ?: MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(uri.lastPathSegment?.substringAfterLast('.').orEmpty())
+                ?: "application/octet-stream"
+            val rawName = queryDisplayName(uri) ?: "upload_${System.currentTimeMillis()}"
+            val rawBytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("Anhang nicht lesbar.")
+            // Bei Bildern clientseitig runterskalieren + JPEG-recodieren — spart
+            // 80–95% Speicher gegenüber Handy-Originalen, und Claude/Gemini-Vision
+            // resizen eh auf ~1568px-Kante.
+            ImageCompressor.maybeCompress(rawName, rawMime, rawBytes)
+        }
 
     private fun queryDisplayName(uri: Uri): String? {
         return try {

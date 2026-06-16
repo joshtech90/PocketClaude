@@ -788,4 +788,36 @@
     <string name="time_minutes_ago">%1$d 分钟前</string>
     <string name="time_yesterday">昨天</string>
     <string name="time_days_ago">%1$d 天前</string>
+    <!-- Gems (Custom Agents) + globales Standard-Modell -->
+    <string name="model_automatic">自动</string>
+    <string name="settings_default_model_label">默认模型</string>
+    <string name="settings_default_model_hint">聊天使用哪个 Claude 模型（Pro/Max + API 密钥）。</string>
+    <string name="section_gems">Gems</string>
+    <string name="section_gems_subtitle">带有自定义指令的智能体</string>
+    <string name="gem_builtin_badge">内置</string>
+    <string name="gem_new">新建 Gem</string>
+    <string name="gem_editor_title_new">新建 Gem</string>
+    <string name="gem_editor_title_edit">编辑 Gem</string>
+    <string name="gem_save">保存</string>
+    <string name="gem_field_emoji">图标</string>
+    <string name="gem_field_name">名称</string>
+    <string name="gem_field_description">描述</string>
+    <string name="gem_field_instructions">指令（系统提示）</string>
+    <string name="gem_field_instructions_hint">这个 Gem 应如何表现？角色、任务、风格…</string>
+    <string name="gem_starters_label">对话开场白</string>
+    <string name="gem_starters_hint">空聊天中以小标签显示的示例提示。</string>
+    <string name="gem_add_starter">添加开场白</string>
+    <string name="gem_model_label">模型</string>
+    <string name="gem_model_global_default">全局默认</string>
+    <string name="gem_effort_label">思考强度</string>
+    <string name="gem_effort_chat_default">聊天默认</string>
+    <string name="gem_skills_label">功能</string>
+    <string name="gem_skill_web_search">网页搜索</string>
+    <string name="gem_skill_web_fetch">读取网页</string>
+    <string name="gem_skill_code">代码/Bash</string>
+    <string name="gem_knowledge_label">知识文件</string>
+    <string name="gem_knowledge_hint">该 Gem 在每条消息中都可使用的文件（PDF、TXT…）。</string>
+    <string name="gem_add_file">添加文件</string>
+    <string name="gem_builtin_readonly">内置 Gem — 只读。</string>
+    <string name="gem_duplicate">复制</string>
 </resources>

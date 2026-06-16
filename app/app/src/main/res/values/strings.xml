@@ -791,4 +791,36 @@
     <string name="time_minutes_ago">%1$d min ago</string>
     <string name="time_yesterday">yesterday</string>
     <string name="time_days_ago">%1$d days ago</string>
+    <!-- Gems (Custom Agents) + globales Standard-Modell -->
+    <string name="model_automatic">Automatic</string>
+    <string name="settings_default_model_label">Default model</string>
+    <string name="settings_default_model_hint">Which Claude model your chats use (Pro/Max + API key).</string>
+    <string name="section_gems">Gems</string>
+    <string name="section_gems_subtitle">Custom agents with their own instructions</string>
+    <string name="gem_builtin_badge">Built-in</string>
+    <string name="gem_new">New Gem</string>
+    <string name="gem_editor_title_new">New Gem</string>
+    <string name="gem_editor_title_edit">Edit Gem</string>
+    <string name="gem_save">Save</string>
+    <string name="gem_field_emoji">Icon</string>
+    <string name="gem_field_name">Name</string>
+    <string name="gem_field_description">Description</string>
+    <string name="gem_field_instructions">Instructions (system prompt)</string>
+    <string name="gem_field_instructions_hint">How should this Gem behave? Persona, task, style…</string>
+    <string name="gem_starters_label">Conversation starters</string>
+    <string name="gem_starters_hint">Example prompts shown as chips in an empty chat.</string>
+    <string name="gem_add_starter">Add starter</string>
+    <string name="gem_model_label">Model</string>
+    <string name="gem_model_global_default">Global default</string>
+    <string name="gem_effort_label">Reasoning effort</string>
+    <string name="gem_effort_chat_default">Chat default</string>
+    <string name="gem_skills_label">Capabilities</string>
+    <string name="gem_skill_web_search">Web search</string>
+    <string name="gem_skill_web_fetch">Read web pages</string>
+    <string name="gem_skill_code">Code/Bash</string>
+    <string name="gem_knowledge_label">Knowledge files</string>
+    <string name="gem_knowledge_hint">Files (PDF, TXT, …) this Gem can use on every message.</string>
+    <string name="gem_add_file">Add file</string>
+    <string name="gem_builtin_readonly">Built-in Gem — read-only.</string>
+    <string name="gem_duplicate">Duplicate</string>
 </resources>

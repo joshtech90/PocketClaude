@@ -13,6 +13,7 @@ import de.smartzone.pocketclaude.data.BillingStatusDto
 import de.smartzone.pocketclaude.data.ChatRepository
 import de.smartzone.pocketclaude.data.ClaudeAuthDto
 import de.smartzone.pocketclaude.data.ClaudeAuthUpdateRequest
+import de.smartzone.pocketclaude.data.GemDto
 import de.smartzone.pocketclaude.data.UsageStatsDto
 import de.smartzone.pocketclaude.data.MeDto
 import de.smartzone.pocketclaude.data.SettingsRepository
@@ -130,6 +131,20 @@ class SettingsViewModel(
             .onSuccess { _usage.value = it }
     }
 
+    // Gems (Custom Agents) — Liste für die Settings-Sektion.
+    private val _gems = MutableStateFlow<List<GemDto>>(emptyList())
+    val gems: StateFlow<List<GemDto>> = _gems.asStateFlow()
+
+    fun refreshGems() = viewModelScope.launch {
+        if (!settings.value.isConfigured) return@launch
+        runCatching { chatRepo.listGems() }.onSuccess { _gems.value = it }
+    }
+
+    fun deleteGem(id: String) = viewModelScope.launch {
+        runCatching { chatRepo.deleteGem(id) }
+        refreshGems()
+    }
+
     init {
         // Auf DataStore warten — beim Screen-Open ist settings.value erst noch der
         // Default (leerer URL/Token), DataStore-Emission kommt asynchron.
@@ -143,6 +158,7 @@ class SettingsViewModel(
             refreshBillingStatus()
             refreshClaudeAuth()
             refreshUsage()
+            refreshGems()
         }
     }
 

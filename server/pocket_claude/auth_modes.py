@@ -53,6 +53,9 @@ KV_BEDROCK_OPUS = "bedrock_opus_model"
 KV_BEDROCK_SONNET = "bedrock_sonnet_model"
 KV_BEDROCK_HAIKU = "bedrock_haiku_model"
 KV_BEDROCK_ALIAS = "bedrock_model_alias"  # "opus" | "sonnet" | "haiku"
+# Globales Standard-Modell für Pro/Max + API-Key-Modus (voller Modell-String
+# wie "claude-opus-4-8"; "" = automatisch). Im Bedrock-Modus ungenutzt.
+KV_DEFAULT_MODEL = "claude_default_model"
 
 # Keys that are sensitive — never returned to the client in plaintext.
 SECRET_KEYS: Iterable[str] = (

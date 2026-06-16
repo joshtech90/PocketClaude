@@ -34,6 +34,10 @@ class ConversationOut(BaseModel):
     message_count: int
     total_tokens: int
     pinned: bool = False
+    # Wenn der Chat „mit einem Gem" gestartet wurde: dessen ID. NULL = normaler
+    # Chat. Server speist dann pro Nachricht die Gem-Instructions/-Skills/-Modell
+    # und -Wissensdateien ein.
+    gem_id: str | None = None
 
 
 class ConversationDetail(ConversationOut):
@@ -42,6 +46,9 @@ class ConversationDetail(ConversationOut):
 
 class ConversationCreate(BaseModel):
     title: str | None = None
+    # Optional: Chat „mit einem Gem" starten. Muss ein eigenes oder eingebautes
+    # Gem des Users sein, sonst 404.
+    gem_id: str | None = None
 
 
 class ConversationPatch(BaseModel):
@@ -346,6 +353,10 @@ class ClaudeAuthDto(BaseModel):
     bedrock_sonnet_model: str = ""
     bedrock_haiku_model: str = ""
     bedrock_model_alias: str = "opus"
+    # Globales Standard-Modell für Pro/Max + API-Key-Modus. Voller Modell-String
+    # (z.B. "claude-opus-4-8") oder "" = automatisch (Server-/SDK-Default). Im
+    # Bedrock-Modus ungenutzt (dort greift bedrock_model_alias).
+    default_model: str = ""
     # Booleans for "is this set?" — lets the UI show a green check without
     # ever needing to reveal the value
     api_key_set: bool = False
@@ -366,6 +377,8 @@ class ClaudeAuthUpdateRequest(BaseModel):
     bedrock_sonnet_model: str | None = None
     bedrock_haiku_model: str | None = None
     bedrock_model_alias: str | None = None
+    # "" leert den Wert (→ automatisch); None lässt ihn unverändert.
+    default_model: str | None = None
 
 
 # ─── Usage tracking ──────────────────────────────────────────────────────────
@@ -387,3 +400,47 @@ class UsageStatsDto(BaseModel):
     request_count: int
     # Coarse provider attribution: "anthropic" | "bedrock" | "pro_max" | "mixed"
     provider: str
+
+
+# ─── Gems (Custom Agents — wie ChatGPT-GPTs / Gemini-Gems) ───────────────────
+
+class GemFileDto(BaseModel):
+    """Eine Wissens-/Referenzdatei, die an ein Gem gehängt ist. Speichert intern
+    eine `attachments`-Zeile; bei jeder Nachricht eines Gem-Chats wird die Datei
+    in den Prompt eingespeist (Text inline, Binär via Read-Tool)."""
+    id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+
+
+class GemDto(BaseModel):
+    """Ein Custom Agent. `is_builtin=True` → vom Server ausgeliefert (read-only,
+    z.B. „Meme-Finder"). `model`/`effort`/`skills`=None → globaler bzw.
+    Chat-Default greift."""
+    id: str
+    name: str
+    emoji: str = ""
+    description: str = ""
+    instructions: str = ""
+    conversation_starters: list[str] = Field(default_factory=list)
+    model: str | None = None
+    effort: str | None = None
+    skills: SkillsDto | None = None
+    is_builtin: bool = False
+    files: list[GemFileDto] = Field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class GemUpsertRequest(BaseModel):
+    """Create/Update-Payload. Bei Update werden alle Felder gesetzt (kein Partial)
+    — die App schickt immer den vollen Stand zurück."""
+    name: str
+    emoji: str = ""
+    description: str = ""
+    instructions: str = ""
+    conversation_starters: list[str] = Field(default_factory=list)
+    model: str | None = None
+    effort: str | None = None
+    skills: SkillsDto | None = None

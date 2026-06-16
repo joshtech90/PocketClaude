@@ -1307,3 +1307,49 @@ button { cursor: pointer; }
   box-shadow: 0 10px 44px rgba(0,0,0,0.28);
 }
 .drop-overlay-icon { width: 40px; height: 40px; color: var(--brand-500); }
+
+/* ===================== Gems (Custom Agents) ===================== */
+.gems-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 12px 2px; font-size: 12px; font-weight: 600;
+  color: var(--text-soft, #9aa); text-transform: uppercase; letter-spacing: .04em;
+}
+.gems-nav { margin-bottom: 4px; }
+.gem-item { display: flex; align-items: center; gap: 8px; }
+.gem-item .gem-emoji { font-size: 16px; line-height: 1; }
+.gem-item .chat-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.gem-welcome {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 10px; padding: 32px 16px; max-width: 560px; margin: 0 auto;
+}
+.gem-welcome-emoji { font-size: 48px; line-height: 1; }
+.gem-welcome h3 { margin: 0; font-size: 20px; }
+.gem-welcome p { margin: 0; color: var(--text-soft, #9aa); }
+.gem-starter-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 6px; }
+.gem-starter-chip {
+  padding: 8px 14px; border: 1px solid var(--border, #333); border-radius: 18px;
+  background: var(--bg-elev, #1b1b1b); color: inherit; cursor: pointer; font-size: 13.5px;
+}
+.gem-starter-chip:hover { border-color: var(--accent, #7aa2f7); }
+
+.gems-list { display: flex; flex-direction: column; gap: 2px; }
+.gem-row { display: flex; align-items: center; gap: 6px; padding: 6px 4px; border-bottom: 1px solid var(--border, #2a2a2a); }
+.gem-row-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; cursor: pointer; }
+.gem-row .gem-emoji { font-size: 20px; line-height: 1; }
+.gem-row-text { display: flex; flex-direction: column; min-width: 0; }
+.gem-row-name { font-weight: 600; }
+.gem-badge { font-style: normal; font-size: 11px; color: var(--accent, #7aa2f7); margin-left: 6px; }
+.gem-row-desc { font-size: 12.5px; color: var(--text-soft, #9aa); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#gem-editor-modal .modal-body { display: flex; flex-direction: column; gap: 12px; }
+.gem-starters-edit { display: flex; flex-direction: column; gap: 6px; }
+.gem-starter-row { display: flex; gap: 6px; align-items: center; }
+.gem-starter-row input {
+  flex: 1; padding: 8px 10px; background: var(--bg-elev, #1b1b1b);
+  border: 1px solid var(--border, #333); border-radius: 8px; color: inherit;
+}
+.gem-chk { display: flex; align-items: center; gap: 8px; font-size: 13.5px; margin-top: 4px; }
+.gem-files { display: flex; flex-direction: column; gap: 4px; }
+.gem-file-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.gem-file-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

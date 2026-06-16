@@ -29,6 +29,8 @@ data class ConversationDto(
     @SerialName("has_mid_summary") val hasMidSummary: Boolean = false,
     @SerialName("has_long_summary") val hasLongSummary: Boolean = false,
     val pinned: Boolean = false,
+    /** Wenn der Chat „mit einem Gem" gestartet wurde: dessen ID (für Badge im Drawer). */
+    @SerialName("gem_id") val gemId: String? = null,
 )
 
 @Serializable
@@ -61,6 +63,7 @@ data class ConversationDetailDto(
     @SerialName("has_mid_summary") val hasMidSummary: Boolean = false,
     @SerialName("has_long_summary") val hasLongSummary: Boolean = false,
     val pinned: Boolean = false,
+    @SerialName("gem_id") val gemId: String? = null,
     val messages: List<MessageDto> = emptyList(),
     @SerialName("mid_summary") val midSummary: String? = null,
     @SerialName("long_summary") val longSummary: String? = null,
@@ -92,6 +95,8 @@ data class SendMessageRequest(
 @Serializable
 data class CreateConversationRequest(
     val title: String? = null,
+    /** Optional: Chat „mit einem Gem" starten. */
+    @SerialName("gem_id") val gemId: String? = null,
 )
 
 @Serializable
@@ -348,6 +353,48 @@ data class ConversationSkillsRequest(
     val skills: SkillsDto? = null,
 )
 
+// ---------- Gems (Custom Agents — wie ChatGPT-GPTs / Gemini-Gems) ----------
+
+@Serializable
+data class GemFileDto(
+    val id: String,
+    val filename: String,
+    @SerialName("mime_type") val mimeType: String,
+    @SerialName("size_bytes") val sizeBytes: Long,
+)
+
+/** Ein Custom Agent. `isBuiltin=true` → vom Server ausgeliefert (read-only).
+ *  `model`/`effort`/`skills`=null → globaler bzw. Chat-Default greift. */
+@Serializable
+data class GemDto(
+    val id: String,
+    val name: String,
+    val emoji: String = "",
+    val description: String = "",
+    val instructions: String = "",
+    @SerialName("conversation_starters") val conversationStarters: List<String> = emptyList(),
+    val model: String? = null,
+    val effort: String? = null,
+    val skills: SkillsDto? = null,
+    @SerialName("is_builtin") val isBuiltin: Boolean = false,
+    val files: List<GemFileDto> = emptyList(),
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
+/** Create/Update-Payload (Voll-Update, kein Partial). */
+@Serializable
+data class GemUpsertRequest(
+    val name: String,
+    val emoji: String = "",
+    val description: String = "",
+    val instructions: String = "",
+    @SerialName("conversation_starters") val conversationStarters: List<String> = emptyList(),
+    val model: String? = null,
+    val effort: String? = null,
+    val skills: SkillsDto? = null,
+)
+
 @Serializable
 data class SearchHitDto(
     @SerialName("conversation_id") val conversationId: String,
@@ -550,6 +597,8 @@ data class ClaudeAuthDto(
     @SerialName("bedrock_sonnet_model") val bedrockSonnetModel: String = "",
     @SerialName("bedrock_haiku_model") val bedrockHaikuModel: String = "",
     @SerialName("bedrock_model_alias") val bedrockModelAlias: String = "opus",
+    /** Globales Standard-Modell (Pro/Max + API). "" = automatisch. */
+    @SerialName("default_model") val defaultModel: String = "",
     @SerialName("api_key_set") val apiKeySet: Boolean = false,
     @SerialName("aws_access_key_set") val awsAccessKeySet: Boolean = false,
     @SerialName("aws_secret_set") val awsSecretSet: Boolean = false,
@@ -567,6 +616,8 @@ data class ClaudeAuthUpdateRequest(
     @SerialName("bedrock_sonnet_model") val bedrockSonnetModel: String? = null,
     @SerialName("bedrock_haiku_model") val bedrockHaikuModel: String? = null,
     @SerialName("bedrock_model_alias") val bedrockModelAlias: String? = null,
+    /** "" leert (→ automatisch); null lässt unverändert. */
+    @SerialName("default_model") val defaultModel: String? = null,
 )
 
 @Serializable
