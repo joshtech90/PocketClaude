@@ -83,6 +83,20 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+# --- Query-String-Secret-Redaction -------------------------------------------
+# token=/password=/api_key= in Query-Strings dürfen NICHT im Klartext in Access-/
+# App-Logs landen. Der Filter (inkl. Wiring an Root- + uvicorn-Logger) lebt in
+# einem eigenen, leichtgewichtigen Modul, damit er ohne den vollen Server-Import
+# getestet werden kann.
+from pocket_claude.log_redaction import (  # noqa: E402
+    _RedactQuerySecretsFilter,
+    _scrub_secret,
+    install_query_secret_redaction,
+)
+
+install_query_secret_redaction()
+# -----------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
@@ -140,11 +154,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Für lokale Entwicklung (App spricht später eh via Tunnel — CORS ist da egal,
-# aber für browser-basierte Tests praktisch).
+# CORS ist konfigurierbar (CORS_ORIGINS in der .env, komma-separiert). Default
+# bleibt "*" — die App spricht eh via Tunnel, und browser-basierte Tests sind so
+# bequemer. Wer es enger will, setzt CORS_ORIGINS auf die App-/Web-UI-Origin(s).
+_cors_origins = settings.cors_origin_list
+if _cors_origins == ["*"]:
+    log.warning(
+        "CORS: allow_origins=['*'] — jede Website darf diese API aufrufen. "
+        "Für ein engeres Setup CORS_ORIGINS in der .env auf die App-/Web-UI-Origin setzen."
+    )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

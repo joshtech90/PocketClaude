@@ -3,8 +3,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Token-Werte aus den Beispiel-/Doku-Dateien, die NIE als echtes Secret
+# durchgehen dürfen — sonst läuft der Server mit einem öffentlich bekannten
+# Token im Netz. Startup wird hart abgelehnt, wenn einer davon gesetzt ist.
+_PLACEHOLDER_TOKENS = {
+    "change-me-to-a-long-random-string",
+    "change-me",
+    "changeme",
+    "your-token-here",
+    "secret",
+    "token",
+}
 
 
 class Settings(BaseSettings):
@@ -25,9 +37,18 @@ class Settings(BaseSettings):
     claude_model: str | None = None
 
     # Server
-    server_host: str = "0.0.0.0"
+    # Default = loopback. Der Tailscale-Funnel proxyt eh auf localhost:PORT,
+    # also reicht 127.0.0.1. Nur wenn der Server bewusst direkt im LAN/VPN
+    # erreichbar sein soll, in der .env SERVER_HOST=0.0.0.0 setzen.
+    server_host: str = "127.0.0.1"
     server_port: int = 8787
     dev_reload: bool = False
+
+    # CORS: Komma-separierte Liste erlaubter Origins. "*" = alle erlauben
+    # (bequem für lokale/Tunnel-Nutzung, heißt aber: jede Website darf die API
+    # aufrufen). Für ein engeres Setup CORS_ORIGINS in der .env auf die
+    # App-/Web-UI-Origin(s) setzen, z.B. "https://pocket.example.de".
+    cors_origins: str = "*"
 
     # Storage
     data_dir: Path = Path("./data")
@@ -47,6 +68,24 @@ class Settings(BaseSettings):
     # host as the `pocket-claude` system user. Operators who explicitly want
     # Bash set ALLOW_BASH=1 in .env.
     allow_bash: bool = False
+
+    @field_validator("server_token")
+    @classmethod
+    def _reject_placeholder_token(cls, v: str) -> str:
+        s = (v or "").strip()
+        if s.lower() in _PLACEHOLDER_TOKENS:
+            raise ValueError(
+                "SERVER_TOKEN ist noch der Beispiel-Platzhalter. Generiere ein "
+                "echtes Token: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        return v
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        raw = (self.cors_origins or "").strip()
+        if raw in ("", "*"):
+            return ["*"]
+        return [o.strip() for o in raw.split(",") if o.strip()]
 
     @property
     def db_path(self) -> Path:
