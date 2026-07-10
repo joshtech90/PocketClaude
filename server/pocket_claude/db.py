@@ -56,6 +56,10 @@ CREATE TABLE IF NOT EXISTS conversations (
     total_tokens        INTEGER NOT NULL DEFAULT 0,
     claude_session_id   TEXT,
     pinned              INTEGER NOT NULL DEFAULT 0,
+    -- Pro-Chat-Sperre (UI-Riegel): 1 = Chat ist gesperrt, App/Web-UI verlangen
+    -- vor Anzeige den globalen PIN (bzw. Fingerabdruck in der App). Der PIN-Hash
+    -- selbst liegt user-global im kv_settings (Key `chat_lock_pin_hash`).
+    locked              INTEGER NOT NULL DEFAULT 0,
     user_id             TEXT
 );
 -- Indexe auf migrationsabhängige Spalten (user_id) werden in _ensure_indexes()
@@ -180,6 +184,9 @@ async def _ensure_columns(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE conversations ADD COLUMN claude_session_id TEXT")
     if "pinned" not in conv_cols:
         await db.execute("ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+    # Pro-Chat-Sperre (UI-Riegel) — s. SCHEMA-Kommentar oben.
+    if "locked" not in conv_cols:
+        await db.execute("ALTER TABLE conversations ADD COLUMN locked INTEGER NOT NULL DEFAULT 0")
     if "user_id" not in conv_cols:
         await db.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT")
     # Skills-Override pro Konversation: JSON-encoded SkillsDto oder NULL
@@ -418,7 +425,7 @@ async def list_conversations(user_id: str | None = None) -> list[dict]:
             f"""
             SELECT
                 c.id, c.title, c.created_at, c.last_message_at, c.total_tokens,
-                c.claude_session_id, c.pinned, c.user_id, c.gem_id,
+                c.claude_session_id, c.pinned, c.locked, c.user_id, c.gem_id,
                 (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS msg_count
             FROM conversations c
             {where}
@@ -434,6 +441,18 @@ async def set_pinned(cid: str, pinned: bool, user_id: str | None = None) -> None
     """Wenn user_id gegeben, wird nur geupdated wenn der Chat dem User gehört."""
     sql = "UPDATE conversations SET pinned = ? WHERE id = ?"
     params: tuple = (1 if pinned else 0, cid)
+    if user_id is not None:
+        sql += " AND user_id = ?"
+        params = params + (user_id,)
+    async with get_db() as db:
+        await db.execute(sql, params)
+        await db.commit()
+
+
+async def set_locked(cid: str, locked: bool, user_id: str | None = None) -> None:
+    """Setzt/löscht die Pro-Chat-Sperre. Wenn user_id gegeben, nur wenn Owner."""
+    sql = "UPDATE conversations SET locked = ? WHERE id = ?"
+    params: tuple = (1 if locked else 0, cid)
     if user_id is not None:
         sql += " AND user_id = ?"
         params = params + (user_id,)
@@ -498,6 +517,18 @@ async def clear_user_session_ids(user_id: str) -> int:
         cur = await db.execute(
             "UPDATE conversations SET claude_session_id = NULL "
             "WHERE user_id = ? AND claude_session_id IS NOT NULL",
+            (user_id,),
+        )
+        await db.commit()
+        return cur.rowcount or 0
+
+
+async def clear_user_locks(user_id: str) -> int:
+    """Entfernt das locked-Flag von allen Chats des Users (beim PIN-Entfernen).
+    Returnt die Anzahl betroffener Zeilen."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "UPDATE conversations SET locked = 0 WHERE user_id = ? AND locked = 1",
             (user_id,),
         )
         await db.commit()
@@ -914,7 +945,14 @@ async def search_messages(query: str, limit: int = 30,
     extra_where = ""
     params: tuple = (fts_q,)
     if user_id is not None:
-        extra_where = "AND fts.conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)"
+        # Gesperrte Chats (locked=1) aus der Volltextsuche ausschließen — sonst
+        # würde ein Snippet den Klartext eines gesperrten Chats zeigen, ohne dass
+        # der PIN-/Fingerabdruck-Riegel je greift. Erst nach Entsperren (locked=0)
+        # taucht der Chat wieder in Treffern auf.
+        extra_where = (
+            "AND fts.conversation_id IN "
+            "(SELECT id FROM conversations WHERE user_id = ? AND locked = 0)"
+        )
         params = (fts_q, user_id)
     params = params + (limit,)
     async with get_db() as db:

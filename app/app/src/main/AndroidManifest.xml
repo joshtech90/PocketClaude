@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Voice-Input via Groq Whisper: Mikrofon-Aufnahme im InputBar + Auto-Modus. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Fingerabdruck/Gesicht zum Entsperren gesperrter Chats. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
         android:name=".PocketClaudeApp"
@@ -29,6 +31,7 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.PocketClaude"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

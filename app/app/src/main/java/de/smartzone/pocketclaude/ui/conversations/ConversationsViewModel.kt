@@ -114,6 +114,26 @@ class ConversationsViewModel(
         refresh()
     }
 
+    /** Sperrt einen Chat. Wenn der Server 400 meldet (noch kein globaler PIN
+     *  gesetzt), wird `onNeedPin` aufgerufen, damit die UI zu den Einstellungen
+     *  leiten kann. */
+    fun lock(id: String, onNeedPin: () -> Unit) = viewModelScope.launch {
+        val result = runCatching { chatRepo.setLocked(id, true) }
+        result.onSuccess { refresh() }
+        result.onFailure { e ->
+            val code = (e as? de.smartzone.pocketclaude.data.ApiException)?.code
+            if (code == 400) onNeedPin() else refresh()
+        }
+    }
+
+    /** Entfernt die Sperre (nachdem die UI den PIN verifiziert hat). */
+    fun unlock(id: String) = viewModelScope.launch {
+        runCatching { chatRepo.setLocked(id, false) }
+        refresh()
+    }
+
+    suspend fun verifyChatLockPin(pin: String) = chatRepo.verifyChatLockPin(pin)
+
     fun setSearchQuery(q: String) {
         _search.update { it.copy(query = q, error = null) }
         searchJob?.cancel()

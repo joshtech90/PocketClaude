@@ -823,4 +823,39 @@
     <string name="gem_add_file">Datei hinzufügen</string>
     <string name="gem_builtin_readonly">Eingebautes Gem — schreibgeschützt.</string>
     <string name="gem_duplicate">Duplizieren</string>
+
+    <!-- Chat-Sperre (PIN + Fingerabdruck pro Chat) -->
+    <string name="conversation_lock">Sperren</string>
+    <string name="conversation_unlock">Entsperren</string>
+    <string name="convo_locked">Gesperrt</string>
+    <string name="chat_lock_locked_heading">Gesperrter Chat</string>
+    <string name="chat_lock_enter_pin">PIN eingeben</string>
+    <string name="chat_lock_use_fingerprint">Fingerabdruck verwenden</string>
+    <string name="chat_lock_unlock_chat">Chat entsperren</string>
+    <string name="chat_lock_use_pin">PIN verwenden</string>
+    <string name="chat_lock_wrong_pin">Falscher PIN</string>
+    <string name="chat_lock_locked_out">Zu viele Versuche. In %1$d s erneut versuchen</string>
+    <string name="chat_lock_need_pin_first">Lege zuerst in den Einstellungen einen Chat-Sperr-PIN fest.</string>
+    <string name="chat_lock_remove_from_chat_title">Diesen Chat entsperren?</string>
+    <string name="chat_lock_remove_from_chat_msg">Gib deinen PIN ein, um die Sperre von diesem Chat zu entfernen.</string>
+    <!-- Einstellungen-Sektion -->
+    <string name="settings_section_chat_lock">Chat-Sperre</string>
+    <string name="settings_subtitle_chat_lock">PIN + Fingerabdruck für einzelne Chats</string>
+    <string name="chat_lock_info_title">Chat-Sperre</string>
+    <string name="chat_lock_info_body">Sperre einzelne Chats mit einem 5-stelligen PIN. Auf diesem Handy kannst Du zusätzlich per Fingerabdruck entsperren. Gesperrte Chats verriegeln sich wieder, sobald die App in den Hintergrund geht.\n\nDas ist ein Sichtschutz, keine Verschlüsselung — die Nachrichten liegen weiterhin auf Deinem Server.</string>
+    <string name="chat_lock_set_pin">PIN festlegen</string>
+    <string name="chat_lock_change_pin">PIN ändern</string>
+    <string name="chat_lock_remove_pin">PIN entfernen</string>
+    <string name="chat_lock_new_pin">Neuer PIN (5 Ziffern)</string>
+    <string name="chat_lock_confirm_pin">PIN bestätigen</string>
+    <string name="chat_lock_current_pin">Aktueller PIN</string>
+    <string name="chat_lock_pins_mismatch">PINs stimmen nicht überein.</string>
+    <string name="chat_lock_pin_must_be_5">PIN muss aus genau 5 Ziffern bestehen.</string>
+    <string name="chat_lock_wrong_current">Aktueller PIN ist falsch.</string>
+    <string name="chat_lock_biometric_toggle">Mit Fingerabdruck entsperren</string>
+    <string name="chat_lock_biometric_toggle_sub">Auf diesem Gerät statt des PINs Fingerabdruck/Gesicht nutzen.</string>
+    <string name="chat_lock_pin_active">PIN ist gesetzt — Du kannst Chats sperren.</string>
+    <string name="chat_lock_no_pin">Noch kein PIN gesetzt.</string>
+    <string name="chat_lock_pin_saved">PIN gespeichert.</string>
+    <string name="chat_lock_pin_removed">PIN entfernt.</string>
 </resources>

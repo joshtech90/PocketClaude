@@ -823,4 +823,39 @@
     <string name="gem_add_file">Add file</string>
     <string name="gem_builtin_readonly">Built-in Gem — read-only.</string>
     <string name="gem_duplicate">Duplicate</string>
+
+    <!-- Chat lock (per-chat PIN + fingerprint) -->
+    <string name="conversation_lock">Lock</string>
+    <string name="conversation_unlock">Unlock</string>
+    <string name="convo_locked">Locked</string>
+    <string name="chat_lock_locked_heading">Locked chat</string>
+    <string name="chat_lock_enter_pin">Enter your PIN</string>
+    <string name="chat_lock_use_fingerprint">Use fingerprint</string>
+    <string name="chat_lock_unlock_chat">Unlock chat</string>
+    <string name="chat_lock_use_pin">Use PIN</string>
+    <string name="chat_lock_wrong_pin">Wrong PIN</string>
+    <string name="chat_lock_locked_out">Too many attempts. Try again in %1$d s</string>
+    <string name="chat_lock_need_pin_first">Set a Chat-lock PIN in Settings first.</string>
+    <string name="chat_lock_remove_from_chat_title">Unlock this chat?</string>
+    <string name="chat_lock_remove_from_chat_msg">Enter your PIN to remove the lock from this chat.</string>
+    <!-- Settings section -->
+    <string name="settings_section_chat_lock">Chat lock</string>
+    <string name="settings_subtitle_chat_lock">PIN + fingerprint for individual chats</string>
+    <string name="chat_lock_info_title">Chat lock</string>
+    <string name="chat_lock_info_body">Lock individual chats behind a 5-digit PIN. On this phone you can also unlock with your fingerprint. Locked chats re-lock when the app goes to the background.\n\nThis is a privacy screen lock, not encryption — the messages still exist on your server.</string>
+    <string name="chat_lock_set_pin">Set PIN</string>
+    <string name="chat_lock_change_pin">Change PIN</string>
+    <string name="chat_lock_remove_pin">Remove PIN</string>
+    <string name="chat_lock_new_pin">New PIN (5 digits)</string>
+    <string name="chat_lock_confirm_pin">Confirm PIN</string>
+    <string name="chat_lock_current_pin">Current PIN</string>
+    <string name="chat_lock_pins_mismatch">PINs don\'t match.</string>
+    <string name="chat_lock_pin_must_be_5">PIN must be exactly 5 digits.</string>
+    <string name="chat_lock_wrong_current">Current PIN is wrong.</string>
+    <string name="chat_lock_biometric_toggle">Unlock with fingerprint</string>
+    <string name="chat_lock_biometric_toggle_sub">Use fingerprint/face instead of the PIN on this device.</string>
+    <string name="chat_lock_pin_active">PIN is set — you can lock chats.</string>
+    <string name="chat_lock_no_pin">No PIN set yet.</string>
+    <string name="chat_lock_pin_saved">PIN saved.</string>
+    <string name="chat_lock_pin_removed">PIN removed.</string>
 </resources>

@@ -121,6 +121,48 @@ class SettingsViewModel(
         _claudeAuthBusy.value = false
     }
 
+    // Chat-Sperre (globaler PIN). null = noch nicht geladen.
+    private val _chatLockIsSet = MutableStateFlow<Boolean?>(null)
+    val chatLockIsSet: StateFlow<Boolean?> = _chatLockIsSet.asStateFlow()
+    private val _chatLockBusy = MutableStateFlow(false)
+    val chatLockBusy: StateFlow<Boolean> = _chatLockBusy.asStateFlow()
+
+    fun refreshChatLock() = viewModelScope.launch {
+        if (!settings.value.isConfigured) return@launch
+        runCatching { chatRepo.getChatLock() }
+            .onSuccess { _chatLockIsSet.value = it.isSet }
+    }
+
+    /** Setzt/ändert den PIN. `currentPin` nur nötig wenn schon einer existiert.
+     *  onResult(null) = ok, sonst Fehlermeldung (z.B. „aktueller PIN falsch"). */
+    fun setChatLockPin(newPin: String, currentPin: String?, onResult: (String?) -> Unit) =
+        viewModelScope.launch {
+            _chatLockBusy.value = true
+            val res = runCatching { chatRepo.setChatLockPin(newPin, currentPin) }
+            _chatLockBusy.value = false
+            res.onSuccess { _chatLockIsSet.value = it.isSet; onResult(null) }
+            res.onFailure { e ->
+                val code = (e as? de.smartzone.pocketclaude.data.ApiException)?.code
+                onResult(if (code == 401) "wrong" else (e.message ?: "error"))
+            }
+        }
+
+    fun removeChatLockPin(currentPin: String, onResult: (String?) -> Unit) =
+        viewModelScope.launch {
+            _chatLockBusy.value = true
+            val res = runCatching { chatRepo.clearChatLockPin(currentPin) }
+            _chatLockBusy.value = false
+            res.onSuccess { _chatLockIsSet.value = it.isSet; onResult(null) }
+            res.onFailure { e ->
+                val code = (e as? de.smartzone.pocketclaude.data.ApiException)?.code
+                onResult(if (code == 401) "wrong" else (e.message ?: "error"))
+            }
+        }
+
+    fun setChatLockBiometric(enabled: Boolean) = viewModelScope.launch {
+        settingsRepo.setChatLockBiometricEnabled(enabled)
+    }
+
     // Usage stats
     private val _usage = MutableStateFlow<UsageStatsDto?>(null)
     val usage: StateFlow<UsageStatsDto?> = _usage.asStateFlow()
@@ -159,6 +201,7 @@ class SettingsViewModel(
             refreshClaudeAuth()
             refreshUsage()
             refreshGems()
+            refreshChatLock()
         }
     }
 

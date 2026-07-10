@@ -276,6 +276,41 @@ button { cursor: pointer; }
 .chat-item .pin-mark {
   color: var(--accent); font-size: 11px;
 }
+.chat-item .lock-mark {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center;
+  color: var(--text-soft);
+}
+.chat-item .lock-mark svg { width: 13px; height: 13px; }
+/* Lock gate — replaces the message list for locked, not-yet-unlocked chats */
+.lock-gate {
+  margin: 16vh auto;
+  max-width: 340px;
+  text-align: center;
+  color: var(--text-muted);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.lock-gate .lock-gate-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 16px;
+}
+.lock-gate .lock-gate-icon svg { width: 26px; height: 26px; }
+.lock-gate h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--text); }
+.lock-gate p { margin: 0; font-size: 14px; }
+.lock-gate input {
+  width: 160px; text-align: center;
+  padding: 10px 12px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); outline: none;
+  font-family: SF Mono, Menlo, monospace; font-size: 20px; letter-spacing: 8px;
+}
+.lock-gate input:focus { border-color: var(--accent); }
+.lock-gate .lock-gate-error { color: var(--danger); font-size: 13px; min-height: 18px; }
+/* Composer deaktiviert, solange ein gesperrter Chat das Gate zeigt. */
+.composer.composer-locked { opacity: .5; pointer-events: none; }
 /* Hover-only "…" trigger for the per-chat rename/pin/delete menu */
 .chat-item .chat-row-more {
   flex: 0 0 auto;

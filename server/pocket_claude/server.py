@@ -43,6 +43,11 @@ from pocket_claude.models import (
     AttachmentOut,
     AttachmentRef,
     BillingStatusDto,
+    ChatLockClearRequest,
+    ChatLockSetRequest,
+    ChatLockStatusDto,
+    ChatLockVerifyRequest,
+    ChatLockVerifyResponse,
     ClaudeAuthDto,
     ClaudeAuthUpdateRequest,
     ConversationCreate,
@@ -185,6 +190,7 @@ def _row_to_conv_out(row: dict) -> ConversationOut:
         message_count=row["msg_count"],
         total_tokens=row["total_tokens"],
         pinned=bool(row.get("pinned", 0)),
+        locked=bool(row.get("locked", 0)),
         gem_id=row.get("gem_id"),
     )
 
@@ -278,6 +284,7 @@ async def get_conversation(cid: str = PathParam(...), user=Depends(require_user)
         message_count=len(messages),
         total_tokens=conv["total_tokens"],
         pinned=bool(conv.get("pinned", 0)),
+        locked=bool(conv.get("locked", 0)),
         gem_id=conv.get("gem_id"),
         messages=messages,
     )
@@ -292,6 +299,18 @@ async def patch_conversation(cid: str, body: ConversationPatch, user=Depends(req
         await db.update_conversation_title(cid, body.title, user_id=user["id"])
     if body.pinned is not None:
         await db.set_pinned(cid, body.pinned, user_id=user["id"])
+    if body.locked is not None:
+        # Sperren nur erlauben, wenn ein globaler PIN gesetzt ist — sonst hätte
+        # der User einen gesperrten Chat, den er nicht mehr aufbekommt.
+        if body.locked:
+            kv = await db.kv_get_all(scope=user["id"])
+            if not kv.get(KV_CHAT_LOCK_PIN_HASH):
+                raise HTTPException(
+                    400,
+                    "Kein Chat-Sperr-PIN gesetzt. Lege zuerst in den Einstellungen "
+                    "einen PIN fest.",
+                )
+        await db.set_locked(cid, body.locked, user_id=user["id"])
     rows = await db.list_conversations(user_id=user["id"])
     for r in rows:
         if r["id"] == cid:
@@ -315,6 +334,7 @@ async def patch_conversation(cid: str, body: ConversationPatch, user=Depends(req
         message_count=0,
         total_tokens=updated["total_tokens"],
         pinned=bool(updated.get("pinned", 0)),
+        locked=bool(updated.get("locked", 0)),
         gem_id=updated.get("gem_id"),
     )
 
@@ -360,7 +380,12 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
         attachment_ids=body.attachment_ids,
     )
 
-    new_title = await db.auto_rename_if_needed(cid, body.content, user_id=user["id"])
+    # Kurzer Auto-Titel (1-2 Wörter) wird — falls das die erste Nachricht des
+    # Chats ist — im Hintergrund per günstigem Haiku erzeugt (siehe event_gen).
+    # Bewusst NICHT hier blockierend, damit die eigentliche Antwort ohne
+    # Verzögerung streamt; der Titel läuft parallel und wird kurz vor `done`
+    # ausgeliefert.
+    needs_title = (conv.get("title") == "Neuer Chat")
 
     effort = (body.effort or "high").lower().strip()
 
@@ -422,11 +447,19 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
         delta_count = 0
         last_event = None
         assistant_msg_id: int | None = None
+        title_sent = False
+        # Titel-Task läuft PARALLEL zum Antwort-Stream (überlappt die Wartezeit,
+        # kostet also praktisch keine Extra-Latenz) und wird kurz vor `done`
+        # eingesammelt + als `title`-Event geschickt.
+        title_task = (
+            asyncio.create_task(
+                claude_engine.generate_conversation_title(
+                    cid, body.content, user_id=user["id"],
+                )
+            ) if needs_title else None
+        )
         log.info("PC_SSE: event_gen START cid=%s user=%s", cid, user["id"])
         try:
-            if new_title:
-                yield {"event": "title", "data": json.dumps({"title": new_title})}
-                log.info("PC_SSE: yield title cid=%s", cid)
             yield {"event": "user_saved", "data": json.dumps({"user_message_id": user_msg_id})}
             log.info("PC_SSE: yield user_saved cid=%s user_msg_id=%s", cid, user_msg_id)
 
@@ -449,8 +482,37 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
                 else:
                     log.info("PC_SSE: yield event=%s cid=%s payload_keys=%s",
                              etype, cid, list(ev.keys()))
+                # Auto-Titel ausliefern, SOBALD der Hintergrund-Task fertig ist
+                # (Haiku ist schnell, meist nach 1-2s → i.d.R. noch während die
+                # Antwort streamt, damit die Seitenleiste früh den echten Namen zeigt).
+                if title_task is not None and not title_sent and title_task.done():
+                    auto_title = None
+                    if not title_task.cancelled():
+                        try:
+                            auto_title = title_task.result()
+                        except Exception:  # noqa: BLE001
+                            auto_title = None
+                    if auto_title:
+                        yield {"event": "title", "data": json.dumps({"title": auto_title})}
+                        log.info("PC_SSE: yield title (early) cid=%s title=%r", cid, auto_title)
+                    title_sent = True
                 if etype == "done":
                     assistant_msg_id = ev.get("assistant_message_id") or ev.get("message_id")
+                    # Falls der Titel bis hierher noch nicht raus ist: jetzt noch
+                    # VOR dem done-Event einsammeln (danach schließt der Client).
+                    if title_task is not None and not title_sent:
+                        auto_title = None
+                        try:
+                            auto_title = await asyncio.wait_for(
+                                asyncio.shield(title_task), timeout=8.0,
+                            )
+                        except Exception as _te:  # noqa: BLE001
+                            log.info("PC_SSE: Titel nicht rechtzeitig (%s)", _te)
+                        if auto_title:
+                            yield {"event": "title",
+                                   "data": json.dumps({"title": auto_title})}
+                            log.info("PC_SSE: yield title cid=%s title=%r", cid, auto_title)
+                        title_sent = True
                 yield {"event": etype, "data": json.dumps(ev)}
 
             log.info(
@@ -472,6 +534,14 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
                 pass
             raise
         finally:
+            # Wenn der Stream vor `done` abbrach, läuft der Titel-Task evtl. noch.
+            # Weiterlaufen lassen (er setzt den Titel in der DB), aber eine evtl.
+            # Exception konsumieren, damit asyncio keine „never retrieved"-Warnung
+            # loggt.
+            if title_task is not None and not title_task.done():
+                title_task.add_done_callback(
+                    lambda t: t.cancelled() or t.exception()
+                )
             log.info(
                 "PC_SSE: event_gen END cid=%s deltas=%d last=%s assistant_msg_id=%s",
                 cid, delta_count, last_event, assistant_msg_id,
@@ -2214,7 +2284,10 @@ async def images_generate(body: dict, user=Depends(require_user)):
             attachment_ids=[a["id"] for a in out_atts],
             tokens=0,
         )
-        await db.auto_rename_if_needed(cid, prompt, user_id=user["id"])
+        # Gleicher kurzer Auto-Titel wie im Chat-Flow (1-2 Wörter statt der
+        # verbatim ersten Zeile). Non-streaming → Client zieht den Titel beim
+        # nächsten Laden der Liste.
+        await claude_engine.generate_conversation_title(cid, prompt, user_id=user["id"])
         saved_message = {"id": msg_id, "conversation_id": cid}
 
     return {
@@ -2642,6 +2715,121 @@ async def update_claude_auth(body: ClaudeAuthUpdateRequest, user=Depends(require
         await db.clear_user_session_ids(user["id"])
 
     return await get_claude_auth(user=user)
+
+
+# ---------- Chat-Sperre (globaler PIN, per-Chat-Riegel) ----------
+
+# KV-Key für den scrypt-Hash des globalen 5-stelligen Chat-Sperr-PINs. Liegt
+# user-scoped im kv_settings — wird damit automatisch vom Settings-Backup
+# (extra_kv-Catch-all) mitgesichert und synchronisiert zwischen App & Web-UI.
+KV_CHAT_LOCK_PIN_HASH = "chat_lock_pin_hash"
+
+# In-Memory-Bremse gegen PIN-Brute-Force. Ein 5-stelliger PIN hat nur 100k
+# Kombinationen — ohne Bremse in Sekunden durchprobiert. Wir zählen Fehlversuche
+# pro User und sperren nach _LOCK_MAX_TRIES für _LOCK_COOLDOWN_S. Reicht für den
+# Threat („jemand mit fremdem Gerät rät den PIN"); der Zähler ist bewusst nur
+# im RAM (Reset bei Server-Neustart ist akzeptabel).
+_LOCK_MAX_TRIES = 5
+_LOCK_COOLDOWN_S = 60
+# user_id -> (fail_count, locked_until_monotonic)
+_chat_lock_fails: dict[str, tuple[int, float]] = {}
+
+
+def _chat_lock_retry_after(user_id: str) -> int:
+    """Sekunden bis zum nächsten erlaubten Versuch, 0 wenn frei."""
+    entry = _chat_lock_fails.get(user_id)
+    if not entry:
+        return 0
+    _count, until = entry
+    remaining = until - _time.monotonic()
+    return int(remaining) + 1 if remaining > 0 else 0
+
+
+def _chat_lock_register_fail(user_id: str) -> None:
+    count, prev_until = _chat_lock_fails.get(user_id, (0, 0.0))
+    now = _time.monotonic()
+    # Ist ein früherer Lockout abgelaufen, fangen wir frisch an zu zählen —
+    # sonst würde nach dem ersten 60-s-Lockout JEDER weitere Fehlversuch sofort
+    # wieder 60 s sperren (statt erneut 5 Versuche zu erlauben).
+    if prev_until and now >= prev_until:
+        count = 0
+    count += 1
+    until = now + _LOCK_COOLDOWN_S if count >= _LOCK_MAX_TRIES else 0.0
+    _chat_lock_fails[user_id] = (count, until)
+
+
+def _chat_lock_reset(user_id: str) -> None:
+    _chat_lock_fails.pop(user_id, None)
+
+
+def _validate_pin(pin: str) -> str:
+    """Normalisiert + validiert einen PIN: exakt 5 Ziffern. Wirft 400 sonst."""
+    pin = (pin or "").strip()
+    if len(pin) != 5 or not pin.isdigit():
+        raise HTTPException(400, "PIN muss aus genau 5 Ziffern bestehen.")
+    return pin
+
+
+@app.get("/me/chat-lock", response_model=ChatLockStatusDto)
+async def get_chat_lock(user=Depends(require_user)) -> ChatLockStatusDto:
+    """Ist ein globaler Chat-Sperr-PIN gesetzt? (Hash wird nie ausgeliefert.)"""
+    kv = await db.kv_get_all(scope=user["id"])
+    return ChatLockStatusDto(is_set=bool(kv.get(KV_CHAT_LOCK_PIN_HASH)))
+
+
+@app.put("/me/chat-lock", response_model=ChatLockStatusDto)
+async def set_chat_lock(body: ChatLockSetRequest, user=Depends(require_user)) -> ChatLockStatusDto:
+    """PIN setzen oder ändern. Wenn schon einer existiert, muss `current_pin`
+    stimmen. Speichert nur den scrypt-Hash."""
+    new_pin = _validate_pin(body.pin)
+    kv = await db.kv_get_all(scope=user["id"])
+    existing = kv.get(KV_CHAT_LOCK_PIN_HASH)
+    if existing:
+        # Ändern erfordert den aktuellen PIN.
+        if not db.verify_password(body.current_pin or "", existing):
+            raise HTTPException(401, "Aktueller PIN falsch.")
+    await db.kv_set_many(
+        {KV_CHAT_LOCK_PIN_HASH: db.hash_password(new_pin)}, scope=user["id"],
+    )
+    _chat_lock_reset(user["id"])
+    return ChatLockStatusDto(is_set=True)
+
+
+@app.post("/me/chat-lock/clear", response_model=ChatLockStatusDto)
+async def clear_chat_lock(body: ChatLockClearRequest, user=Depends(require_user)) -> ChatLockStatusDto:
+    """PIN entfernen (erfordert aktuellen PIN). Entsperrt implizit alle Chats,
+    damit kein Chat mit gesetztem `locked`-Flag ohne PIN unerreichbar bleibt."""
+    kv = await db.kv_get_all(scope=user["id"])
+    existing = kv.get(KV_CHAT_LOCK_PIN_HASH)
+    if existing and not db.verify_password(body.current_pin or "", existing):
+        raise HTTPException(401, "Aktueller PIN falsch.")
+    # Hash löschen (leerer String = clear, wie bei den anderen KV-Secrets).
+    await db.kv_set_many({KV_CHAT_LOCK_PIN_HASH: ""}, scope=user["id"])
+    # Alle locked-Flags des Users räumen — sonst wären Chats markiert-gesperrt
+    # ohne dass ein PIN existiert (die Clients ignorieren das zwar, aber sauber
+    # ist sauber).
+    await db.clear_user_locks(user["id"])
+    _chat_lock_reset(user["id"])
+    return ChatLockStatusDto(is_set=False)
+
+
+@app.post("/me/chat-lock/verify", response_model=ChatLockVerifyResponse)
+async def verify_chat_lock(body: ChatLockVerifyRequest, user=Depends(require_user)) -> ChatLockVerifyResponse:
+    """Prüft einen PIN gegen den gespeicherten Hash. Mit Brute-Force-Bremse."""
+    retry_after = _chat_lock_retry_after(user["id"])
+    if retry_after > 0:
+        return ChatLockVerifyResponse(ok=False, retry_after_seconds=retry_after)
+    kv = await db.kv_get_all(scope=user["id"])
+    existing = kv.get(KV_CHAT_LOCK_PIN_HASH)
+    # Kein PIN gesetzt → nichts zu entsperren; als „ok" behandeln, damit ein
+    # verwaistes locked-Flag den Client nicht dauerhaft aussperrt.
+    if not existing:
+        return ChatLockVerifyResponse(ok=True)
+    if db.verify_password((body.pin or "").strip(), existing):
+        _chat_lock_reset(user["id"])
+        return ChatLockVerifyResponse(ok=True)
+    _chat_lock_register_fail(user["id"])
+    return ChatLockVerifyResponse(ok=False, retry_after_seconds=_chat_lock_retry_after(user["id"]))
 
 
 # ---------- Gems (Custom Agents) ----------

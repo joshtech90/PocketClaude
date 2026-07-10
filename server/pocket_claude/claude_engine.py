@@ -238,6 +238,7 @@ async def oneshot_text(
     user_id: str | None = None,
     timeout_sec: float = 30.0,
     allowed_tools: list[str] | None = None,
+    model: str | None = None,
 ) -> str:
     """Schickt EINEN Prompt an Claude, sammelt den vollen Antwort-Text und gibt
     ihn zurück. Keine Session, keine Tools (per default), kein Streaming-State.
@@ -258,7 +259,9 @@ async def oneshot_text(
         if provider_env:
             engine_env.update(provider_env)
 
-    effective_model = model_override or (settings.claude_model or None)
+    # Expliziter `model`-Override (z.B. günstiges Haiku für den Titel) gewinnt
+    # vor dem User-Default und dem Server-Default.
+    effective_model = model or model_override or (settings.claude_model or None)
     sandbox_cwd = settings.data_dir / "claude-sandbox"
     sandbox_cwd.mkdir(parents=True, exist_ok=True)
 
@@ -304,6 +307,112 @@ async def oneshot_text(
     if not out:
         raise RuntimeError("Claude lieferte einen leeren Text-Output.")
     return out
+
+
+# ---------- Auto-Titel (kurz, tokenarm) ----------
+
+# Systemprompt fürs Betiteln. Bewusst mit Beispielen, damit ein günstiges Haiku
+# das 1-2-Wort-Format zuverlässig trifft.
+_TITLE_SYSTEM_PROMPT = (
+    "You turn a chat's first user message into an ultra-short title.\n"
+    "Rules:\n"
+    "- 1 to 2 words, never more.\n"
+    "- Name the core topic only. No verbs, no filler, no punctuation, no quotes.\n"
+    "- Same language as the message.\n"
+    "Examples:\n"
+    "'Wie backe ich einen Himbeerkuchen?' -> Himbeerkuchen\n"
+    "'Hallo, das hier ist eine Testunterhaltung' -> Testunterhaltung\n"
+    "'Can you help me debug this Python asyncio deadlock?' -> Python Asyncio\n"
+    "'Schreib mir eine Mail an meinen Vermieter wegen der Heizung' -> Heizung Mail\n"
+    "Reply with ONLY the title, nothing else."
+)
+
+
+async def _cheap_title_model(user_id: str | None) -> str | None:
+    """Günstiges Modell fürs Betiteln. Pro/Max + API-Key → Haiku-Alias (die CLI
+    löst ihn auf). Bedrock → konfiguriertes Bedrock-Haiku (sonst Default-Modell,
+    weil ein blanker Haiku-Alias auf Bedrock ungültig wäre)."""
+    if user_id is None:
+        return "haiku"
+    try:
+        mode = await auth_modes.get_mode(user_id)
+    except Exception:  # noqa: BLE001
+        return "haiku"
+    if mode == auth_modes.MODE_BEDROCK:
+        kv = await db.kv_get_all(scope=user_id)
+        return kv.get(auth_modes.KV_BEDROCK_HAIKU) or auth_modes.DEFAULT_BEDROCK_HAIKU
+    return "haiku"
+
+
+def _sanitize_title(raw: str) -> str:
+    """Modell-Output in einen sauberen Kurztitel überführen: erste Zeile, ohne
+    Anführungszeichen/Doppelpunkte, auf max. 3 Wörter / 40 Zeichen begrenzt."""
+    t = (raw or "").strip().splitlines()[0] if raw and raw.strip() else ""
+    t = t.strip().strip('"\'`').strip()
+    # Ein evtl. mitgeliefertes „Titel:"/„Title:" abschneiden.
+    if ":" in t and len(t.split(":", 1)[0]) <= 10:
+        t = t.split(":", 1)[1].strip()
+    # Nachlaufende Satzzeichen weg.
+    t = t.rstrip(".!?,;:").strip()
+    # Sicherheitsnetz gegen ein ganzes Satz-Output: harte Wort-/Längen-Grenze.
+    words = t.split()
+    if len(words) > 3:
+        words = words[:3]
+    t = " ".join(words)
+    if len(t) > 40:
+        t = t[:40].rstrip()
+    return t
+
+
+def _fallback_title(first_user_message: str) -> str:
+    """Fallback wenn die LLM-Betitelung scheitert: erste Zeile gekürzt (das alte
+    Verhalten), damit ein Chat NIE ohne Titel bleibt."""
+    t = first_user_message.strip().split("\n")[0].strip()
+    if len(t) > 60:
+        t = t[:57] + "…"
+    return t
+
+
+async def generate_conversation_title(
+    cid: str, first_user_message: str, user_id: str | None = None,
+) -> str | None:
+    """Erzeugt EINEN kurzen Titel (1-2 Wörter) aus der ersten User-Nachricht und
+    speichert ihn — aber nur, wenn der Chat noch den Default-Titel „Neuer Chat"
+    trägt. Günstiges Haiku, gedeckelter Input. Bei Fehlern greift der
+    Erste-Zeile-Fallback. Returnt den gesetzten Titel oder None (kein Rename)."""
+    conv = await db.get_conversation(cid, user_id=user_id)
+    if not conv or conv["title"] != "Neuer Chat":
+        return None
+    snippet = (first_user_message or "").strip()
+    if not snippet:
+        return None
+    # Token-Deckel: fürs Thema reicht der Anfang der Nachricht.
+    snippet = snippet[:600]
+
+    title = ""
+    try:
+        model = await _cheap_title_model(user_id)
+        raw = await oneshot_text(
+            system_prompt=_TITLE_SYSTEM_PROMPT,
+            user_message=snippet,
+            user_id=user_id,
+            timeout_sec=15.0,
+            model=model,
+        )
+        title = _sanitize_title(raw)
+    except Exception as exc:  # noqa: BLE001 — nie den Chat-Flow blockieren
+        log.info("PC_TITLE: LLM-Titel fehlgeschlagen (%s) → Fallback", exc)
+
+    if not title:
+        title = _fallback_title(first_user_message)
+    if not title:
+        return None
+
+    # Race-Schutz: nur setzen, wenn der Chat inzwischen nicht schon umbenannt
+    # wurde (z.B. paralleler manueller Rename).
+    await db.update_conversation_title(cid, title, user_id=user_id)
+    log.info("PC_TITLE: cid=%s title=%r", cid, title)
+    return title
 
 
 # ---------- Streaming via claude-agent-sdk ----------

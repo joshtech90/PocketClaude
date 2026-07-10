@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PocketClaude · Feature-Vorschläge</title>
+<style>
+  :root{
+    --bg:#0e1116; --bg2:#161b22; --card:#1b222c; --card2:#212a35;
+    --line:#2b3543; --text:#e6edf3; --muted:#9aa7b4;
+    --blue:#4A90C2; --blue-d:#2F6A94; --blue-l:#7FB3D5;
+    --gold:#e8b64a; --green:#5bbd7a; --amber:#e0a94a; --red:#d76b6b;
+    --shadow:0 6px 24px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:linear-gradient(180deg,#0b0e12 0%,#0e1116 100%);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5; padding:0 0 140px;
+  }
+  header{
+    background:linear-gradient(135deg,var(--blue-d),var(--blue));
+    padding:34px 24px 30px; text-align:center; box-shadow:var(--shadow);
+    position:relative; overflow:hidden;
+  }
+  header h1{margin:0 0 6px; font-size:26px; letter-spacing:.3px}
+  header p{margin:0; color:#eaf3fb; opacity:.92; max-width:720px; margin-inline:auto; font-size:15px}
+  .wrap{max-width:940px; margin:0 auto; padding:0 18px}
+
+  .toolbar{
+    position:sticky; top:0; z-index:30; background:rgba(14,17,22,.92);
+    backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    padding:12px 18px; margin-bottom:22px;
+  }
+  .toolbar .grow{flex:1}
+  .chip{
+    background:var(--card); border:1px solid var(--line); color:var(--text);
+    padding:7px 13px; border-radius:999px; font-size:13px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px; user-select:none;
+  }
+  .chip.active{background:var(--blue); border-color:var(--blue); color:#fff}
+  .chip:hover{border-color:var(--blue-l)}
+  .stat{font-size:13px; color:var(--muted)}
+  .stat b{color:var(--blue-l)}
+  button.primary{
+    background:var(--blue); color:#fff; border:none; padding:9px 16px;
+    border-radius:9px; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  button.primary:hover{background:var(--blue-l)}
+  button.ghost{
+    background:transparent; color:var(--muted); border:1px solid var(--line);
+    padding:8px 13px; border-radius:9px; font-size:13px; cursor:pointer;
+  }
+  button.ghost:hover{color:var(--text); border-color:var(--blue-l)}
+
+  .cat{margin:30px 0 10px; display:flex; align-items:center; gap:12px}
+  .cat h2{margin:0; font-size:16px; color:var(--blue-l); letter-spacing:.4px; text-transform:uppercase}
+  .cat .rule{flex:1; height:1px; background:var(--line)}
+
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:16px 18px; margin-bottom:14px; transition:border-color .15s, box-shadow .15s;
+  }
+  .card:hover{border-color:#3a4757}
+  .card.rec{border-color:rgba(232,182,74,.45); background:linear-gradient(180deg,rgba(232,182,74,.05),var(--card))}
+  .card.want{border-color:rgba(91,189,122,.5)}
+  .card-top{display:flex; align-items:flex-start; gap:12px}
+  .card h3{margin:0 0 4px; font-size:16.5px}
+  .card .desc{color:var(--muted); font-size:14px; margin:0}
+  .num{
+    flex:none; width:30px; height:30px; border-radius:8px; background:var(--card2);
+    border:1px solid var(--line); display:flex; align-items:center; justify-content:center;
+    font-size:13px; color:var(--muted); font-weight:600;
+  }
+  .badges{display:flex; gap:7px; flex-wrap:wrap; margin-top:9px}
+  .badge{font-size:11.5px; padding:3px 9px; border-radius:999px; border:1px solid var(--line); color:var(--muted)}
+  .badge.rec{background:rgba(232,182,74,.14); border-color:rgba(232,182,74,.5); color:var(--gold); font-weight:600}
+  .badge.eff-s{color:var(--green); border-color:rgba(91,189,122,.4)}
+  .badge.eff-m{color:var(--amber); border-color:rgba(224,169,74,.4)}
+  .badge.eff-l{color:var(--red); border-color:rgba(215,107,107,.4)}
+
+  .controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:13px}
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  .seg button{
+    background:transparent; color:var(--muted); border:none; padding:7px 12px;
+    font-size:13px; cursor:pointer; border-right:1px solid var(--line);
+  }
+  .seg button:last-child{border-right:none}
+  .seg button:hover{background:var(--card2); color:var(--text)}
+  .seg button.on-yes{background:var(--green); color:#08110b; font-weight:600}
+  .seg button.on-maybe{background:var(--amber); color:#1a1204; font-weight:600}
+  .seg button.on-no{background:var(--red); color:#160707; font-weight:600}
+
+  textarea.note{
+    width:100%; margin-top:11px; background:var(--bg2); color:var(--text);
+    border:1px solid var(--line); border-radius:9px; padding:9px 11px;
+    font-size:13.5px; font-family:inherit; resize:vertical; min-height:38px;
+  }
+  textarea.note:focus{outline:none; border-color:var(--blue)}
+  textarea.note::placeholder{color:#5c6773}
+  .note.has{border-color:var(--blue-d)}
+
+  .hidden{display:none !important}
+
+  /* Copy bar */
+  .copybar{
+    position:fixed; left:0; right:0; bottom:0; z-index:40;
+    background:rgba(16,20,26,.97); border-top:1px solid var(--line);
+    padding:12px 18px; display:flex; gap:12px; align-items:center; justify-content:center;
+    box-shadow:0 -6px 24px rgba(0,0,0,.4); flex-wrap:wrap;
+  }
+  .copybar .info{font-size:13px; color:var(--muted)}
+  .copybar .info b{color:var(--blue-l)}
+
+  /* Modal */
+  .overlay{
+    position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.6);
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .overlay.show{display:flex}
+  .modal{
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    width:100%; max-width:720px; max-height:82vh; display:flex; flex-direction:column;
+    box-shadow:var(--shadow);
+  }
+  .modal-head{padding:16px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px}
+  .modal-head h3{margin:0; font-size:17px; flex:1}
+  .modal-body{padding:16px 20px; overflow:auto}
+  .result{
+    width:100%; min-height:320px; background:var(--bg2); color:var(--text);
+    border:1px solid var(--line); border-radius:10px; padding:12px;
+    font-family:"SF Mono",Menlo,Consolas,monospace; font-size:12.5px; resize:vertical;
+  }
+  .modal-foot{padding:14px 20px; border-top:1px solid var(--line); display:flex; gap:10px; justify-content:flex-end}
+  .toast{
+    position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
+    background:var(--green); color:#08110b; padding:10px 20px; border-radius:999px;
+    font-weight:600; font-size:14px; z-index:80; opacity:0; transition:opacity .25s, transform .25s;
+    pointer-events:none;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px)}
+  .legend{font-size:12.5px; color:var(--muted); margin-top:14px; text-align:center}
+  a{color:var(--blue-l)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚀 PocketClaude · Feature-Vorschläge</h1>
+  <p>Kuratierte Ideen, die die App noch geiler machen. Markiere pro Idee dein Interesse, schreib Notizen dazu, und exportiere am Ende deine Auswahl mit einem Klick. <b>Alles wird automatisch lokal gespeichert.</b></p>
+</header>
+
+<div class="toolbar">
+  <span class="chip" data-filter="all" onclick="setFilter('all',this)">Alle</span>
+  <span class="chip active" data-filter="rec" onclick="setFilter('rec',this)">⭐ Nur Claude-Empfehlungen</span>
+  <span class="chip" data-filter="want" onclick="setFilter('want',this)">👍 Meine Auswahl</span>
+  <span class="grow"></span>
+  <span class="stat" id="stat"></span>
+  <button class="ghost" onclick="resetAll()">Zurücksetzen</button>
+  <button class="primary" onclick="openResult()">📋 Ergebnis kopieren</button>
+</div>
+
+<div class="wrap" id="list"></div>
+
+<div class="copybar">
+  <span class="info">Auswahl: <b id="cWant">0</b> 👍 · <b id="cMaybe">0</b> 🤔 · <b id="cNo">0</b> 👎 · <b id="cNotes">0</b> Notizen</span>
+  <button class="primary" onclick="openResult()">📋 Ergebnis kopieren</button>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>📋 Dein Ergebnis</h3>
+      <button class="ghost" onclick="closeResult()">Schließen</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 10px;color:var(--muted);font-size:13.5px">
+        Das ist deine Auswahl als Text. Klick <b>„In Zwischenablage"</b> und schick's mir einfach zurück in den Chat — dann bauen wir die Features.
+      </p>
+      <textarea class="result" id="resultText" readonly></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="ghost" onclick="closeResult()">Abbrechen</button>
+      <button class="primary" onclick="copyResult()">📋 In Zwischenablage</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">✓ Kopiert!</div>
+
+<script>
+// ---- Feature-Daten ----------------------------------------------------------
+// eff: s=klein, m=mittel, l=groß (grober Aufwand). rec=Claude-Empfehlung.
+const CATS = [
+  {id:"chat", name:"💬 Chat & Produktivität"},
+  {id:"mem",  name:"🧠 Gedächtnis & Wissen"},
+  {id:"voice",name:"🎙️ Sprache & Audio"},
+  {id:"auto", name:"⚙️ Automation & Android-Integration"},
+  {id:"share",name:"📤 Teilen & Export"},
+  {id:"sec",  name:"🔒 Sicherheit & Privatsphäre"},
+  {id:"ux",   name:"📶 Zuverlässigkeit & UX"},
+  {id:"cost", name:"💳 Kosten & Insights"},
+  {id:"fun",  name:"✨ Spaß & Onboarding"},
+];
+
+const F = [
+  // Chat & Produktivität
+  {c:"chat", rec:1, eff:"m", t:"Nachricht bearbeiten & Konversation verzweigen",
+    d:"Eine gesendete Nachricht nachträglich ändern und ab dort neu laufen lassen — der alte Verlauf bleibt als eigener Zweig erhalten. Ideal um Prompts zu verfeinern, ohne den Chat zu verlieren."},
+  {c:"chat", rec:1, eff:"s", t:"Antwort neu generieren – mit anderem Modell/Effort",
+    d:"Ein „Neu generieren\"-Button unter der letzten Antwort, bei dem man optional schnell Modell oder Denk-Tiefe umstellt (z.B. „nochmal, aber mit max Effort\")."},
+  {c:"chat", rec:1, eff:"m", t:"Prompt-Vorlagen / Textbausteine-Bibliothek",
+    d:"Gespeicherte, wiederverwendbare Prompts mit Platzhaltern (z.B. „Fasse {Text} in 3 Punkten zusammen\"). Schnell einfügbar über ein Menü im Eingabefeld."},
+  {c:"chat", rec:0, eff:"s", t:"Nachrichten-Lesezeichen",
+    d:"Einzelne Antworten mit Stern markieren und über eine Liste schnell wieder anspringen — für die guten Antworten, die man später nochmal braucht."},
+  {c:"chat", rec:0, eff:"m", t:"Ordner / Tags für Chats",
+    d:"Chats über Anpinnen hinaus organisieren: eigene Ordner oder farbige Tags (z.B. „Arbeit\", „Ideen\", „Privat\") mit Filter in der Liste."},
+  {c:"chat", rec:0, eff:"s", t:"„Weiter\"-Button bei abgeschnittener Antwort",
+    d:"Wenn Claude ans Token-Limit stößt, ein Ein-Klick-„Weiter schreiben\", statt selbst „mach weiter\" tippen zu müssen."},
+  {c:"chat", rec:0, eff:"s", t:"Entwurf pro Chat automatisch speichern",
+    d:"Halb getippte Nachrichten bleiben pro Konversation erhalten, auch wenn man wegwechselt oder die App schließt."},
+
+  // Gedächtnis & Wissen
+  {c:"mem", rec:1, eff:"m", t:"Persistentes „Über mich\"-Gedächtnis",
+    d:"Fakten, die Claude in ALLEN Chats kennt (Name, Vorlieben, Projekte, Schreibstil). Einmal gepflegt, überall automatisch mitgegeben — wie ein Nutzerprofil."},
+  {c:"mem", rec:0, eff:"m", t:"Globale Wissensdateien",
+    d:"Dateien/Notizen, die nicht nur an einem Gem hängen, sondern optional in jedem Chat als Kontext verfügbar sind (z.B. dein Lebenslauf, eine Preisliste)."},
+  {c:"mem", rec:0, eff:"l", t:"Semantische Suche über alle Chats",
+    d:"Suche nicht nur nach exakten Wörtern, sondern nach Bedeutung („wo ging's um mein Steuerthema?\") — via Embeddings über den gesamten Verlauf."},
+
+  // Sprache & Audio
+  {c:"voice", rec:1, eff:"m", t:"Barge-in im Auto-Modus",
+    d:"Im Freisprech-Modus die Vorlese-Stimme unterbrechen, indem man einfach losredet — natürlicheres Gespräch, kein Warten bis Claude fertig vorgelesen hat."},
+  {c:"voice", rec:0, eff:"s", t:"Lautstärke-Taste als Push-to-Talk",
+    d:"Hardware-Taste (z.B. Lauter gedrückt halten) startet die Sprachaufnahme — Diktieren ohne auf den Bildschirm zu schauen."},
+  {c:"voice", rec:0, eff:"s", t:"Sprachmemo-Audio zum Transkript speichern",
+    d:"Die Original-Audioaufnahme optional behalten (nicht nur den transkribierten Text), zum Nachhören."},
+  {c:"voice", rec:0, eff:"s", t:"„Ganzen Chat vorlesen\"-Warteschlange",
+    d:"Alle Antworten eines Chats nacheinander vorlesen (Podcast-Modus) — praktisch beim Autofahren oder Sport."},
+
+  // Automation & Android
+  {c:"auto", rec:1, eff:"m", t:"Home-Screen-Widget",
+    d:"Ein Widget für den Startbildschirm: Schnell neuer Chat, direktes Mikro-Antippen oder die letzte Antwort auf einen Blick."},
+  {c:"auto", rec:0, eff:"s", t:"App-Shortcuts (Long-press aufs Icon)",
+    d:"Langes Drücken aufs App-Icon öffnet direkt „Neuer Chat\", „Sprache\" oder den zuletzt geöffneten Chat."},
+  {c:"auto", rec:1, eff:"l", t:"Geplante Prompts / tägliche Fragen mit Push-Antwort",
+    d:"Claude stellt sich selbst zeitgesteuert eine Frage (z.B. jeden Morgen „Fasse meine Termine/News zusammen\") und schickt die Antwort als Benachrichtigung. Braucht einen Cron im Server."},
+  {c:"auto", rec:0, eff:"s", t:"Direkte Kamera-Aufnahme als Anhang",
+    d:"Foto direkt aus der App aufnehmen und anhängen, statt den Umweg über die Galerie zu gehen."},
+
+  // Teilen & Export
+  {c:"share", rec:1, eff:"m", t:"Export als PDF / schön formatiertes HTML",
+    d:"Einen Chat als hübsches PDF oder HTML exportieren (mit Formatierung, Code-Blöcken, Bildern) — aktuell gibt's nur Markdown."},
+  {c:"share", rec:0, eff:"s", t:"Einzelne Nachricht als Bild-Karte teilen",
+    d:"Eine gute Antwort als schön gestaltetes Bild (Sharepic) exportieren — teilbar in Chats/Social ohne Screenshot-Gefummel."},
+  {c:"share", rec:0, eff:"l", t:"Öffentlicher Read-only-Share-Link",
+    d:"Einen Chat als Web-Link teilen, den andere (ohne Login) nur lesen können — der Server hostet eine schlanke Ansicht."},
+
+  // Sicherheit
+  {c:"sec", rec:1, eff:"s", t:"App-Sperre komplett (Biometrie beim Start)",
+    d:"Die ganze App beim Öffnen mit Fingerabdruck/PIN sichern — nicht nur einzelne Chats. Ein sauberer Riegel für neugierige Blicke."},
+  {c:"sec", rec:0, eff:"m", t:"Inkognito-/Ephemeral-Chat",
+    d:"Ein Chat-Modus, der nichts speichert — nach dem Schließen ist alles weg. Für sensible Einmal-Fragen."},
+  {c:"sec", rec:0, eff:"s", t:"Auto-Löschen alter Chats nach N Tagen",
+    d:"Optional Chats automatisch aufräumen, die älter als X Tage sind — weniger Ballast, mehr Privatsphäre."},
+  {c:"sec", rec:0, eff:"s", t:"Nachrichteninhalt in Benachrichtigungen ausblenden",
+    d:"Push-Vorschau zeigt nur „Neue Antwort\" statt des Textes — nichts Sensibles auf dem Sperrbildschirm."},
+
+  // Zuverlässigkeit & UX
+  {c:"ux", rec:1, eff:"m", t:"Offline-Warteschlange + Auto-Retry",
+    d:"Nachrichten offline verfassen; sobald wieder Netz da ist, werden sie automatisch gesendet. Bei Netzfehlern smarter Retry statt roter Fehler."},
+  {c:"ux", rec:0, eff:"s", t:"Verbindungs-/Server-Status-Anzeige",
+    d:"Ein kleiner Indikator, ob der Server erreichbar ist (online/langsam/offline) — statt erst beim Senden zu merken, dass was klemmt."},
+  {c:"ux", rec:0, eff:"m", t:"Cross-Device-Sync für Bild-Historie & Entwürfe",
+    d:"Generierte Bilder und Entwürfe liegen aktuell nur lokal auf dem Gerät. Über den Server synchronisiert wären sie auch im Web-UI und auf anderen Geräten da."},
+
+  // Kosten & Insights
+  {c:"cost", rec:1, eff:"m", t:"Kosten-Dashboard mit Verlaufs-Diagramm",
+    d:"Token-/Kosten-Nutzung als Diagramm pro Tag/Woche — sehen, wann und wofür am meisten verbraucht wird (inkl. Aufschlüsselung Pro/Max vs. API vs. Bedrock)."},
+  {c:"cost", rec:0, eff:"m", t:"Budget-Warnungen / Nutzungslimits",
+    d:"Ein Monatsbudget setzen; bei z.B. 80 % gibt's eine Push-Warnung — schützt vor bösen Überraschungen bei API/Bedrock."},
+
+  // Spaß & Onboarding
+  {c:"fun", rec:0, eff:"s", t:"Starter-Pack weiterer Built-in-Gems",
+    d:"Aktuell gibt's nur den Meme-Finder. Ein Paket nützlicher fertiger Gems (Übersetzer, Zusammenfasser, Reise-Planer, Code-Reviewer, …) zum sofort Loslegen."},
+  {c:"fun", rec:0, eff:"s", t:"Tägliche Prompt-Vorschläge auf dem Home-Screen",
+    d:"Auf dem leeren Chat-Screen wechselnde Anregungen/Ideen, was man Claude fragen könnte — Inspiration + Onboarding in einem."},
+];
+
+// ---- State ------------------------------------------------------------------
+const KEY="pocketclaude_features_v1";
+let state = JSON.parse(localStorage.getItem(KEY) || "{}"); // {idx:{v:'yes'|'maybe'|'no', n:'note'}}
+let filter = "rec";
+
+function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+function effLabel(e){ return e==='s'?'Aufwand: klein':e==='m'?'Aufwand: mittel':'Aufwand: groß'; }
+function effClass(e){ return e==='s'?'eff-s':e==='m'?'eff-m':'eff-l'; }
+
+function render(){
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  CATS.forEach(cat=>{
+    const items = F.map((f,i)=>({f,i})).filter(x=>x.f.c===cat.id);
+    if(!items.length) return;
+    const visible = items.filter(x=>passesFilter(x.i));
+    if(!visible.length) return;
+    const h = document.createElement("div");
+    h.className="cat";
+    h.innerHTML = `<h2>${cat.name}</h2><div class="rule"></div>`;
+    list.appendChild(h);
+    visible.forEach(({f,i})=> list.appendChild(cardEl(f,i)));
+  });
+  updateStats();
+}
+
+function passesFilter(i){
+  const s = state[i]||{};
+  if(filter==="all") return true;
+  if(filter==="rec") return F[i].rec===1;
+  if(filter==="want") return s.v==="yes";
+  return true;
+}
+
+function cardEl(f,i){
+  const s = state[i]||{};
+  const el = document.createElement("div");
+  el.className = "card" + (f.rec? " rec":"") + (s.v==="yes"? " want":"");
+  const recBadge = f.rec? `<span class="badge rec">⭐ Claude empfiehlt</span>`:"";
+  el.innerHTML = `
+    <div class="card-top">
+      <div class="num">${i+1}</div>
+      <div style="flex:1">
+        <h3>${f.t}</h3>
+        <p class="desc">${f.d}</p>
+        <div class="badges">
+          ${recBadge}
+          <span class="badge ${effClass(f.eff)}">${effLabel(f.eff)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="seg">
+        <button data-v="yes"   class="${s.v==='yes'?'on-yes':''}"   onclick="setVote(${i},'yes',this)">👍 Will ich</button>
+        <button data-v="maybe" class="${s.v==='maybe'?'on-maybe':''}" onclick="setVote(${i},'maybe',this)">🤔 Vielleicht</button>
+        <button data-v="no"    class="${s.v==='no'?'on-no':''}"     onclick="setVote(${i},'no',this)">👎 Nein</button>
+      </div>
+    </div>
+    <textarea class="note ${s.n?'has':''}" placeholder="Meine Anmerkung zu dieser Idee…" oninput="setNote(${i},this)">${s.n? escapeHtml(s.n):""}</textarea>
+  `;
+  return el;
+}
+
+function escapeHtml(t){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+function setVote(i,v){
+  state[i]=state[i]||{};
+  state[i].v = (state[i].v===v)? null : v; // toggle off
+  save(); render();
+}
+function setNote(i,ta){
+  state[i]=state[i]||{};
+  state[i].n = ta.value;
+  ta.classList.toggle("has", !!ta.value);
+  save(); updateStats();
+}
+function setFilter(f,el){
+  filter=f;
+  document.querySelectorAll(".chip").forEach(c=>c.classList.remove("active"));
+  el.classList.add("active");
+  render();
+}
+function resetAll(){
+  if(!confirm("Wirklich alle Bewertungen und Notizen zurücksetzen?")) return;
+  state={}; save(); render();
+}
+
+function counts(){
+  let y=0,m=0,n=0,notes=0;
+  Object.values(state).forEach(s=>{
+    if(s.v==="yes")y++; else if(s.v==="maybe")m++; else if(s.v==="no")n++;
+    if(s.n && s.n.trim())notes++;
+  });
+  return {y,m,n,notes};
+}
+function updateStats(){
+  const c=counts();
+  document.getElementById("cWant").textContent=c.y;
+  document.getElementById("cMaybe").textContent=c.m;
+  document.getElementById("cNo").textContent=c.n;
+  document.getElementById("cNotes").textContent=c.notes;
+  document.getElementById("stat").innerHTML =
+    `<b>${c.y}</b> gewählt · <b>${F.length}</b> Ideen gesamt`;
+}
+
+// ---- Ergebnis / Copy --------------------------------------------------------
+function buildResult(){
+  const c=counts();
+  const d=new Date();
+  const stamp = d.toLocaleDateString("de-DE")+" "+d.toLocaleTimeString("de-DE",{hour:'2-digit',minute:'2-digit'});
+  let out = `# PocketClaude – meine Feature-Auswahl (${stamp})\n\n`;
+  out += `Zusammenfassung: ${c.y}× "Will ich", ${c.m}× "Vielleicht", ${c.n}× "Nein".\n`;
+
+  const groups = [
+    {v:"yes",   title:"## 👍 Will ich unbedingt"},
+    {v:"maybe", title:"## 🤔 Vielleicht"},
+    {v:"no",    title:"## 👎 Eher nicht"},
+  ];
+  groups.forEach(g=>{
+    const rows = F.map((f,i)=>({f,i})).filter(x=> (state[x.i]||{}).v===g.v);
+    if(!rows.length) return;
+    out += `\n${g.title}\n`;
+    rows.forEach(({f,i})=>{
+      const cat = CATS.find(c=>c.id===f.c).name.replace(/^[^\wÄÖÜäöü]+/,"").trim();
+      const note = (state[i]||{}).n;
+      out += `- [${cat}] ${f.t}${f.rec?" ⭐":""}`;
+      out += note && note.trim()? `\n    Notiz: ${note.trim()}` : "";
+      out += "\n";
+    });
+  });
+
+  // Notizen zu Ideen ohne Bewertung
+  const orphan = F.map((f,i)=>({f,i})).filter(x=>{
+    const s=state[x.i]||{}; return (!s.v) && s.n && s.n.trim();
+  });
+  if(orphan.length){
+    out += `\n## 📝 Weitere Notizen (ohne Bewertung)\n`;
+    orphan.forEach(({f,i})=>{
+      out += `- ${f.t}: ${state[i].n.trim()}\n`;
+    });
+  }
+
+  if(c.y+c.m+c.n===0 && !orphan.length){
+    out += `\n(Noch nichts ausgewählt.)\n`;
+  }
+  return out;
+}
+
+function openResult(){
+  document.getElementById("resultText").value = buildResult();
+  document.getElementById("overlay").classList.add("show");
+}
+function closeResult(){ document.getElementById("overlay").classList.remove("show"); }
+function copyResult(){
+  const ta=document.getElementById("resultText");
+  ta.select();
+  navigator.clipboard.writeText(ta.value).then(showToast).catch(()=>{
+    document.execCommand("copy"); showToast();
+  });
+}
+function showToast(){
+  const t=document.getElementById("toast");
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),1600);
+}
+document.getElementById("overlay").addEventListener("click",e=>{
+  if(e.target.id==="overlay") closeResult();
+});
+
+render();
+</script>
+</body>
+</html>

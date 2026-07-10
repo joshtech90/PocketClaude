@@ -63,6 +63,8 @@ data class ChatUiState(
     val lastTurnCachedWrite: Int = 0,
     val pending: List<PendingAttachment> = emptyList(),
     val pinned: Boolean = false,
+    /** UI-Riegel: dieser Chat ist gesperrt und braucht PIN/Fingerabdruck. */
+    val locked: Boolean = false,
     // Gem-Bindung dieses Chats (falls „mit einem Gem" gestartet). Für Header
     // + Starter-Chips im leeren Chat.
     val gemId: String? = null,
@@ -241,6 +243,7 @@ class ChatViewModel(
                 hasMidSummary = detail.hasMidSummary,
                 hasLongSummary = detail.hasLongSummary,
                 pinned = detail.pinned,
+                locked = detail.locked,
                 gemId = detail.gemId,
             )
         }
@@ -303,6 +306,9 @@ class ChatViewModel(
                 _state.update { it.copy(errorMessage = appContext.getString(R.string.error_pin, e.message ?: "")) }
             }
     }
+
+    /** Prüft den Chat-Sperr-PIN gegen den Server (für die Sperr-Ansicht). */
+    suspend fun verifyChatLockPin(pin: String) = repo.verifyChatLockPin(pin)
 
     /** Löscht die aktuelle Konversation. Callback wird nach erfolgreichem Löschen
      *  ausgelöst — typisch: zur Übersicht navigieren oder neuen Chat starten. */
@@ -825,9 +831,6 @@ class ChatViewModel(
                 //    PC_VAD-Logging: User schickt `adb logcat -s PC_VAD`
                 //    nach einem Probelauf, dann tunen wir nach Evidence.
                 //  - silenceProgressMs in den State für UI-Countdown.
-                val curSettings = settingsRepo.current()
-                val autoSend = curSettings.autoSendEnabled
-                val silenceTargetMs = curSettings.autoSendSilenceMs
                 val pollMs = 80L
                 val silenceThreshold = 1500
                 val initialBlockMs = 5_000L  // 5 s Bedenkzeit
@@ -836,6 +839,13 @@ class ChatViewModel(
                 var maxSeenAmp = 0
                 while (_state.value.autoMode &&
                        _state.value.voiceState == VoiceState.Recording) {
+                    // Settings JEDEN Tick live lesen, nicht beim Loop-Start einfrieren:
+                    // sonst greift ein Auto-Send-Toggle, das WÄHREND der Aufnahme
+                    // umgelegt wird, erst beim nächsten Recording. settingsRepo.current()
+                    // ist ein In-Memory-Snapshot (kein Disk-I/O), 80-ms-Poll unkritisch.
+                    val curSettings = settingsRepo.current()
+                    val autoSend = curSettings.autoSendEnabled
+                    val silenceTargetMs = curSettings.autoSendSilenceMs
                     if (autoSend && voiceRecorder.elapsedMs >= initialBlockMs) {
                         val amp = voiceRecorder.currentAmplitude()
                         if (amp > maxSeenAmp) maxSeenAmp = amp

@@ -53,6 +53,15 @@ class ChatRepository(
 
     suspend fun rename(id: String, title: String): ConversationDto = api.renameConversation(id, title)
     suspend fun setPinned(id: String, pinned: Boolean): ConversationDto = api.setPinned(id, pinned)
+    suspend fun setLocked(id: String, locked: Boolean): ConversationDto = api.setLocked(id, locked)
+
+    // ---------- Chat-Sperre (globaler PIN) ----------
+    suspend fun getChatLock(): ChatLockStatusDto = api.getChatLock()
+    suspend fun setChatLockPin(pin: String, currentPin: String? = null): ChatLockStatusDto =
+        api.setChatLockPin(pin, currentPin)
+    suspend fun clearChatLockPin(currentPin: String): ChatLockStatusDto =
+        api.clearChatLockPin(currentPin)
+    suspend fun verifyChatLockPin(pin: String): ChatLockVerifyResponse = api.verifyChatLockPin(pin)
 
     suspend fun search(query: String): SearchResponseDto = api.search(query)
     suspend fun exportMarkdown(id: String): String = api.exportMarkdown(id)

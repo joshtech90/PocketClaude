@@ -145,6 +145,9 @@ fun ChatScreen(
     }
     val appSettings by container.settingsRepository.settingsFlow
         .collectAsState(initial = de.smartzone.pocketclaude.data.AppSettings())
+    // Welche gesperrten Chats sind in dieser Sitzung entsperrt (Re-Lock bei
+    // App-Hintergrund via ChatLockManager).
+    val unlockedChats by container.chatLock.unlocked.collectAsState()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
@@ -389,6 +392,7 @@ fun ChatScreen(
             )
         },
     ) {
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         // Wir kümmern uns ums Bottom-Inset selbst (im InputBar via union(ime, navBar)),
@@ -884,6 +888,20 @@ fun ChatScreen(
             }
         }
     }
+    // Sperr-Ansicht: liegt über dem ganzen Chat, solange dieser Chat gesperrt
+    // und in dieser Sitzung noch nicht per PIN/Fingerabdruck entsperrt ist.
+    if (state.locked && state.conversationId !in unlockedChats) {
+        de.smartzone.pocketclaude.ui.lock.ChatLockGate(
+            chatTitle = state.title,
+            biometricEnabled = appSettings.chatLockBiometricEnabled,
+            verifyPin = { pin -> vm.verifyChatLockPin(pin) },
+            onUnlocked = { container.chatLock.unlock(state.conversationId) },
+            onOpenMenu = { scope.launch { drawerState.open() } },
+            menuContentDescription = stringResource(de.smartzone.pocketclaude.R.string.title_conversations),
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+    } // Box (Gate-Overlay)
     } // ModalNavigationDrawer
 
     // Rename dialog

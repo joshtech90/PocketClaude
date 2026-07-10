@@ -497,16 +497,18 @@ def _merge_db_and_uploads(zf) -> tuple[int, int, int, int]:  # noqa: ANN001
                         row["skills_override"]
                         if "skills_override" in row_keys else None
                     )
+                    # locked evtl. nicht in alten Backups → Guard wie bei skills.
+                    locked_val = row["locked"] if "locked" in row_keys else 0
                     live_conn.execute(
                         """INSERT INTO conversations
                            (id, title, created_at, last_message_at,
                             total_tokens, claude_session_id, pinned,
-                            user_id, skills_override)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            user_id, skills_override, locked)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (row["id"], row["title"], row["created_at"],
                          row["last_message_at"], row["total_tokens"],
                          row["claude_session_id"], row["pinned"],
-                         user_id_val, skills_val),
+                         user_id_val, skills_val, locked_val),
                     )
                     added += 1
 

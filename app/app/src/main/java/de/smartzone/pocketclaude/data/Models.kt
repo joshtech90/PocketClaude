@@ -29,6 +29,8 @@ data class ConversationDto(
     @SerialName("has_mid_summary") val hasMidSummary: Boolean = false,
     @SerialName("has_long_summary") val hasLongSummary: Boolean = false,
     val pinned: Boolean = false,
+    /** UI-Riegel: true = Chat ist gesperrt, braucht PIN/Fingerabdruck vor Anzeige. */
+    val locked: Boolean = false,
     /** Wenn der Chat „mit einem Gem" gestartet wurde: dessen ID (für Badge im Drawer). */
     @SerialName("gem_id") val gemId: String? = null,
 )
@@ -63,6 +65,7 @@ data class ConversationDetailDto(
     @SerialName("has_mid_summary") val hasMidSummary: Boolean = false,
     @SerialName("has_long_summary") val hasLongSummary: Boolean = false,
     val pinned: Boolean = false,
+    val locked: Boolean = false,
     @SerialName("gem_id") val gemId: String? = null,
     val messages: List<MessageDto> = emptyList(),
     @SerialName("mid_summary") val midSummary: String? = null,
@@ -103,6 +106,36 @@ data class CreateConversationRequest(
 data class PatchConversationRequest(
     val title: String? = null,
     val pinned: Boolean? = null,
+    val locked: Boolean? = null,
+)
+
+// ---------- Chat-Sperre (globaler PIN) ----------
+
+@Serializable
+data class ChatLockStatusDto(
+    @SerialName("is_set") val isSet: Boolean = false,
+)
+
+@Serializable
+data class ChatLockSetRequest(
+    val pin: String,
+    @SerialName("current_pin") val currentPin: String? = null,
+)
+
+@Serializable
+data class ChatLockClearRequest(
+    @SerialName("current_pin") val currentPin: String,
+)
+
+@Serializable
+data class ChatLockVerifyRequest(
+    val pin: String,
+)
+
+@Serializable
+data class ChatLockVerifyResponse(
+    val ok: Boolean = false,
+    @SerialName("retry_after_seconds") val retryAfterSeconds: Int = 0,
 )
 
 @Serializable

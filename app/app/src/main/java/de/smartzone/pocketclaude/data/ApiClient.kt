@@ -273,6 +273,23 @@ class ApiClient(
     suspend fun setPinned(id: String, pinned: Boolean): ConversationDto =
         patchJson("/conversations/$id", PatchConversationRequest(pinned = pinned))
 
+    suspend fun setLocked(id: String, locked: Boolean): ConversationDto =
+        patchJson("/conversations/$id", PatchConversationRequest(locked = locked))
+
+    // ---------- Chat-Sperre (globaler PIN) ----------
+
+    suspend fun getChatLock(): ChatLockStatusDto = get("/me/chat-lock")
+
+    /** Setzt oder ändert den globalen PIN. `currentPin` nur nötig wenn schon einer existiert. */
+    suspend fun setChatLockPin(pin: String, currentPin: String? = null): ChatLockStatusDto =
+        putJson("/me/chat-lock", ChatLockSetRequest(pin = pin, currentPin = currentPin))
+
+    suspend fun clearChatLockPin(currentPin: String): ChatLockStatusDto =
+        postJson("/me/chat-lock/clear", ChatLockClearRequest(currentPin = currentPin))
+
+    suspend fun verifyChatLockPin(pin: String): ChatLockVerifyResponse =
+        postJson("/me/chat-lock/verify", ChatLockVerifyRequest(pin = pin))
+
     suspend fun search(query: String, limit: Int = 30): SearchResponseDto {
         // OkHttp's HttpUrl-Builder kümmert sich um korrektes URL-Encoding der
         // Query-Params, inklusive Sonderzeichen, Unicode, Umlaute etc.

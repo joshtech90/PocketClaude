@@ -54,6 +54,11 @@ const state = {
   // Liste der Gems des Users (für die Sidebar).
   gem:            null,
   gems:           [],
+  // Chat-Lock: In-Memory-Set der cids, die in DIESER Browser-Session bereits
+  // per PIN entsperrt wurden. Bewusst NICHT in localStorage — ein Reload
+  // sperrt alles wieder. `locked`-Flag pro Chat kommt vom Server.
+  unlockedCids:   new Set(),
+  chatLocked:     false,  // locked-Flag des aktuell geöffneten Chats
 };
 
 // =========================================================
@@ -516,8 +521,12 @@ function renderChatList(items) {
       const li = document.createElement('div');
       li.className = 'chat-item' + (c.id === state.cid ? ' active' : '');
       li.dataset.cid = c.id;
+      const lockMark = c.locked
+        ? `<span class="lock-mark" title="${escapeHtml(t('chat_locked_badge'))}" aria-label="${escapeHtml(t('chat_locked_badge'))}"><svg><use href="#icon-lock"/></svg></span>`
+        : '';
       li.innerHTML = `
         <span class="title">${escapeHtml(c.title || t('no_title'))}</span>
+        ${lockMark}
         <button class="chat-row-more" type="button" aria-label="${escapeHtml(t('more'))}"
                 title="${escapeHtml(t('more'))}">
           <svg><use href="#icon-more"/></svg>
@@ -561,6 +570,9 @@ function openChatRowMenu(rowEl, chat) {
     </button>
     <button data-act="pin" type="button">
       <svg><use href="#icon-pin"/></svg> ${escapeHtml(chat.pinned ? t('unpin') : t('pin'))}
+    </button>
+    <button data-act="lock" type="button">
+      <svg><use href="#icon-${chat.locked ? 'unlock' : 'lock'}"/></svg> ${escapeHtml(chat.locked ? t('unlock_chat') : t('lock_chat'))}
     </button>
     <hr>
     <button data-act="delete" class="danger" type="button">
@@ -607,6 +619,49 @@ function openChatRowMenu(rowEl, chat) {
       await refreshChatList();
     } catch (e) {
       toast(t('toast_error_prefix', e.message), { error: true });
+    }
+  });
+
+  menu.querySelector('[data-act="lock"]').addEventListener('click', async () => {
+    closeChatRowMenu();
+    if (chat.locked) {
+      // Entsperren (locked → false): erst PIN verifizieren, dann Flag löschen.
+      const ok = await verifyPinDialog();
+      if (!ok) return;
+      try {
+        await api('PATCH', '/conversations/' + chat.id, { locked: false });
+        state.unlockedCids.add(chat.id);   // in dieser Session sichtbar halten
+        if (state.cid === chat.id) {
+          state.chatLocked = false;
+          renderMessages();
+        }
+        await refreshChatList();
+        toast(t('toast_chat_unlocked'));
+      } catch (e) {
+        toast(t('toast_error_prefix', e.message), { error: true });
+      }
+    } else {
+      // Sperren (false → true). Server lehnt mit 400 ab, wenn keine PIN gesetzt.
+      try {
+        await api('PATCH', '/conversations/' + chat.id, { locked: true });
+        state.unlockedCids.delete(chat.id);  // frisch gesperrt → wieder Gate zeigen
+        if (state.cid === chat.id) {
+          state.chatLocked = true;
+          renderMessages();
+        }
+        await refreshChatList();
+        toast(t('toast_chat_locked'));
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 400) {
+          // Keine PIN gesetzt → User zum Settings-Chat-Lock schicken.
+          toast(t('chat_lock_need_pin_first'), { error: true });
+          openSettings();
+          document.getElementById('chat-lock-section')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          toast(t('toast_error_prefix', e.message), { error: true });
+        }
+      }
     }
   });
 
@@ -724,14 +779,20 @@ async function openChat(cid, opts = {}) {
     const detail = await api('GET', '/conversations/' + cid);
     state.title = detail.title;
     state.pinned = detail.pinned;
+    state.chatLocked = !!detail.locked;
     state.messages = detail.messages || [];
     state.streamingText = '';
     state.isStreaming = false;
     // Gem-Bindung wiederherstellen (für Header-Emoji + Starter im leeren Chat).
     state.gem = detail.gem_id ? await gemFetch(detail.gem_id).catch(() => null) : null;
     updateTopbar(detail.total_tokens || 0);
-    renderMessages();
-    scrollToVeryBottom();
+    // Gesperrter Chat, in dieser Session noch nicht entsperrt → Lock-Gate zeigen.
+    if (state.chatLocked && !state.unlockedCids.has(cid)) {
+      renderLockGate(cid);
+    } else {
+      renderMessages();
+      scrollToVeryBottom();
+    }
   } catch (e) {
     toast(t('toast_load_chat_failed', e.message), { error: true });
   }
@@ -744,6 +805,7 @@ async function newChat() {
     state.cid = c.id;
     state.title = c.title;
     state.pinned = false;
+    state.chatLocked = false;
     state.gem = null;
     state.messages = [];
     state.streamingText = '';
@@ -840,6 +902,13 @@ els.moreMenu.addEventListener('click', async (e) => {
       state.pinned = !state.pinned;
       refreshChatList();
     } else if (action === 'share') {
+      // Export eines gesperrten, nicht entsperrten Chats verweigern — sonst
+      // ließe sich der Klartext an der Sperre vorbei herunterladen (die Topbar
+      // liegt neben dem Gate, nicht dahinter).
+      if (state.chatLocked && !state.unlockedCids.has(state.cid)) {
+        toast(t('chat_lock_need_pin_first'), { error: true });
+        return;
+      }
       // Markdown-Export holen
       const md = await api('GET', '/conversations/' + state.cid + '/export.md');
       const blob = new Blob([md], { type: 'text/markdown' });
@@ -873,7 +942,23 @@ document.addEventListener('click', () => {
 // =========================================================
 // Render Messages
 // =========================================================
+/** Composer sperren/entsperren, wenn das Lock-Gate sichtbar ist. sendBtn nur
+ *  dann wieder aktivieren, wenn gerade nicht gestreamt wird. */
+function setComposerLocked(locked) {
+  els.input.disabled = locked;
+  if (locked) els.sendBtn.disabled = true;
+  else if (!state.isStreaming) els.sendBtn.disabled = false;
+  els.inputForm.classList.toggle('composer-locked', locked);
+}
+
 function renderMessages() {
+  // Gesperrter, in dieser Session nicht entsperrter Chat → Gate statt Inhalt.
+  if (state.chatLocked && state.cid && !state.unlockedCids.has(state.cid)) {
+    setComposerLocked(true);
+    renderLockGate(state.cid);
+    return;
+  }
+  setComposerLocked(false);
   els.messages.innerHTML = '';
   const inner = document.createElement('div');
   inner.className = 'messages-inner';
@@ -966,6 +1051,123 @@ function renderStreamingPlaceholder() {
         : '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>'}</div>
     </div>`;
   return div;
+}
+
+// =========================================================
+// Chat-Lock: Gate im Chat-Bereich + PIN-Verify-Modal
+// =========================================================
+/** Rendert das Lock-Gate (5-stellige PIN-Eingabe) statt der Nachrichten.
+ *  Bei korrekter PIN wird der Chat in dieser Session als entsperrt gemerkt
+ *  und normal gerendert. */
+function renderLockGate(cid) {
+  els.messages.innerHTML = '';
+  const inner = document.createElement('div');
+  inner.className = 'messages-inner';
+  els.messages.appendChild(inner);
+
+  const gate = document.createElement('div');
+  gate.className = 'lock-gate';
+  gate.innerHTML = `
+    <div class="lock-gate-icon"><svg><use href="#icon-lock"/></svg></div>
+    <h3>${escapeHtml(t('lock_gate_title'))}</h3>
+    <p>${escapeHtml(t('lock_gate_hint'))}</p>
+    <input type="password" inputmode="numeric" maxlength="5" autocomplete="off"
+           aria-label="${escapeHtml(t('chat_lock_pin'))}">
+    <div class="lock-gate-error"></div>
+    <button type="button" class="btn-primary" data-role="unlock">${escapeHtml(t('lock_gate_unlock'))}</button>
+  `;
+  inner.appendChild(gate);
+
+  const input = gate.querySelector('input');
+  const errEl = gate.querySelector('.lock-gate-error');
+  const btn = gate.querySelector('[data-role="unlock"]');
+  let countdownTimer = null;
+
+  const onlyDigits = () => { input.value = input.value.replace(/\D/g, '').slice(0, 5); };
+  input.addEventListener('input', onlyDigits);
+
+  const submit = async () => {
+    onlyDigits();
+    if (input.value.length !== 5) { errEl.textContent = t('chat_lock_pin_5_digits'); return; }
+    btn.disabled = true;
+    try {
+      const r = await api('POST', '/me/chat-lock/verify', { pin: input.value });
+      if (r.ok) {
+        state.unlockedCids.add(cid);
+        // Nur rendern wenn der User noch im selben Chat ist.
+        if (state.cid === cid) { renderMessages(); scrollToVeryBottom(); }
+        return;
+      }
+      // Falsch: entweder normaler Fehlversuch oder Lockout mit Countdown.
+      input.value = '';
+      const wait = r.retry_after_seconds || 0;
+      if (wait > 0) {
+        startLockout(wait);
+      } else {
+        errEl.textContent = t('lock_gate_wrong');
+        btn.disabled = false;
+        input.focus();
+      }
+    } catch (e) {
+      errEl.textContent = t('toast_error_prefix', e.message);
+      btn.disabled = false;
+    }
+  };
+
+  function startLockout(seconds) {
+    input.disabled = true;
+    btn.disabled = true;
+    let remaining = seconds;
+    const tick = () => {
+      errEl.textContent = t('lock_gate_locked_out', remaining);
+      if (remaining <= 0) {
+        clearInterval(countdownTimer); countdownTimer = null;
+        input.disabled = false; btn.disabled = false;
+        errEl.textContent = '';
+        input.focus();
+        return;
+      }
+      remaining -= 1;
+    };
+    tick();
+    countdownTimer = setInterval(tick, 1000);
+  }
+
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+  });
+  setTimeout(() => input.focus(), 50);
+}
+
+/** Modaler PIN-Prompt (für „Chat entsperren" im Kontextmenü). Liefert true,
+ *  wenn die eingegebene PIN vom Server als korrekt bestätigt wurde. Nutzt den
+ *  vorhandenen Prompt-Modal-Mechanismus + /me/chat-lock/verify. */
+async function verifyPinDialog() {
+  while (true) {
+    const pin = await showPrompt({
+      title: t('lock_gate_title'),
+      text: t('lock_gate_hint'),
+      placeholder: t('chat_lock_pin'),
+      type: 'password',
+      okLabel: t('lock_gate_unlock'),
+    });
+    if (pin === null) return false;
+    const digits = (pin || '').replace(/\D/g, '');
+    if (digits.length !== 5) { toast(t('chat_lock_pin_5_digits'), { error: true }); continue; }
+    try {
+      const r = await api('POST', '/me/chat-lock/verify', { pin: digits });
+      if (r.ok) return true;
+      if (r.retry_after_seconds > 0) {
+        toast(t('lock_gate_locked_out', r.retry_after_seconds), { error: true });
+        return false;
+      }
+      toast(t('lock_gate_wrong'), { error: true });
+    } catch (e) {
+      toast(t('toast_error_prefix', e.message), { error: true });
+      return false;
+    }
+  }
 }
 
 function updateStreaming() {
@@ -1451,6 +1653,7 @@ async function reloadChatMessages(cid) {
     state.messages = detail.messages;
     state.title = detail.title;
     state.pinned = !!detail.pinned;
+    state.chatLocked = !!detail.locked;
     updateTopbar(detail.total_tokens || 0);
     renderMessages();
   } catch (_) { /* swallow */ }
@@ -1463,6 +1666,10 @@ els.inputForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const content = els.input.value.trim();
   if (!content || state.isStreaming) return;
+  // Gesperrter, nicht entsperrter Chat → kein Senden (das Gate liegt zwar über
+  // der Nachrichtenliste, aber der Composer ist ein Geschwister-Element; ohne
+  // diesen Riegel könnte man in einen gesperrten Chat schreiben).
+  if (state.cid && state.chatLocked && !state.unlockedCids.has(state.cid)) return;
   if (imageState.enabled) { generateImage(content); return; }
   if (!state.cid) await newChat();
   const sentAttach = state.pendingAttach
@@ -2119,7 +2326,111 @@ openSettings = async function() {
   if (nameEl && state.me) nameEl.textContent = state.me.name;
   if (state.me && state.me.is_admin) await loadUsersList();
   await loadImageKeyStatus();
+  await loadChatLockStatus();
 };
+
+// =========================================================
+// Settings → Chat-Sperre (globale PIN setzen/ändern/entfernen)
+// =========================================================
+function setChatLockStatus(text, cls = '') {
+  const el = document.getElementById('chat-lock-status');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'backup-status ' + cls;
+}
+
+// Nur Ziffern in die PIN-Felder lassen (inputmode=numeric reicht auf Desktop nicht).
+document.querySelectorAll('#chat-lock-section input[inputmode="numeric"]').forEach((inp) => {
+  inp.addEventListener('input', () => {
+    inp.value = inp.value.replace(/\D/g, '').slice(0, 5);
+  });
+});
+
+async function loadChatLockStatus() {
+  const setForm = document.getElementById('chat-lock-set-form');
+  const changeForm = document.getElementById('chat-lock-change-form');
+  if (!setForm || !changeForm) return;
+  try {
+    const r = await api('GET', '/me/chat-lock');
+    const isSet = !!r.is_set;
+    setForm.classList.toggle('hidden', isSet);
+    changeForm.classList.toggle('hidden', !isSet);
+    // Felder leeren, damit keine PIN im Klartext-DOM hängen bleibt.
+    ['chat-lock-pin', 'chat-lock-pin-confirm', 'chat-lock-current',
+     'chat-lock-new', 'chat-lock-new-confirm'].forEach((id) => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    setChatLockStatus(isSet ? t('chat_lock_is_set') : t('chat_lock_not_set'), '');
+  } catch (e) {
+    // Server evtl. älter → Section still lassen.
+    setForm.classList.add('hidden');
+    changeForm.classList.add('hidden');
+  }
+}
+
+(function initChatLock() {
+  const val = (id) => (document.getElementById(id)?.value || '').replace(/\D/g, '');
+
+  // PIN erstmalig setzen
+  const saveBtn = document.getElementById('chat-lock-save');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    const pin = val('chat-lock-pin');
+    const confirm = val('chat-lock-pin-confirm');
+    if (pin.length !== 5) { setChatLockStatus(t('chat_lock_pin_5_digits'), 'error'); return; }
+    if (pin !== confirm) { setChatLockStatus(t('chat_lock_pin_mismatch'), 'error'); return; }
+    try {
+      await api('PUT', '/me/chat-lock', { pin });
+      setChatLockStatus(t('chat_lock_saved'), 'ok');
+      await loadChatLockStatus();
+    } catch (e) {
+      setChatLockStatus(t('toast_error_prefix', e.message), 'error');
+    }
+  });
+
+  // PIN ändern
+  const changeBtn = document.getElementById('chat-lock-change');
+  if (changeBtn) changeBtn.addEventListener('click', async () => {
+    const current = val('chat-lock-current');
+    const pin = val('chat-lock-new');
+    const confirm = val('chat-lock-new-confirm');
+    if (pin.length !== 5) { setChatLockStatus(t('chat_lock_pin_5_digits'), 'error'); return; }
+    if (pin !== confirm) { setChatLockStatus(t('chat_lock_pin_mismatch'), 'error'); return; }
+    try {
+      await api('PUT', '/me/chat-lock', { pin, current_pin: current });
+      setChatLockStatus(t('chat_lock_saved'), 'ok');
+      await loadChatLockStatus();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        setChatLockStatus(t('chat_lock_wrong_pin'), 'error');
+      } else {
+        setChatLockStatus(t('toast_error_prefix', e.message), 'error');
+      }
+    }
+  });
+
+  // PIN entfernen (löscht serverseitig auch alle locked-Flags)
+  const removeBtn = document.getElementById('chat-lock-remove');
+  if (removeBtn) removeBtn.addEventListener('click', async () => {
+    const current = val('chat-lock-current');
+    if (current.length !== 5) { setChatLockStatus(t('chat_lock_pin_5_digits'), 'error'); return; }
+    try {
+      await api('POST', '/me/chat-lock/clear', { current_pin: current });
+      // Alle Chats sind serverseitig entsperrt → lokalen Zustand angleichen.
+      state.unlockedCids.clear();
+      state.chatLocked = false;
+      setChatLockStatus(t('chat_lock_removed'), 'ok');
+      await loadChatLockStatus();
+      await refreshChatList();
+      if (state.cid) renderMessages();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        setChatLockStatus(t('chat_lock_wrong_pin'), 'error');
+      } else {
+        setChatLockStatus(t('toast_error_prefix', e.message), 'error');
+      }
+    }
+  });
+})();
 
 // =========================================================
 // Settings → Bilder: API-Key verwalten

@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -103,6 +105,10 @@ fun ConversationsScreen(
     var renamingId by remember { mutableStateOf<String?>(null) }
     var renamingTitle by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf<String?>(null) }
+    // Chat-Sperre: cid, dessen Sperre entfernt werden soll (PIN-Dialog), bzw.
+    // Hinweis „erst PIN in Einstellungen setzen".
+    var unlockTarget by remember { mutableStateOf<String?>(null) }
+    var needPinNotice by remember { mutableStateOf(false) }
     var searchActive by remember { mutableStateOf(false) }
     // Multi-Select: per Long-Press starten, weitere Taps toggeln. Set leer = inaktiv.
     var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -302,6 +308,10 @@ fun ConversationsScreen(
                                     },
                                     onDelete = { confirmDelete = conv.id },
                                     onTogglePin = { vm.togglePin(conv.id, conv.pinned) },
+                                    onToggleLock = {
+                                        if (conv.locked) unlockTarget = conv.id
+                                        else vm.lock(conv.id) { needPinNotice = true }
+                                    },
                                 )
                             }
                         }
@@ -358,6 +368,36 @@ fun ConversationsScreen(
         )
     }
 
+    // Chat-Sperre entfernen — PIN-Bestätigung
+    unlockTarget?.let { id ->
+        de.smartzone.pocketclaude.ui.lock.PinVerifyDialog(
+            title = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_remove_from_chat_title),
+            message = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_remove_from_chat_msg),
+            verifyPin = { pin -> vm.verifyChatLockPin(pin) },
+            onVerified = { vm.unlock(id); unlockTarget = null },
+            onDismiss = { unlockTarget = null },
+        )
+    }
+
+    // Hinweis: erst globalen PIN in den Einstellungen setzen
+    if (needPinNotice) {
+        AlertDialog(
+            onDismissRequest = { needPinNotice = false },
+            title = { Text(stringResource(de.smartzone.pocketclaude.R.string.settings_section_chat_lock)) },
+            text = { Text(stringResource(de.smartzone.pocketclaude.R.string.chat_lock_need_pin_first)) },
+            confirmButton = {
+                TextButton(onClick = { needPinNotice = false; onOpenSettings() }) {
+                    Text(stringResource(de.smartzone.pocketclaude.R.string.action_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { needPinNotice = false }) {
+                    Text(stringResource(de.smartzone.pocketclaude.R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     // Bulk delete (multiple selected chats at once)
     if (confirmBulkDelete) {
         AlertDialog(
@@ -395,6 +435,7 @@ private fun ConversationRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
+    onToggleLock: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -465,6 +506,15 @@ private fun ConversationRow(
                         )
                         Spacer(Modifier.width(6.dp))
                     }
+                    if (conv.locked) {
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = stringResource(de.smartzone.pocketclaude.R.string.convo_locked),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
                     Text(
                         conv.title,
                         style = MaterialTheme.typography.titleMedium,
@@ -528,6 +578,18 @@ private fun ConversationRow(
                                 )
                             },
                             onClick = { menuOpen = false; onTogglePin() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(if (conv.locked) de.smartzone.pocketclaude.R.string.conversation_unlock else de.smartzone.pocketclaude.R.string.conversation_lock)) },
+                            leadingIcon = {
+                                Icon(
+                                    if (conv.locked) Icons.Filled.LockOpen else Icons.Filled.Lock,
+                                    contentDescription = null,
+                                    tint = if (conv.locked) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            onClick = { menuOpen = false; onToggleLock() },
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(de.smartzone.pocketclaude.R.string.action_rename)) },

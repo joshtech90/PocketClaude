@@ -241,6 +241,20 @@ fun SettingsScreen(
             }
 
             ExpandableSection(
+                title = stringResource(de.smartzone.pocketclaude.R.string.settings_section_chat_lock),
+                subtitle = stringResource(de.smartzone.pocketclaude.R.string.settings_subtitle_chat_lock),
+                initiallyExpanded = false,
+                infoTitle = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_info_title),
+                infoBody = {
+                    InfoParagraph(
+                        stringResource(de.smartzone.pocketclaude.R.string.chat_lock_info_body)
+                    )
+                },
+            ) {
+                ChatLockSection(vm = vm, settings = settings)
+            }
+
+            ExpandableSection(
                 title = stringResource(de.smartzone.pocketclaude.R.string.settings_section_vorlesen),
                 subtitle = stringResource(de.smartzone.pocketclaude.R.string.settings_subtitle_vorlesen),
                 initiallyExpanded = false,
@@ -1119,6 +1133,181 @@ private fun formatNumber(n: Long): String {
     if (n < 1_000) return n.toString()
     if (n < 1_000_000) return "%.1fK".format(n / 1_000.0)
     return "%.2fM".format(n / 1_000_000.0)
+}
+
+/** Chat-Sperre: globalen 5-stelligen PIN setzen/ändern/entfernen + Fingerabdruck-
+ *  Toggle (gerät-lokal). Die eigentliche Sperre pro Chat läuft über das ⋮-Menü. */
+@Composable
+private fun ChatLockSection(
+    vm: SettingsViewModel,
+    settings: de.smartzone.pocketclaude.data.AppSettings,
+) {
+    val isSet by vm.chatLockIsSet.collectAsState()
+    val busy by vm.chatLockBusy.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val biometricAvailable = remember {
+        de.smartzone.pocketclaude.ui.lock.isBiometricAvailable(context)
+    }
+
+    var currentPin by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var success by remember { mutableStateOf<String?>(null) }
+
+    val wrongPinText = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_wrong_current)
+    val mismatchText = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_pins_mismatch)
+    val invalidText = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_pin_must_be_5)
+    val savedText = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_pin_saved)
+    val removedText = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_pin_removed)
+
+    fun clearInputs() { currentPin = ""; newPin = ""; confirmPin = "" }
+    fun isPin(s: String) = s.length == 5 && s.all { it.isDigit() }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            when (isSet) {
+                null -> CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                false -> {
+                    Text(
+                        stringResource(de.smartzone.pocketclaude.R.string.chat_lock_no_pin),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    PinTextField(
+                        value = newPin,
+                        onValueChange = { newPin = it.filter { c -> c.isDigit() }.take(5); error = null },
+                        label = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_new_pin),
+                    )
+                    PinTextField(
+                        value = confirmPin,
+                        onValueChange = { confirmPin = it.filter { c -> c.isDigit() }.take(5); error = null },
+                        label = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_confirm_pin),
+                    )
+                    Button(
+                        onClick = {
+                            error = null; success = null
+                            when {
+                                !isPin(newPin) -> error = invalidText
+                                newPin != confirmPin -> error = mismatchText
+                                else -> vm.setChatLockPin(newPin, null) { err ->
+                                    if (err == null) { clearInputs(); success = savedText }
+                                    else error = if (err == "wrong") wrongPinText else err
+                                }
+                            }
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(de.smartzone.pocketclaude.R.string.chat_lock_set_pin)) }
+                }
+                true -> {
+                    Text(
+                        stringResource(de.smartzone.pocketclaude.R.string.chat_lock_pin_active),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    PinTextField(
+                        value = currentPin,
+                        onValueChange = { currentPin = it.filter { c -> c.isDigit() }.take(5); error = null },
+                        label = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_current_pin),
+                    )
+                    PinTextField(
+                        value = newPin,
+                        onValueChange = { newPin = it.filter { c -> c.isDigit() }.take(5); error = null },
+                        label = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_new_pin),
+                    )
+                    PinTextField(
+                        value = confirmPin,
+                        onValueChange = { confirmPin = it.filter { c -> c.isDigit() }.take(5); error = null },
+                        label = stringResource(de.smartzone.pocketclaude.R.string.chat_lock_confirm_pin),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                error = null; success = null
+                                when {
+                                    !isPin(newPin) -> error = invalidText
+                                    newPin != confirmPin -> error = mismatchText
+                                    else -> vm.setChatLockPin(newPin, currentPin) { err ->
+                                        if (err == null) { clearInputs(); success = savedText }
+                                        else error = if (err == "wrong") wrongPinText else err
+                                    }
+                                }
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                        ) { Text(stringResource(de.smartzone.pocketclaude.R.string.chat_lock_change_pin)) }
+                        TextButton(
+                            onClick = {
+                                error = null; success = null
+                                if (!isPin(currentPin)) error = wrongPinText
+                                else vm.removeChatLockPin(currentPin) { err ->
+                                    if (err == null) { clearInputs(); success = removedText }
+                                    else error = if (err == "wrong") wrongPinText else err
+                                }
+                            },
+                            enabled = !busy,
+                        ) {
+                            Text(
+                                stringResource(de.smartzone.pocketclaude.R.string.chat_lock_remove_pin),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+            }
+
+            error?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            success?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+
+            if (biometricAvailable) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(de.smartzone.pocketclaude.R.string.chat_lock_biometric_toggle),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            stringResource(de.smartzone.pocketclaude.R.string.chat_lock_biometric_toggle_sub),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.chatLockBiometricEnabled,
+                        onCheckedChange = { vm.setChatLockBiometric(it) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinTextField(value: String, onValueChange: (String) -> Unit, label: String) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+    )
 }
 
 /** Über-Sektion — minimal, nur App-Name + Beschreibung. */

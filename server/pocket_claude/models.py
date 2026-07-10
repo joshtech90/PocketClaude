@@ -34,6 +34,10 @@ class ConversationOut(BaseModel):
     message_count: int
     total_tokens: int
     pinned: bool = False
+    # UI-Riegel: True = dieser Chat ist gesperrt. App/Web-UI verlangen vor der
+    # Anzeige den globalen PIN (bzw. Fingerabdruck in der App). Reiner Sichtschutz
+    # gegen fremden Zugriff aufs entsperrte Gerät — keine Verschlüsselung.
+    locked: bool = False
     # Wenn der Chat „mit einem Gem" gestartet wurde: dessen ID. NULL = normaler
     # Chat. Server speist dann pro Nachricht die Gem-Instructions/-Skills/-Modell
     # und -Wissensdateien ein.
@@ -54,6 +58,7 @@ class ConversationCreate(BaseModel):
 class ConversationPatch(BaseModel):
     title: str | None = None
     pinned: bool | None = None
+    locked: bool | None = None
 
 
 class SendMessageRequest(BaseModel):
@@ -400,6 +405,39 @@ class UsageStatsDto(BaseModel):
     request_count: int
     # Coarse provider attribution: "anthropic" | "bedrock" | "pro_max" | "mixed"
     provider: str
+
+
+# ─── Chat-Sperre (globaler PIN, per-Chat-Riegel) ─────────────────────────────
+
+class ChatLockStatusDto(BaseModel):
+    """Ist ein globaler Chat-Sperr-PIN für diesen User gesetzt? Der PIN-Hash
+    selbst wird NIE über die Wire geschickt."""
+    is_set: bool = False
+
+
+class ChatLockSetRequest(BaseModel):
+    """PIN setzen oder ändern. `pin` = neuer 5-stelliger PIN. Wenn schon einer
+    gesetzt ist, muss `current_pin` stimmen (sonst 401)."""
+    pin: str
+    current_pin: str | None = None
+
+
+class ChatLockClearRequest(BaseModel):
+    """PIN entfernen. `current_pin` muss stimmen. Entsperrt implizit alle Chats
+    (locked-Flag bleibt aber; ohne PIN wird die Sperre client-seitig ignoriert —
+    der Server räumt die Flags mit auf)."""
+    current_pin: str
+
+
+class ChatLockVerifyRequest(BaseModel):
+    pin: str
+
+
+class ChatLockVerifyResponse(BaseModel):
+    ok: bool
+    # Wenn wegen zu vieler Fehlversuche gesperrt: Sekunden bis zum nächsten
+    # erlaubten Versuch. 0 = nicht gesperrt.
+    retry_after_seconds: int = 0
 
 
 # ─── Gems (Custom Agents — wie ChatGPT-GPTs / Gemini-Gems) ───────────────────

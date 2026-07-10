@@ -13,8 +13,8 @@ android {
         applicationId = "de.smartzone.pocketclaude"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "0.3.0"
 
         vectorDrawables { useSupportLibrary = true }
     }
@@ -66,6 +66,10 @@ dependencies {
 
     // DataStore for settings
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Biometric (Fingerabdruck/Gesicht) zum Entsperren gesperrter Chats.
+    // Zieht androidx.fragment mit — MainActivity ist deshalb eine FragmentActivity.
+    implementation("androidx.biometric:biometric:1.1.0")
 
     // Networking
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

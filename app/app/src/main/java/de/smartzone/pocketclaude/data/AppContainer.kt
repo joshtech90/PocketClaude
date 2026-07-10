@@ -40,6 +40,10 @@ class AppContainer(context: Context) {
 
     val settingsRepository: SettingsRepository = SettingsRepository(context.dataStore)
 
+    /** Merkt sich, welche gesperrten Chats in dieser Sitzung entsperrt wurden.
+     *  Wird beim Wechsel in den Hintergrund geleert (Re-Lock). */
+    val chatLock: ChatLockManager = ChatLockManager()
+
     // Connection-Pool — explizit konfiguriert, damit gestorbene TCP-Verbindungen
     // (Mobile-Network-Switch, Carrier-NAT-Timeout, lange Background-Phase)
     // schnell aus dem Pool fliegen statt beim nächsten Request einen "Stale

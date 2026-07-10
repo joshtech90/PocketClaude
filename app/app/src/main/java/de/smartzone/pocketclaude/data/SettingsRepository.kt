@@ -78,6 +78,10 @@ data class AppSettings(
     val autoSendEnabled: Boolean = false,
     /** Stille-Schwellwert in ms für Auto-Send. Default 3000 (3 s). */
     val autoSendSilenceMs: Long = 3000L,
+    /** Gesperrte Chats per Fingerabdruck/Gesichtsscan entsperren (statt PIN).
+     *  Gerät-lokal (Biometrie ist gerätspezifisch), Default: AN — wenn das
+     *  Gerät Biometrie hat, ist das der bequemste Weg; PIN bleibt Fallback. */
+    val chatLockBiometricEnabled: Boolean = true,
 ) {
     /** Aktuell aktives Profil (oder null wenn keins gewählt). */
     val activeProfile: Profile?
@@ -121,6 +125,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     private val keyCollapseLongUserMessages = stringPreferencesKey("collapse_long_user_messages")
     private val keyAutoSendEnabled = stringPreferencesKey("auto_send_enabled")
     private val keyAutoSendSilenceMs = stringPreferencesKey("auto_send_silence_ms")
+    private val keyChatLockBiometric = stringPreferencesKey("chat_lock_biometric")
     private val keyImageHistoryJson = stringPreferencesKey("image_history_json")
 
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { prefs ->
@@ -147,7 +152,13 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 (prefs[keyAutoSendEnabled] ?: "false").toBooleanStrictOrNull() ?: false,
             autoSendSilenceMs = (prefs[keyAutoSendSilenceMs]?.toLongOrNull() ?: 3000L)
                 .coerceIn(500L, 10_000L),
+            chatLockBiometricEnabled =
+                (prefs[keyChatLockBiometric] ?: "true").toBooleanStrictOrNull() ?: true,
         )
+    }
+
+    suspend fun setChatLockBiometricEnabled(value: Boolean) {
+        dataStore.edit { it[keyChatLockBiometric] = value.toString() }
     }
 
     suspend fun setCollapseLongUserMessages(value: Boolean) {
