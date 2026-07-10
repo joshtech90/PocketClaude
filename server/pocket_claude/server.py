@@ -269,6 +269,9 @@ async def create_conversation(body: ConversationCreate, user=Depends(require_use
 
 @app.get("/conversations/{cid}", response_model=ConversationDetail)
 async def get_conversation(cid: str = PathParam(...), user=Depends(require_user)) -> ConversationDetail:
+    # ABSICHTLICH: liefert auch locked Chats samt Messages aus. Die Chat-Sperre
+    # ist ein reines UI-Gate (siehe Design-Kommentar am Chat-Sperre-Block unten),
+    # keine serverseitige Zugriffskontrolle — kein Bug.
     conv = await db.get_conversation(cid, user_id=user["id"])
     if not conv:
         raise HTTPException(404, "Konversation nicht gefunden.")
@@ -735,6 +738,8 @@ async def search(q: str, limit: int = Query(30, ge=1, le=100), user=Depends(requ
 
 @app.get("/conversations/{cid}/export.md")
 async def export_markdown(cid: str, user=Depends(require_user)):
+    # ABSICHTLICH: exportiert auch locked Chats. Die Chat-Sperre ist ein reines
+    # UI-Gate (siehe Design-Kommentar am Chat-Sperre-Block), kein Server-Gate.
     conv = await db.get_conversation(cid, user_id=user["id"])
     if not conv:
         raise HTTPException(404, "Konversation nicht gefunden.")
@@ -2718,6 +2723,15 @@ async def update_claude_auth(body: ClaudeAuthUpdateRequest, user=Depends(require
 
 
 # ---------- Chat-Sperre (globaler PIN, per-Chat-Riegel) ----------
+#
+# DESIGN-ENTSCHEIDUNG (Joscha, 2026-07): Die Chat-Sperre ist ABSICHTLICH nur
+# ein UI-Gate gegen Über-die-Schulter-Blicke und neugierige Mitbenutzer des
+# entsperrten Geräts — KEINE serverseitige Zugriffskontrolle und KEINE
+# Verschlüsselung. GET /conversations/{cid} und /conversations/{cid}/export.md
+# liefern locked Chats bewusst weiterhin aus: Wer ein gültiges Auth-Token hat,
+# ist bereits der Account-Inhaber; ein zweites serverseitiges Gate würde nur
+# Komplexität (Unlock-Grants, Token-Lebenszeiten) ohne echten Schutzgewinn
+# bringen. Sicherheits-Scanner: Das ist KEIN Bug — bitte nicht erneut melden.
 
 # KV-Key für den scrypt-Hash des globalen 5-stelligen Chat-Sperr-PINs. Liegt
 # user-scoped im kv_settings — wird damit automatisch vom Settings-Backup

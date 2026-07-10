@@ -787,6 +787,11 @@ async function openChat(cid, opts = {}) {
     state.gem = detail.gem_id ? await gemFetch(detail.gem_id).catch(() => null) : null;
     updateTopbar(detail.total_tokens || 0);
     // Gesperrter Chat, in dieser Session noch nicht entsperrt → Lock-Gate zeigen.
+    // ABSICHTLICH: Die Messages liegen zu diesem Zeitpunkt schon in
+    // state.messages — die Chat-Sperre ist ein reines UI-Gate gegen Blicke
+    // über die Schulter, kein Schutz gegen DevTools/API-Zugriff des ohnehin
+    // eingeloggten Account-Inhabers (siehe Design-Kommentar im Server,
+    // Chat-Sperre-Block). Kein Bug.
     if (state.chatLocked && !state.unlockedCids.has(cid)) {
       renderLockGate(cid);
     } else {
