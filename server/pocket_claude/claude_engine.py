@@ -408,9 +408,19 @@ async def generate_conversation_title(
     if not title:
         return None
 
-    # Race-Schutz: nur setzen, wenn der Chat inzwischen nicht schon umbenannt
-    # wurde (z.B. paralleler manueller Rename).
-    await db.update_conversation_title(cid, title, user_id=user_id)
+    # Race-Schutz (BR-027): atomarer Compare-and-Set — der Titel wird NUR
+    # gesetzt, wenn der Chat DB-seitig noch exakt „Neuer Chat" heisst. Während
+    # des LLM-await oben kann der User manuell umbenannt haben; ein erneutes
+    # Re-Read wäre weiterhin racy, deshalb macht das WHERE-Prädikat die
+    # Bedingung Teil des UPDATE selbst.
+    changed = await db.set_title_if_default(
+        cid, title, expected="Neuer Chat", user_id=user_id,
+    )
+    if not changed:
+        # Manueller Rename hat gewonnen → NICHT überschreiben und KEIN
+        # SSE-title-Event auslösen (Caller schickt es nur bei Rückgabe != None).
+        log.info("PC_TITLE: cid=%s auto-title verworfen (manueller Rename gewann)", cid)
+        return None
     log.info("PC_TITLE: cid=%s title=%r", cid, title)
     return title
 

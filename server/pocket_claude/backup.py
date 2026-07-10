@@ -57,6 +57,144 @@ MANIFEST_FILENAME = "manifest.json"
 DB_FILENAME = "pocket_claude.db"
 UPLOADS_DIR = "uploads"
 
+# Zip-Bomb-/Zip-Slip-Schutz beim Import. Werte bewusst grosszügig, aber endlich.
+_MAX_ENTRIES = 100_000            # max. Anzahl Einträge im Archiv
+_MAX_TOTAL_UNCOMPRESSED = 20 * 1024 * 1024 * 1024   # 20 GiB gesamt entpackt
+_MAX_SINGLE_UNCOMPRESSED = 5 * 1024 * 1024 * 1024   # 5 GiB pro Einzeldatei
+_MAX_COMPRESSION_RATIO = 200      # entpackt/gepackt pro Datei (Bomb-Heuristik)
+_COPY_CHUNK = 1024 * 1024
+
+
+class BackupUnsafeEntryError(ValueError):
+    """Ein ZIP-Eintrag ist unsicher (Zip-Slip, absoluter Pfad, Backslash,
+    Symlink) oder verletzt die Grössen-/Ratio-Limits (Zip-Bomb)."""
+
+
+def _is_symlink_entry(info: zipfile.ZipInfo) -> bool:
+    """True, wenn der ZIP-Eintrag als Symlink markiert ist (Unix-Mode im
+    external_attr). Symlinks im Backup könnten sonst beim späteren Schreiben
+    aus dem Zielverzeichnis herausführen."""
+    mode = (info.external_attr >> 16) & 0o170000
+    return mode == 0o120000  # S_IFLNK
+
+
+def _safe_relpath(name: str) -> str:
+    """Validiert einen `uploads/<...>`-ZIP-Eintragsnamen und gibt den relativen
+    Pfad UNTERHALB von uploads zurück. Wirft BackupUnsafeEntryError bei
+    absoluten Pfaden, `..`, Backslashes oder leeren Komponenten.
+
+    Nur ein String-Test auf ".." reicht NICHT — hier wird der Pfad in POSIX-
+    Komponenten zerlegt und jede einzeln geprüft; die Containment-Prüfung via
+    resolve() passiert zusätzlich beim tatsächlichen Schreiben.
+    """
+    if "\\" in name:
+        raise BackupUnsafeEntryError(f"Backslash im Eintrag: {name!r}")
+    prefix = f"{UPLOADS_DIR}/"
+    if not name.startswith(prefix):
+        raise BackupUnsafeEntryError(f"Eintrag ausserhalb {UPLOADS_DIR}/: {name!r}")
+    rel = name[len(prefix):]
+    if not rel or rel.endswith("/"):
+        raise BackupUnsafeEntryError(f"Kein Datei-Eintrag: {name!r}")
+    # Absolut? (POSIX oder Windows-Laufwerk)
+    if rel.startswith("/") or (len(rel) >= 2 and rel[1] == ":"):
+        raise BackupUnsafeEntryError(f"Absoluter Pfad: {name!r}")
+    parts = rel.split("/")
+    for p in parts:
+        if p in ("", ".", ".."):
+            raise BackupUnsafeEntryError(f"Unsichere Pfadkomponente in {name!r}")
+    return rel
+
+
+def _extract_uploads_safely(zf, uploads_dir: Path, *, skip_existing: bool) -> int:  # noqa: ANN001
+    """Extrahiert alle `uploads/<...>`-Einträge sicher in `uploads_dir`.
+
+    Sicherheitsmassnahmen (BR-008):
+    - jeder Eintrag muss ein POSIX-relativer Pfad ohne `..`/absolute Teile sein,
+    - Symlink-Einträge werden abgelehnt,
+    - das aufgelöste Ziel muss via resolve() INNERHALB von uploads_dir liegen,
+    - Zip-Bomb-Guard: Entry-Count, Einzel-/Gesamtgrösse und Kompressionsratio.
+
+    Extrahiert wird zunächst in ein isoliertes Temp-Verzeichnis INNERHALB von
+    uploads_dir; nur validierte Dateien werden anschliessend atomar an ihren
+    Zielplatz verschoben. Returnt die Anzahl übernommener Dateien.
+    """
+    uploads_root = uploads_dir.resolve()
+    uploads_root.mkdir(parents=True, exist_ok=True)
+    staging = Path(uploads_root) / f".import-staging-{uuid.uuid4().hex[:12]}"
+    staging.mkdir(parents=True, exist_ok=False)
+
+    total_uncompressed = 0
+    entry_count = 0
+    moved = 0
+    try:
+        for info in zf.infolist():
+            name = info.filename
+            if not name.startswith(f"{UPLOADS_DIR}/") or name.endswith("/"):
+                continue
+            entry_count += 1
+            if entry_count > _MAX_ENTRIES:
+                raise BackupUnsafeEntryError(
+                    f"Zu viele Einträge (> {_MAX_ENTRIES}) — Zip-Bomb-Verdacht."
+                )
+            if _is_symlink_entry(info):
+                raise BackupUnsafeEntryError(f"Symlink-Eintrag abgelehnt: {name!r}")
+
+            rel = _safe_relpath(name)
+
+            declared = int(getattr(info, "file_size", 0) or 0)
+            if declared > _MAX_SINGLE_UNCOMPRESSED:
+                raise BackupUnsafeEntryError(
+                    f"Einzeldatei zu gross ({declared} B): {name!r}"
+                )
+            comp = int(getattr(info, "compress_size", 0) or 0)
+            if comp > 0 and declared / comp > _MAX_COMPRESSION_RATIO:
+                raise BackupUnsafeEntryError(
+                    f"Kompressionsratio verdächtig ({declared}/{comp}): {name!r}"
+                )
+
+            # Ziel im Staging berechnen und Containment erzwingen.
+            staged_target = (staging / rel).resolve()
+            if os.path.commonpath([str(staging.resolve()), str(staged_target)]) != str(staging.resolve()):
+                raise BackupUnsafeEntryError(f"Pfad-Escape (staging): {name!r}")
+
+            staged_target.parent.mkdir(parents=True, exist_ok=True)
+            written = 0
+            with zf.open(info) as src, open(staged_target, "wb") as dst:
+                while True:
+                    chunk = src.read(_COPY_CHUNK)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    total_uncompressed += len(chunk)
+                    if written > _MAX_SINGLE_UNCOMPRESSED:
+                        raise BackupUnsafeEntryError(
+                            f"Einzeldatei überschreitet Limit beim Lesen: {name!r}"
+                        )
+                    if total_uncompressed > _MAX_TOTAL_UNCOMPRESSED:
+                        raise BackupUnsafeEntryError(
+                            "Gesamtgrösse überschreitet Limit — Zip-Bomb-Verdacht."
+                        )
+                    dst.write(chunk)
+
+        # Alle Einträge validiert + geschrieben → jetzt atomar ins Ziel übernehmen.
+        for staged in sorted(staging.rglob("*")):
+            if not staged.is_file():
+                continue
+            rel = staged.relative_to(staging)
+            final_target = (uploads_root / rel).resolve()
+            # Doppelte Containment-Prüfung gegen das echte Zielverzeichnis.
+            if os.path.commonpath([str(uploads_root), str(final_target)]) != str(uploads_root):
+                raise BackupUnsafeEntryError(f"Pfad-Escape (final): {rel}")
+            if skip_existing and final_target.exists():
+                continue
+            final_target.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(staged, final_target)
+            moved += 1
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    return moved
+
 
 # --------------------------------------------------------------------- ZIP-HELPER
 
@@ -188,6 +326,29 @@ async def _gather_stats(user_id: Optional[str] = None) -> tuple[int, int, int]:
         return int(conv), int(msg), int(att)
 
 
+def _wipe_sessions(cur: sqlite3.Cursor) -> None:
+    """Entfernt ALLE Zeilen aus der sessions-Tabelle einer DB-Kopie.
+    sessions.token ist das Bearer-Credential — es darf weder in der Backup-DB
+    noch (unverschlüsselt) in den ZIP-Bytes landen. Nach einem Restore muss
+    sich jeder User neu einloggen."""
+    if cur.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
+    ).fetchone():
+        cur.execute("DELETE FROM sessions")
+
+
+def _strip_sessions(db_path: Path) -> None:
+    """Löscht die sessions-Tabelle einer frisch kopierten DB (Admin-Pfad, wo
+    _filter_db_to_user nicht läuft). Wird NIE auf der Live-DB aufgerufen."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        _wipe_sessions(cur)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _filter_db_to_user(db_path: Path, user_id: str) -> None:
     """Reduziert eine DB-Kopie auf die Daten eines einzelnen Users.
     Wird auf einer FRISCHEN VACUUM-Kopie aufgerufen, NICHT auf der Live-DB!"""
@@ -203,11 +364,13 @@ def _filter_db_to_user(db_path: Path, user_id: str) -> None:
         cur.execute("DELETE FROM attachments WHERE user_id != ? OR user_id IS NULL", (user_id,))
         # KV-Settings nur des Users behalten
         cur.execute("DELETE FROM kv_settings WHERE scope != ?", (user_id,))
-        # Sessions anderer User raus — sessions.token IST das Bearer-Credential,
-        # darf NIE in ein fremdes Backup gelangen (sonst Account-Takeover).
-        cur.execute("DELETE FROM sessions WHERE user_id != ?", (user_id,))
-        # Eigene Tokens trotzdem entwerten, damit der Export keine Live-Credentials trägt.
-        cur.execute("UPDATE sessions SET token = '' WHERE user_id = ?", (user_id,))
+        # Sessions KOMPLETT raus — sessions.token IST das Bearer-Credential und
+        # darf NIE in ein Backup gelangen (Account-Takeover; Verschlüsselung ist
+        # optional). Auch die eigenen Sessions werden entfernt, nicht nur
+        # entwertet: ein leerer Platzhalter-Token bricht ausserdem die
+        # UNIQUE/PK-Constraint, sobald ein User zwei aktive Sessions hat.
+        # Nach einem Restore ist ein erneuter Login erforderlich.
+        _wipe_sessions(cur)
         # token_usage (wird von usage.ensure_schema lazy angelegt) anderer User raus.
         if cur.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'"
@@ -270,9 +433,14 @@ async def create_backup_zip(
     # DB sauber kopieren (kein Lock-Konflikt mit dem laufenden Server)
     tmp_db = settings.data_dir / f".backup-snapshot-{int(time.time())}.db"
     _vacuum_to(tmp_db)
-    # Bei per-User-Export: die Kopie auf die User-Daten reduzieren
+    # Bei per-User-Export: die Kopie auf die User-Daten reduzieren (entfernt
+    # dabei auch die sessions-Tabelle). Beim globalen Admin-Export läuft der
+    # Filter nicht — sessions dort separat komplett entfernen, sonst würden ALLE
+    # aktiven Bearer-Tokens im Klartext im Backup landen.
     if user_id is not None:
         _filter_db_to_user(tmp_db, user_id)
+    else:
+        _strip_sessions(tmp_db)
 
     # Welche Attachment-Pfade gehören mit ins ZIP?
     allowed_paths: Optional[set[str]] = None
@@ -387,6 +555,8 @@ def _save_pre_import_backup() -> Path:
     # async-context da ist
     snapshot_db = settings.data_dir / f".pre-import-snapshot-{ts}.db"
     _vacuum_to(snapshot_db)
+    # Auch das Sicherheits-ZIP darf keine Live-Bearer-Tokens tragen.
+    _strip_sessions(snapshot_db)
     try:
         # "x" = exklusives Erstellen, kein stilles Truncate einer bereits
         # existierenden Safety-ZIP.
@@ -427,16 +597,8 @@ def _replace_db_and_uploads(zf) -> tuple[int, int, int]:  # noqa: ANN001
         shutil.copyfileobj(src, dst)
     os.replace(tmp_db, target_db)
 
-    # Uploads
-    att_count = 0
-    for name in zf.namelist():
-        if name.startswith(f"{UPLOADS_DIR}/") and not name.endswith("/"):
-            rel = name[len(UPLOADS_DIR) + 1:]
-            target = uploads_dir / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(name) as src, open(target, "wb") as dst:
-                shutil.copyfileobj(src, dst)
-            att_count += 1
+    # Uploads sicher extrahieren (Zip-Slip-/Zip-Bomb-Schutz, BR-008).
+    att_count = _extract_uploads_safely(zf, uploads_dir, skip_existing=False)
 
     # Counts aus neuer DB ziehen
     with sqlite3.connect(str(target_db)) as conn:
@@ -555,16 +717,9 @@ def _merge_db_and_uploads(zf) -> tuple[int, int, int, int]:  # noqa: ANN001
 
             live_conn.commit()
 
-        # Uploads dazukopieren, ohne bestehende zu überschreiben
-        for name in zf.namelist():
-            if name.startswith(f"{UPLOADS_DIR}/") and not name.endswith("/"):
-                rel = name[len(UPLOADS_DIR) + 1:]
-                target = uploads_dir / rel
-                if target.exists():
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(name) as src, open(target, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
+        # Uploads sicher dazukopieren, ohne bestehende zu überschreiben
+        # (Zip-Slip-/Zip-Bomb-Schutz, BR-008).
+        _extract_uploads_safely(zf, uploads_dir, skip_existing=True)
 
         return added, skipped, msgs_imported, atts_imported
     finally:

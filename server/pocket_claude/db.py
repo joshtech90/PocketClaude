@@ -486,6 +486,26 @@ async def update_conversation_title(cid: str, title: str, user_id: str | None = 
         await db.commit()
 
 
+async def set_title_if_default(
+    cid: str, title: str, expected: str, user_id: str | None = None,
+) -> int:
+    """Atomarer Compare-and-Set des Titels: setzt `title` nur, wenn der aktuelle
+    Titel noch exakt `expected` ist (z.B. der Default „Neuer Chat"). Das
+    WHERE-Prädikat schützt gegen die TOCTOU-Race mit einem parallelen manuellen
+    Rename (BR-027) — ein Vorher-Lesen wäre weiterhin racy.
+
+    Returnt die Anzahl geänderter Zeilen (0 = nichts überschrieben)."""
+    sql = "UPDATE conversations SET title = ? WHERE id = ? AND title = ?"
+    params: tuple = (title, cid, expected)
+    if user_id is not None:
+        sql += " AND user_id = ?"
+        params = params + (user_id,)
+    async with get_db() as db:
+        cur = await db.execute(sql, params)
+        await db.commit()
+        return cur.rowcount
+
+
 async def delete_conversation(cid: str, user_id: str | None = None) -> bool:
     sql = "DELETE FROM conversations WHERE id = ?"
     params: tuple = (cid,)
