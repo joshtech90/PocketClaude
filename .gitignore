@@ -58,3 +58,7 @@ docs/private/
 
 # ─── Lokale Artefakte / Exporte (nicht versionieren) ─────────────────────────
 OpenClaw-TTS-Kit.zip
+
+# Lokale Agent-Notizen (Wissen liegt gesichert im privaten claude-memory)
+CLAUDE.md
+AGENTS.md
