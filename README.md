@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="Pocket Claude" width="160" height="160">
+<img src="assets/logo.png" alt="PocketClot" width="160" height="160">
 
-# Pocket Claude
+# PocketClot
 
 **Your personal Claude on your phone — backed by your own Pro/Max subscription, an Anthropic API key, or AWS Bedrock. Hosted on your own hardware.**
 
@@ -19,7 +19,7 @@
 
 ## About
 
-**Pocket Claude** is a self-hosted chat front-end for Anthropic's [Claude](https://claude.ai). A small Python server runs on your own Linux box (Mini-PC, Raspberry Pi, old laptop, NAS); a native Android app and a built-in web UI talk to it from anywhere via [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) or a Cloudflare tunnel.
+**PocketClot** is a self-hosted chat front-end for Anthropic's [Claude](https://claude.ai). A small Python server runs on your own Linux box (Mini-PC, Raspberry Pi, old laptop, NAS); a native Android app and a built-in web UI talk to it from anywhere via [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) or a Cloudflare tunnel.
 
 **Pick the backend per user**, switchable any time in the app:
 
@@ -27,7 +27,7 @@
 - **Anthropic API key** — `sk-ant-…` from the [Anthropic Console](https://console.anthropic.com), pay-as-you-go billing.
 - **AWS Bedrock** — your AWS credentials, supports Claude Opus 4.7 on Bedrock-pinned model IDs.
 
-**Why this exists.** Anthropic's official Claude apps are great — Pocket Claude exists for the things they don't (yet) do:
+**Why this exists.** Anthropic's official Claude apps are great — PocketClot exists for the things they don't (yet) do:
 
 - **Open source.** Audit it, fork it, extend it. No mystery telemetry, no surprise feature removals.
 - **Extra features.** TTS read-aloud (three providers, lock-screen controls), image generation, ChatGPT-style long-message collapse, full-text search across all your chats, encrypted backups, four selectable system-prompt modes.
@@ -35,7 +35,7 @@
 - **A clean second "Claude".** Want a strict personal/work separation without juggling two Anthropic accounts? Spin up your own server, log in side-by-side with the official client, done.
 - **You own the data.** Your conversations live in a SQLite database on your hardware. Migrate it, back it up, query it directly — it's yours.
 
-**No additional Anthropic API key required.** Authentication is the OAuth session your locally-installed Claude Code CLI uses (`claude login`). Pocket Claude spawns the CLI; the CLI handles the rest — running on the same Pro/Max quota you already pay for.
+**No additional Anthropic API key required.** Authentication is the OAuth session your locally-installed Claude Code CLI uses (`claude login`). PocketClot spawns the CLI; the CLI handles the rest — running on the same Pro/Max quota you already pay for.
 
 > **Note** — this is a self-hosted hobby project, not an Anthropic product. You bring your own Pro/Max subscription. We never see or proxy your conversations.
 
@@ -75,7 +75,7 @@
 
 ```
                 ┌───────────────────────────┐
-                │  Pocket Claude (Android)  │
+                │  PocketClot (Android)  │
                 │      or built-in web UI   │
                 └─────────────┬─────────────┘
                               │ HTTPS  (persistent URL)
@@ -115,7 +115,7 @@ Two components, one repository:
 On a fresh Ubuntu / Debian / Fedora box:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClaude/main/server/deploy/install-linux.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClot/main/server/deploy/install-linux.sh | sudo bash
 ```
 
 The installer creates a `pocket-claude` system user, drops the code into `/opt/pocket-claude/`, installs the Claude Code CLI, installs Python dependencies into a venv, writes a systemd unit, and starts it on port `8787` (loopback).
@@ -138,7 +138,7 @@ Prints the public URL when it's done — looks like `https://your-host.your-tail
 
 ### 4 — Install the Android app
 
-Either download the APK from [the latest release](https://github.com/joshtech90/PocketClaude/releases) or build it yourself:
+Either download the APK from [the latest release](https://github.com/joshtech90/PocketClot/releases) or build it yourself:
 
 ```bash
 cd app && ./gradlew assembleDebug

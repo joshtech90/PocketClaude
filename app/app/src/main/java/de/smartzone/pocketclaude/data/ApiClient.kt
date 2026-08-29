@@ -10,6 +10,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -206,6 +207,35 @@ class ApiClient(
 
     suspend fun deleteImageApiKey() = delete("/images/credentials")
 
+    /** Standard-Auflösung, Seitenverhältnis und Bildmodell des Users setzen.
+     *  Leerer String setzt einen Wert auf den Server-Default zurück, null lässt
+     *  ihn unverändert. */
+    suspend fun setImageDefaults(
+        size: String? = null,
+        aspectRatio: String? = null,
+        model: String? = null,
+    ): ImageConfigDto = putJson(
+        "/images/defaults",
+        ImageDefaultsRequest(size = size, aspectRatio = aspectRatio, model = model),
+    )
+
+    // ---------- Chat-Modelle (Claude plus Zusatz-Modelle) ----------
+
+    /** Liefert alle wählbaren Modelle und den Zustand der Zusatz-Gateways.
+     *  `refresh = true` umgeht den serverseitigen Modell-Cache. */
+    /** `include`: Modell-Key, den der Server auch dann mitliefern soll, wenn er
+     *  nicht kuratiert ist. Das ist das Modell des aktuellen Chats. */
+    suspend fun getChatModels(refresh: Boolean = false, include: String = ""): ChatModelsDto {
+        val params = buildList {
+            if (refresh) add("refresh=1")
+            if (include.isNotBlank()) {
+                add("include=" + java.net.URLEncoder.encode(include, "UTF-8"))
+            }
+        }
+        val query = if (params.isEmpty()) "" else "?" + params.joinToString("&")
+        return get("/chat/models$query")
+    }
+
     suspend fun generateImage(req: ImageGenerateRequest): ImageGenerateResponse =
         postJson("/images/generate", req)
 
@@ -272,6 +302,10 @@ class ApiClient(
 
     suspend fun setPinned(id: String, pinned: Boolean): ConversationDto =
         patchJson("/conversations/$id", PatchConversationRequest(pinned = pinned))
+
+    /** Merkt das gewählte Modell am Chat. Leerer String = zurück auf Claude. */
+    suspend fun setChatModel(id: String, modelKey: String): ConversationDto =
+        patchJson("/conversations/$id", PatchConversationRequest(chatModel = modelKey))
 
     suspend fun setLocked(id: String, locked: Boolean): ConversationDto =
         patchJson("/conversations/$id", PatchConversationRequest(locked = locked))
@@ -697,6 +731,18 @@ class ApiClient(
                 "delta" -> StreamEvent.Delta(str("text"))
                 "thinking_delta" -> StreamEvent.ThinkingDelta(str("text"))
                 "block_stop" -> StreamEvent.BlockStop
+                "image" -> {
+                    // Das Modell hat mitten in der Antwort Bilder erzeugt. Die
+                    // Attachments hängen beim `done` auch an der DB-Message, das
+                    // Event ist nur dafür da, dass sie sofort sichtbar werden.
+                    val arr = obj?.get("attachments")
+                    val atts = if (arr != null) {
+                        runCatching {
+                            json.decodeFromJsonElement<List<AttachmentRefDto>>(arr)
+                        }.getOrDefault(emptyList())
+                    } else emptyList()
+                    StreamEvent.ImagesReady(atts)
+                }
                 "done" -> StreamEvent.Done(
                     assistantMessageId = long("assistant_message_id"),
                     tokensIn = int("tokens_in"),

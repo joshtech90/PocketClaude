@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -65,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -76,6 +79,10 @@ import de.smartzone.pocketclaude.PocketClaudeApp
 import de.smartzone.pocketclaude.R
 import de.smartzone.pocketclaude.data.AppSettings
 import de.smartzone.pocketclaude.data.ImageGenerateAttachment
+import de.smartzone.pocketclaude.ui.components.PocketBackdrop
+import de.smartzone.pocketclaude.ui.components.PocketIconButton
+import de.smartzone.pocketclaude.ui.components.PocketScreenTitle
+import de.smartzone.pocketclaude.ui.theme.PocketTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,31 +109,47 @@ fun ImagesScreen(
     var entryToDelete by remember { mutableStateOf<GeneratedImageEntry?>(null) }
     var clearAllOpen by remember { mutableStateOf(false) }
 
+    PocketBackdrop(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.image_screen_title), style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    PocketScreenTitle(
+                        eyebrow = stringResource(R.string.app_name),
+                        title = stringResource(R.string.image_screen_title),
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                    }
+                    PocketIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.action_back),
+                        onClick = onBack,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
                 },
                 actions = {
                     if (state.history.isNotEmpty()) {
-                        IconButton(onClick = { clearAllOpen = true }) {
-                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.image_clear_history))
-                        }
+                        PocketIconButton(
+                            icon = Icons.Filled.Delete,
+                            contentDescription = stringResource(R.string.image_clear_history),
+                            onClick = { clearAllOpen = true },
+                        )
+                        Spacer(Modifier.width(4.dp))
                     }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.image_open_settings))
-                    }
+                    PocketIconButton(
+                        icon = Icons.Filled.Settings,
+                        contentDescription = stringResource(R.string.image_open_settings),
+                        onClick = onOpenSettings,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
                 ),
             )
         },
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) { pad ->
         val cfg = state.config
         when {
@@ -189,45 +212,52 @@ fun ImagesScreen(
                 }
             }
             else -> {
-                Column(
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(pad),
+                        .padding(pad)
+                        .consumeWindowInsets(pad)
+                        .imePadding(),
+                    contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
-                    // Generator-Card (oben, fix)
-                    GeneratorCard(state = state, vm = vm)
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                    // History
+                    item(key = "generator") {
+                        GeneratorCard(state = state, vm = vm)
+                    }
+                    item(key = "divider") {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
                     if (state.history.isEmpty()) {
-                        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                            Text(
-                                stringResource(R.string.image_history_empty),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            )
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(vertical = 12.dp),
-                        ) {
-                            items(state.history, key = { it.timestampMs }) { entry ->
-                                HistoryRow(
-                                    entry = entry,
-                                    serverBaseUrl = appSettings.serverUrl,
-                                    serverToken = appSettings.serverToken,
-                                    onImageClick = { att -> fullscreenAttachment = att },
-                                    onDelete = { entryToDelete = entry },
+                        item(key = "empty") {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp)
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    stringResource(R.string.image_history_empty),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 )
                             }
+                        }
+                    } else {
+                        items(state.history, key = { it.timestampMs }) { entry ->
+                            HistoryRow(
+                                entry = entry,
+                                serverBaseUrl = appSettings.serverUrl,
+                                serverToken = appSettings.serverToken,
+                                onImageClick = { att -> fullscreenAttachment = att },
+                                onDelete = { entryToDelete = entry },
+                            )
                         }
                     }
                 }
             }
         }
+    }
     }
 
     // Fullscreen-Vorschau
@@ -283,11 +313,15 @@ private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        shape = RoundedCornerShape(28.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, PocketTheme.colors.outlineSoft),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Prompt-Eingabe
             OutlinedTextField(
                 value = state.prompt,
@@ -295,7 +329,7 @@ private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
                 placeholder = { Text(stringResource(R.string.image_prompt_placeholder)) },
                 maxLines = 4,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(20.dp),
                 enabled = !state.isGenerating,
             )
 
@@ -414,6 +448,7 @@ private fun HistoryRow(
             .padding(horizontal = 12.dp, vertical = 6.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ),
         shape = RoundedCornerShape(14.dp),
     ) {
@@ -433,7 +468,7 @@ private fun HistoryRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.Filled.Close,
                         contentDescription = stringResource(R.string.image_remove_entry),
@@ -555,7 +590,7 @@ private suspend fun shareImage(
 }
 
 /**
- * Speichert das Bild via MediaStore in die Galerie (Pictures/PocketClaude/).
+ * Speichert das Bild via MediaStore in die Galerie (Pictures/PocketClot/).
  * Auf Android 10+ ist MediaStore der saubere Weg — keine WRITE_EXTERNAL_STORAGE-
  * Permission nötig, Scoped-Storage-konform. Download + MediaStore-Write laufen
  * auf Dispatchers.IO, der Toast wird auf dem Main-Thread gepostet.
@@ -575,11 +610,11 @@ private suspend fun saveImageToGallery(
                 att.mimeType.contains("webp") -> "webp"
                 else -> "jpg"
             }
-            val filename = "PocketClaude-$ts.$ext"
+            val filename = "PocketClot-$ts.$ext"
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, filename)
                 put(MediaStore.Images.Media.MIME_TYPE, att.mimeType)
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PocketClaude")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PocketClot")
             }
             val resolver = context.contentResolver
             val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)

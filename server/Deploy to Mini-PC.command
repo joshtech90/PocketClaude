@@ -14,7 +14,7 @@ set -e
 cd "$(dirname "$0")"
 
 echo "═══════════════════════════════════════════════════"
-echo " Pocket Claude — Migration vom Mac auf den Mini-PC"
+echo " PocketClot — Migration vom Mac auf den Mini-PC"
 echo "═══════════════════════════════════════════════════"
 echo
 echo "Voraussetzungen:"

@@ -13,7 +13,16 @@ import de.smartzone.pocketclaude.data.AppContainer
 import de.smartzone.pocketclaude.data.AttachmentDto
 import de.smartzone.pocketclaude.data.AttachmentRefDto
 import de.smartzone.pocketclaude.data.AudioController
+import de.smartzone.pocketclaude.data.AppSettings
+import de.smartzone.pocketclaude.data.ApiException
+import de.smartzone.pocketclaude.data.ChatModelFamilies
+import de.smartzone.pocketclaude.data.ChatModelOption
+import de.smartzone.pocketclaude.data.ClaudeModels
+import de.smartzone.pocketclaude.data.EFFORT_LEVELS
 import de.smartzone.pocketclaude.data.ChatRepository
+import de.smartzone.pocketclaude.data.DEFAULT_EFFORT
+import de.smartzone.pocketclaude.data.GatewayStatusDto
+import de.smartzone.pocketclaude.data.familyForKey
 import de.smartzone.pocketclaude.data.ConversationDetailDto
 import de.smartzone.pocketclaude.data.LocalePrefs
 import de.smartzone.pocketclaude.data.MessageDto
@@ -54,6 +63,9 @@ data class ChatUiState(
     val messages: List<MessageDto> = emptyList(),
     val streamingText: String = "",
     val streamingThinking: String = "",
+    /** Bilder, die das Modell im laufenden Turn erzeugt hat. Sie hängen beim
+     *  `done` auch an der DB-Message; das hier ist nur die Sofortanzeige. */
+    val streamingAttachments: List<AttachmentRefDto> = emptyList(),
     val isStreaming: Boolean = false,
     val isCompacting: Boolean = false,
     val totalTokens: Int = 0,
@@ -81,6 +93,15 @@ data class ChatUiState(
     // Auto-Speak-Override für diesen Chat. null = globaler Default greift,
     // true/false = Override aktiv.
     val autoSpeakOverride: Boolean? = null,
+    // ───── Modell & Denktiefe ─────
+    // `modelKey` gilt für DIESEN Chat: beim Öffnen kommt er vom Server
+    // (zuletzt benutzt), sonst greift die globale Wahl. Wer im Sheet umschaltet,
+    // ändert beides, damit auch neue Chats das gewählte Modell erben.
+    val modelKey: String = "",
+    val models: List<ChatModelOption> = emptyList(),
+    val gateways: List<GatewayStatusDto> = emptyList(),
+    val modelsLoading: Boolean = false,
+    val modelsError: String? = null,
     // ───── In-Chat-Suche ─────
     // Tritt an, wenn der User im ⋮-Menü "Im Chat suchen" wählt. Der Server
     // wird NICHT befragt — wir suchen client-seitig in `messages`. Vorteil:
@@ -143,6 +164,8 @@ class ChatViewModel(
 
     init {
         refresh()
+        observeSettings()
+        loadModels()
         loadSkills()
         loadAutoSpeakOverride()
         startVoiceGuard()
@@ -167,6 +190,120 @@ class ChatViewModel(
                     runCatching { voiceRecorder.cancel() }
                     _state.update { it.copy(voiceState = VoiceState.Idle) }
                 }
+            }
+        }
+    }
+
+    /** Holt die Modell-Liste vom Server. Claude ist immer dabei, die
+     *  Zusatz-Modelle nur wenn ein Gateway antwortet. Schlägt der Aufruf fehl,
+     *  bleibt Claude wählbar und die Meldung steht im Sheet. */
+    fun loadModels(refresh: Boolean = false) = viewModelScope.launch {
+        _state.update { it.copy(modelsLoading = true, modelsError = null) }
+        val globalKey = settingsRepo.current().chatModelKey
+        // Das Modell dieses Chats mitschicken: der Server haengt es an die
+        // Liste, auch wenn es nicht mehr kuratiert ist. Sonst haelt die App es
+        // faelschlich fuer verschwunden und setzt den Chat zurueck.
+        val wanted = _state.value.modelKey.ifBlank { globalKey }
+        runCatching { repo.getChatModels(refresh, include = wanted) }
+            .onSuccess { dto ->
+                val options = dto.models.map { m ->
+                    ChatModelOption(
+                        key = m.key,
+                        family = m.family,
+                        label = m.label,
+                        efforts = m.efforts,
+                        defaultEffort = m.defaultEffort,
+                        supportsVision = m.supportsVision,
+                        gatewayLabel = m.gatewayLabel,
+                    )
+                }
+                _state.update { st ->
+                    // Ein Modell, das der Server nicht mehr anbietet, darf nicht
+                    // stehenbleiben: sonst läuft jede Nachricht in einen Fehler.
+                    val current = st.modelKey.ifBlank { globalKey }
+                    val stillThere = current.isBlank() || options.any { it.key == current }
+                    if (!stillThere) {
+                        // Auch die globale Wahl muss weg. Sonst zeigt das Sheet
+                        // zwar „Automatisch", der naechste Sendevorgang faellt
+                        // aber wieder auf denselben toten Key zurueck.
+                        viewModelScope.launch { settingsRepo.setChatModelKey("") }
+                    }
+                    st.copy(
+                        models = options,
+                        gateways = dto.gateways,
+                        modelsLoading = false,
+                        modelKey = if (stillThere) current else "",
+                    )
+                }
+            }
+            .onFailure { e ->
+                // Der Server antwortet nicht mit einer Modell-Liste. Frueher blieb
+                // das Sheet dann komplett leer und zeigte nur den rohen HTTP-Text,
+                // obwohl Claude selbst normal weiterlief. Stattdessen: die
+                // eingebauten Claude-Modelle anbieten und im Klartext sagen,
+                // woran es liegt.
+                val code = (e as? ApiException)?.code
+                val message = when (code) {
+                    // 404 heisst hier praktisch immer: der Server ist aelter als
+                    // die App und kennt /chat/models noch nicht.
+                    404 -> appContext.getString(R.string.model_sheet_server_outdated)
+                    else -> appContext.getString(
+                        R.string.model_sheet_load_failed,
+                        e.message ?: e::class.java.simpleName,
+                    )
+                }
+                val fallback = ClaudeModels.all.map { m ->
+                    ChatModelOption(
+                        key = m.id,
+                        family = ChatModelFamilies.CLAUDE,
+                        label = m.label,
+                        efforts = EFFORT_LEVELS,
+                        defaultEffort = DEFAULT_EFFORT,
+                        supportsVision = true,
+                        gatewayLabel = "",
+                    )
+                }
+                _state.update {
+                    it.copy(
+                        models = fallback,
+                        modelsLoading = false,
+                        modelsError = message,
+                        modelKey = it.modelKey.ifBlank { globalKey },
+                    )
+                }
+            }
+    }
+
+    fun refreshModels() = loadModels(refresh = true)
+
+    /** Modellwechsel. Gilt sofort für diesen Chat und wird die neue globale
+     *  Vorauswahl, damit der nächste Chat genauso startet. */
+    fun selectModel(option: ChatModelOption) = viewModelScope.launch {
+        _state.update { it.copy(modelKey = option.key) }
+        settingsRepo.setChatModelKey(option.key)
+        runCatching { repo.setChatModel(cid, option.key) }
+    }
+
+    /** Denktiefe der aktuell gewählten Familie. */
+    fun effortFor(family: String): String =
+        cachedSettings?.effortFor(family) ?: DEFAULT_EFFORT
+
+    fun setEffort(family: String, effort: String) = viewModelScope.launch {
+        settingsRepo.setEffortForFamily(family, effort)
+    }
+
+    // Letzter bekannter Settings-Stand, damit `effortFor` synchron aus einem
+    // Composable heraus lesbar ist (der Flow unten hält ihn aktuell).
+    private var cachedSettings: AppSettings? = null
+
+    private fun observeSettings() = viewModelScope.launch {
+        settingsRepo.settingsFlow.collect { s ->
+            cachedSettings = s
+            // Wenn der Chat selbst noch nichts gesetzt hat, folgt er der
+            // globalen Wahl.
+            _state.update { st ->
+                if (st.modelKey.isBlank() && s.chatModelKey.isNotBlank())
+                    st.copy(modelKey = s.chatModelKey) else st
             }
         }
     }
@@ -245,6 +382,9 @@ class ChatViewModel(
                 pinned = detail.pinned,
                 locked = detail.locked,
                 gemId = detail.gemId,
+                // Der Server ist die Quelle für „was lief zuletzt in diesem
+                // Chat". Nur wenn er nichts weiß, greift die globale Wahl.
+                modelKey = detail.chatModel?.takeIf { m -> m.isNotBlank() } ?: it.modelKey,
             )
         }
         loadGemMeta(detail.gemId)
@@ -379,6 +519,7 @@ class ChatViewModel(
                 messages = it.messages + optimistic,
                 pending = emptyList(),
                 streamingText = "",
+                streamingAttachments = emptyList(),
                 isStreaming = true,
             )
         }
@@ -391,11 +532,25 @@ class ChatViewModel(
 
         streamJob = viewModelScope.launch {
             val s = settingsRepo.current()
+            // Das Modell DIESES Chats gewinnt vor der globalen Wahl. Ein
+            // Bestandschat bringt sein Modell vom Server mit (`chat_model`),
+            // die globale Wahl kommt dagegen aus dem zuletzt geoeffneten Chat.
+            // Wurde hier nur der globale Wert benutzt, zeigte das Sheet das eine
+            // Modell an und gesendet wurde ein anderes.
+            val modelKey = _state.value.modelKey.ifBlank { s.chatModelKey }
+            // Die Denktiefe haengt am gewaehlten Modell: gemerkt wird sie pro
+            // Familie, koennen tut sie das einzelne Modell. Ist das Modell
+            // bekannt, wird auf dessen Stufen geklemmt, sonst bleibt es bei der
+            // Familien-Vorgabe. So geht genau die Stufe raus, die das Sheet auch
+            // anzeigt.
+            val selected = _state.value.models.firstOrNull { it.key == modelKey }
+            val effort = s.effortForModelKey(modelKey, selected)
             repo.stream(
                 cid,
                 text,
                 attachmentIds,
-                effort = s.effort,
+                effort = effort,
+                model = modelKey,
                 systemPrompt = s.resolvedSystemPrompt,
                 // Server startet nach Done eine Pre-Generation für die
                 // gewählte Voice/Speed. Nächster Vorlesen-Tap = Cache-Hit.
@@ -443,6 +598,16 @@ class ChatViewModel(
                 it.copy(streamingThinking = it.streamingThinking + ev.text)
             }
 
+            is StreamEvent.ImagesReady -> _state.update { st ->
+                // Duplikate vermeiden, falls der Server dasselbe Bild zweimal
+                // meldet (Tool-Retry).
+                val known = st.streamingAttachments.map { it.id }.toSet()
+                st.copy(
+                    streamingAttachments = st.streamingAttachments +
+                        ev.attachments.filterNot { it.id in known },
+                )
+            }
+
             StreamEvent.BlockStop -> {
                 // Block-Stop kommt nach jedem content_block (Thinking oder Text).
                 // Wir machen nichts speziell — die State-Updates geben das UI
@@ -460,11 +625,13 @@ class ChatViewModel(
                         content = finalText,
                         createdAt = OffsetDateTime.now().toString(),
                         tokens = totalThisTurn,
+                        attachments = st.streamingAttachments,
                     )
                     st.copy(
                         messages = st.messages + newMsg,
                         streamingText = "",
                         streamingThinking = "",
+                        streamingAttachments = emptyList(),
                         isStreaming = false,
                         totalTokens = totalThisTurn,
                         lastTurnCachedRead = ev.tokensCachedRead,
@@ -494,6 +661,7 @@ class ChatViewModel(
                         isStreaming = false,
                         streamingText = "",
                         streamingThinking = "",
+                        streamingAttachments = emptyList(),
                         errorMessage = ev.message,
                     )
                 }

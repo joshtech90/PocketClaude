@@ -41,9 +41,102 @@ from claude_agent_sdk import (
 )
 
 from pocket_claude import auth_modes, db, usage
+from pocket_claude.attachments import (
+    build_prompt_text as _build_prompt_text,
+    has_binary_attachments as _has_binary_attachments,
+)
 from pocket_claude.config import settings
 
 log = logging.getLogger(__name__)
+
+
+class _PublicClaudeError(RuntimeError):
+    """Fehler, dessen Text absichtlich fuer Client und aufrufenden Code sicher ist."""
+
+
+def _result_error_message(message: ResultMessage) -> str:
+    """Mappt SDK-Abschlussfehler auf eine klare, sichere Nutzermeldung."""
+    status = getattr(message, "api_error_status", None)
+    if status == 401:
+        return (
+            "Claude: Die Anmeldung auf dem Server ist abgelaufen. "
+            "Der Administrator muss Claude neu anmelden."
+        )
+    if status == 429:
+        return (
+            "Claude: Das Nutzungslimit ist erreicht oder der Dienst ist gerade "
+            "ausgelastet. Bitte spaeter erneut versuchen."
+        )
+    if status in {500, 502, 503, 529}:
+        return (
+            f"Claude: Der Dienst ist voruebergehend nicht erreichbar (HTTP {status}). "
+            "Bitte gleich noch einmal versuchen."
+        )
+    if status is not None:
+        return f"Claude: Die Anfrage ist mit HTTP {status} fehlgeschlagen."
+
+    subtype = (message.subtype or "").strip()
+    if subtype and subtype != "success":
+        return "Claude: Der Aufruf ist fehlgeschlagen."
+    if message.errors:
+        return "Claude: Der Aufruf ist mit einem internen Providerfehler fehlgeschlagen."
+    return "Claude: Der Aufruf ist ohne weitere Fehlermeldung fehlgeschlagen."
+
+
+def _process_error_client_message(exit_code: int | None, diagnostic: str) -> str:
+    """Leitet aus rohen CLI-Daten nur eine feste, sichere Nutzermeldung ab."""
+    normalized = diagnostic.lower()
+    if "invalid api key" in normalized or "authentication" in normalized:
+        return (
+            "Claude: Die Anmeldung fehlt oder ist abgelaufen. "
+            "Der Administrator muss Claude neu anmelden."
+        )
+    if "unknown option" in normalized:
+        return "Claude: Die Server-Installation muss aktualisiert werden."
+    if "permission" in normalized:
+        return "Claude: Der Server hat den angeforderten Zugriff verweigert."
+    suffix = f" (Fehlercode {exit_code})" if exit_code is not None else ""
+    return f"Claude: Der Serverprozess ist fehlgeschlagen{suffix}."
+
+
+# Waehlbare Claude-Modelle fuer den Modell-Picker in App und Web-UI.
+# Muss mit `ClaudeModels.kt` in der Android-App synchron bleiben: der Server ist
+# die Quelle fuer `GET /chat/models`, die App-Liste ist nur noch Offline-Fallback.
+#
+# Reihenfolge ist die Picker-Reihenfolge. Opus 5 steht oben, weil es das
+# normale Alltagsmodell ist; Fable 5 ist das teurere Modell fuer die schwersten
+# Aufgaben, Sonnet 5 das schnellere fuer den Rest.
+SELECTABLE_MODELS: list[tuple[str, str]] = [
+    ("claude-opus-5", "Opus 5"),
+    ("claude-fable-5", "Fable 5"),
+    ("claude-sonnet-5", "Sonnet 5"),
+    ("claude-haiku-4-5", "Haiku 4.5"),
+]
+
+# Modelle, die frueher waehlbar waren. Sie tauchen im Picker NICHT mehr auf,
+# muessen aber weiter durch die Allowlist kommen: Bestandschats haben die ID in
+# `conversations.chat_model` stehen, und ein entfernter Eintrag wuerde dort
+# jeden weiteren Turn mit "Unbekanntes Modell" abbrechen.
+LEGACY_MODELS: list[tuple[str, str]] = [
+    ("claude-opus-4-8", "Opus 4.8"),
+    ("claude-opus-4-7", "Opus 4.7"),
+    ("claude-opus-4-6", "Opus 4.6"),
+    ("claude-sonnet-4-6", "Sonnet 4.6"),
+]
+
+# Alles, was der Server als Claude-Modell akzeptiert.
+ALLOWED_MODELS: frozenset[str] = frozenset(
+    mid for mid, _ in (*SELECTABLE_MODELS, *LEGACY_MODELS)
+)
+
+# Das Modell, das laeuft, wenn niemand etwas anderes sagt. Bewusst explizit:
+# ohne diesen Wert entscheidet die Claude-CLI selbst, und dann haengt es an der
+# installierten CLI-Version, welches Modell antwortet.
+DEFAULT_CLAUDE_MODEL = "claude-opus-5"
+
+# Denktiefen, die der Claude-Pfad kennt. "off" heisst: keine Steuerung, der
+# CLI-Default greift.
+CLAUDE_EFFORTS: list[str] = ["off", "low", "medium", "high", "xhigh", "max"]
 
 
 # Slim, claude.ai-style system prompt. Fully replaces the Claude Code default
@@ -54,7 +147,7 @@ log = logging.getLogger(__name__)
 # runs that decides to reply with "No response requested." when the user's
 # message looks like a bare statement. In a chat app that's a silent
 # failure, so we forbid it.
-SYSTEM_PROMPT = """You are Pocket Claude — a personal chat assistant the user talks \
+SYSTEM_PROMPT = """You are PocketClot — a personal chat assistant the user talks \
 to from their phone. Always reply in the same language the user writes in. Be friendly, \
 direct, and helpful, like the Claude assistant on claude.ai. Markdown is allowed and \
 renders nicely in the app; code blocks with a language hint (```kotlin etc.) are great. \
@@ -67,166 +160,6 @@ statement, observation, or single word rather than an explicit question. Never r
 with "No response requested.", "(no reply)", or any other skip-turn placeholder. If \
 you genuinely have nothing to add, briefly acknowledge and offer one relevant follow-up \
 thought."""
-
-
-# ---------- Text-Anhänge-Inline (unverändert aus dem alten Modul) ----------
-
-MAX_TEXT_ATTACHMENT_BYTES = 200_000
-
-_TEXT_MIME_PREFIXES = ("text/",)
-_TEXT_MIME_TYPES = {
-    # Universale Daten-/Konfig-Formate
-    "application/json", "application/ld+json",
-    "application/xml", "application/atom+xml", "application/rss+xml",
-    "application/yaml", "application/x-yaml",
-    "application/toml",
-    "application/x-www-form-urlencoded",
-    # Skript-/Source-Sprachen, die manchmal als application/* kommen
-    "application/javascript", "application/ecmascript",
-    "application/typescript",
-    "application/x-shellscript", "application/x-sh",
-    "application/x-python", "application/x-python-code",
-    "application/x-ruby", "application/x-perl",
-    "application/x-php",
-    "application/sql",
-    # Klassische plain-text Container ohne text/-Prefix
-    "application/csv",
-    "application/x-tex", "application/x-latex",
-    "application/x-makefile",
-}
-_TEXT_EXTENSIONS = {
-    # Klassiker
-    ".md", ".markdown", ".txt", ".log", ".rst", ".adoc",
-    # Daten
-    ".json", ".jsonl", ".ndjson", ".yaml", ".yml", ".xml",
-    ".csv", ".tsv", ".tab", ".toml", ".ini", ".cfg", ".conf", ".env",
-    ".properties", ".plist", ".lock",
-    # Web
-    ".html", ".htm", ".css", ".scss", ".sass", ".less",
-    ".vue", ".svelte", ".astro",
-    # JS-Welt
-    ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
-    # Python-Welt
-    ".py", ".pyx", ".pyi", ".ipynb",
-    # JVM-Welt
-    ".kt", ".kts", ".java", ".scala", ".groovy", ".clj", ".cljc", ".cljs",
-    ".gradle",
-    # Native + System
-    ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hxx",
-    ".rs", ".go", ".swift", ".m", ".mm",
-    ".zig", ".nim", ".v", ".d",
-    # Skript-Sprachen
-    ".rb", ".pl", ".pm", ".php", ".lua", ".r", ".jl",
-    ".sh", ".zsh", ".bash", ".fish", ".ps1", ".bat", ".cmd",
-    # Funktional / ML
-    ".ex", ".exs", ".erl", ".hrl", ".hs", ".ml", ".mli", ".elm", ".fs", ".fsi",
-    # Dart / Flutter / sonstige
-    ".dart",
-    # DB / Query
-    ".sql", ".graphql", ".gql", ".proto",
-    # DevOps
-    ".tf", ".tfvars", ".hcl", ".nomad", ".nix",
-    # Sonstiges Text-Heavy
-    ".tex", ".bib", ".diff", ".patch", ".srt", ".vtt",
-}
-
-# Files OHNE Punkt-Extension, die per Konvention reiner Text sind.
-_TEXT_FILENAMES = {
-    "dockerfile", "containerfile",
-    "makefile", "gnumakefile",
-    "rakefile", "gemfile", "procfile", "vagrantfile",
-    "license", "licence", "copying", "readme", "changelog", "authors",
-    "todo", "notes",
-    ".gitignore", ".gitattributes", ".dockerignore", ".editorconfig",
-    ".prettierrc", ".eslintrc", ".babelrc",
-}
-
-
-def _looks_like_text(filename: str, mime: str) -> bool:
-    """Heuristik: gehört der Anhang inline in den Prompt-Text, oder soll er
-    nur per Read-Tool referenziert werden?
-
-    Reihenfolge:
-      1. MIME-Prefix text/* → ja
-      2. MIME aus expliziter Allowlist → ja
-      3. Filename-Extension in der Allowlist → ja
-      4. Filename selbst (ohne Punkt) in der Konventions-Liste → ja
-      5. sonst nein (= Binär, per Read-Tool)
-    """
-    if any(mime.startswith(p) for p in _TEXT_MIME_PREFIXES):
-        return True
-    if mime in _TEXT_MIME_TYPES:
-        return True
-    lower = filename.lower()
-    if any(lower.endswith(ext) for ext in _TEXT_EXTENSIONS):
-        return True
-    # Punkt-loser Filename (z.B. „Dockerfile", „Makefile") → letztes Path-Segment
-    base = lower.rsplit("/", 1)[-1]
-    if base in _TEXT_FILENAMES:
-        return True
-    return False
-
-
-def _build_prompt_text(user_msg: dict, attachments_by_id: dict[str, dict]) -> str:
-    content = user_msg["content"] or ""
-    attach_ids = user_msg.get("attachment_ids") or []
-    if not attach_ids:
-        return content
-    parts: list[str] = []
-    if content.strip():
-        parts.append(content.strip())
-    for aid in attach_ids:
-        a = attachments_by_id.get(aid)
-        if not a:
-            parts.append(f"\n\n[Anhang {aid} unauffindbar.]")
-            continue
-        filename = a["filename"]
-        mime = a["mime_type"] or "application/octet-stream"
-        path = Path(a["path"])
-        if not path.exists():
-            parts.append(f"\n\n[Anhang '{filename}' fehlt auf dem Server.]")
-            continue
-        if _looks_like_text(filename, mime):
-            try:
-                raw = path.read_bytes()
-                truncated = False
-                if len(raw) > MAX_TEXT_ATTACHMENT_BYTES:
-                    raw = raw[:MAX_TEXT_ATTACHMENT_BYTES]
-                    truncated = True
-                text = raw.decode("utf-8", errors="replace")
-                fence = "```"
-                if fence in text:
-                    fence = "````"
-                trunc_note = "\n\n…[gekürzt]" if truncated else ""
-                parts.append(
-                    f"\n\n--- Anhang: **{filename}** "
-                    f"({mime}, {a['size_bytes']} Bytes) ---\n"
-                    f"{fence}\n{text}{trunc_note}\n{fence}\n--- Ende Anhang ---"
-                )
-            except Exception as exc:  # noqa: BLE001
-                log.warning("Anhang %s nicht als Text lesbar: %s", filename, exc)
-                parts.append(f"\n\n[Anhang '{filename}' konnte nicht gelesen werden: {exc}]")
-        else:
-            abs_path = path.resolve()
-            parts.append(
-                f"\n\n--- Anhang: **{filename}** ({mime}, {a['size_bytes']} Bytes) ---\n"
-                f"Bitte lies die Datei mit dem `Read`-Tool — absoluter Pfad:\n"
-                f"`{abs_path}`\n"
-                f"--- Ende Anhang ---"
-            )
-    return "".join(parts)
-
-
-def _has_binary_attachments(
-    attach_ids: list[str], attachments_by_id: dict[str, dict]
-) -> bool:
-    for aid in attach_ids:
-        a = attachments_by_id.get(aid)
-        if not a:
-            continue
-        if not _looks_like_text(a["filename"], a["mime_type"]):
-            return True
-    return False
 
 
 # ---------- One-shot non-streaming Claude call ----------
@@ -281,14 +214,20 @@ async def oneshot_text(
     options = ClaudeAgentOptions(**options_kwargs)
 
     text_parts: list[str] = []
+    received_success_result = False
 
     async def _run() -> None:
+        nonlocal received_success_result
         async for message in query(prompt=user_message, options=options):
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock) and block.text:
                         text_parts.append(block.text)
-            # SystemMessage / ResultMessage / StreamEvent → ignoriert
+            elif isinstance(message, ResultMessage):
+                if message.is_error:
+                    raise _PublicClaudeError(_result_error_message(message))
+                received_success_result = True
+            # SystemMessage / erfolgreiche ResultMessage / StreamEvent bleiben ungenutzt.
 
     try:
         await asyncio.wait_for(_run(), timeout=timeout_sec)
@@ -296,12 +235,20 @@ async def oneshot_text(
         raise RuntimeError(
             f"Claude antwortete nicht innerhalb von {int(timeout_sec)}s."
         ) from e
+    except _PublicClaudeError:
+        raise
     except CLINotFoundError as e:
-        raise RuntimeError(f"Claude-CLI nicht gefunden: {e}") from e
+        log.error("Claude oneshot failed: error_type=CLINotFoundError")
+        raise RuntimeError("Claude-CLI nicht gefunden.") from e
     except ProcessError as e:
-        raise RuntimeError(f"Claude-Subprozess-Fehler: {e}") from e
+        log.error("Claude oneshot subprocess failed: exit=%s", e.exit_code)
+        raise RuntimeError("Claude-Serverprozess ist fehlgeschlagen.") from e
     except Exception as e:  # noqa: BLE001 — alle anderen Fehler weiterreichen
-        raise RuntimeError(f"Claude-Aufruf fehlgeschlagen: {e}") from e
+        log.error("Claude oneshot failed: error_type=%s", type(e).__name__)
+        raise RuntimeError("Claude-Aufruf ist intern fehlgeschlagen.") from e
+
+    if not received_success_result:
+        raise RuntimeError("Claude-Aufruf endete ohne Abschlussmeldung.")
 
     out = "".join(text_parts).strip()
     if not out:
@@ -401,7 +348,10 @@ async def generate_conversation_title(
         )
         title = _sanitize_title(raw)
     except Exception as exc:  # noqa: BLE001 — nie den Chat-Flow blockieren
-        log.info("PC_TITLE: LLM-Titel fehlgeschlagen (%s) → Fallback", exc)
+        log.info(
+            "PC_TITLE: LLM-Titel fehlgeschlagen; error_type=%s; Fallback",
+            type(exc).__name__,
+        )
 
     if not title:
         title = _fallback_title(first_user_message)
@@ -425,6 +375,89 @@ async def generate_conversation_title(
     return title
 
 
+# ---------- Verlaufs-Wiedergabe ----------
+
+# So viele Zeichen darf der mitgelieferte Verlauf hoechstens haben. 120.000
+# Zeichen sind grob 30.000 Tokens, das passt bequem neben eine lange Antwort.
+MAX_TRANSCRIPT_CHARS = 120_000
+
+
+def _format_transcript(all_msgs: list[dict], current_user_message_id: int) -> str:
+    """Baut aus den DB-Nachrichten einen lesbaren Verlauf fuer den Prompt.
+
+    Die aktuelle User-Nachricht bleibt draussen, die steht separat im Prompt.
+    Gekuerzt wird von vorne, damit die juengsten Turns erhalten bleiben.
+    """
+    lines: list[str] = []
+    for m in all_msgs:
+        if m["id"] == current_user_message_id:
+            break
+        text = (m.get("content") or "").strip()
+        if not text:
+            continue
+        role = m.get("role")
+        who = {"user": "Nutzer", "assistant": "Assistent"}.get(role, "System")
+        lines.append(f"{who}: {text}")
+    if not lines:
+        return ""
+
+    out = "\n\n".join(lines)
+    if len(out) > MAX_TRANSCRIPT_CHARS:
+        out = out[-MAX_TRANSCRIPT_CHARS:]
+        # Nicht mitten in einer Zeile anfangen.
+        cut = out.find("\n\n")
+        if cut > 0:
+            out = out[cut + 2:]
+        out = ("[Aeltere Teile des Verlaufs wurden aus Platzgruenden "
+               "weggelassen.]\n\n" + out)
+    return out
+
+
+# ---------- Bild-Werkzeug fuer den Claude-Pfad ----------
+
+def _build_image_mcp_server(user_id: str | None, image_defaults: dict | None,
+                            collected: list[dict], events: "asyncio.Queue"):
+    """Registriert `generate_image` als In-Process-MCP-Werkzeug.
+
+    Die Claude-Agent-SDK kann Werkzeuge direkt im Server-Prozess ausfuehren, ohne
+    dass ein externer MCP-Prozess noetig waere. Wir nutzen das, damit Claude
+    dieselbe Bilderzeugung bekommt wie die Zusatz-Modelle (die es ueber ihr
+    natives Function-Calling ansprechen).
+
+    Rueckgabe: (mcp_server, tool_name) oder (None, None), wenn die SDK das nicht
+    kann. Ein Fehler hier darf den Chat nie kippen.
+    """
+    if user_id is None:
+        return None, None
+    try:
+        from claude_agent_sdk import create_sdk_mcp_server, tool
+
+        from pocket_claude import image_tool as _image_tool
+    except ImportError as exc:
+        log.warning("PC_IMG: Bild-Werkzeug nicht verfuegbar: %s", exc)
+        return None, None
+
+    @tool(_image_tool.TOOL_NAME, _image_tool.TOOL_DESCRIPTION, _image_tool.PARAMETERS)
+    async def _generate_image(args: dict) -> dict:
+        result = await _image_tool.run(user_id, args or {}, image_defaults or {})
+        atts = result.get("attachments") or []
+        if result.get("ok") and atts:
+            collected.extend(atts)
+            # Der Stream-Loop pollt die Queue und schiebt daraus das
+            # `image`-Event raus, damit das Bild sofort in der App auftaucht.
+            events.put_nowait({"type": "image", "attachments": atts})
+        return {"content": [{"type": "text", "text": result.get("text") or ""}]}
+
+    try:
+        server = create_sdk_mcp_server(
+            name="pocket", version="1.0.0", tools=[_generate_image],
+        )
+    except Exception as exc:  # noqa: BLE001 - SDK-Version passt nicht, dann eben ohne
+        log.warning("PC_IMG: MCP-Server konnte nicht gebaut werden: %s", exc)
+        return None, None
+    return server, f"mcp__pocket__{_image_tool.TOOL_NAME}"
+
+
 # ---------- Streaming via claude-agent-sdk ----------
 
 async def stream_reply(
@@ -436,6 +469,8 @@ async def stream_reply(
     user_id: str | None = None,
     default_model: str | None = None,
     extra_attachment_ids: list[str] | None = None,
+    replay_history: bool = False,
+    image_defaults: dict | None = None,
 ) -> AsyncIterator[dict]:
     """Yieldet SSE-kompatible Events:
       - {"type": "delta", "text": "..."}
@@ -482,6 +517,25 @@ async def stream_reply(
         need_read_tool = _has_binary_attachments(attach_ids, attachments_by_id)
         session_id = conv.get("claude_session_id")
 
+        # Ohne Session kennt Claude den Chat nicht. Das passiert in zwei Faellen:
+        # der User hat zwischendurch mit einem Zusatz-Modell geschrieben, oder
+        # die Session ist verloren gegangen. In beiden Faellen bekommt Claude
+        # den bisherigen Verlauf als Textblock mitgeliefert, sonst antwortet es
+        # ins Leere.
+        if replay_history and not session_id:
+            transcript = _format_transcript(all_msgs, user_message_id)
+            if transcript:
+                prompt = (
+                    "<bisheriger_verlauf>\n"
+                    f"{transcript}\n"
+                    "</bisheriger_verlauf>\n\n"
+                    "<aktuelle_nachricht>\n"
+                    f"{prompt}\n"
+                    "</aktuelle_nachricht>"
+                )
+                log.info("PC_SESSION: cid=%s Verlauf mitgeliefert (%d Zeichen)",
+                         cid, len(transcript))
+
         # Skills → allowed_tools.
         # Caller (server.py /messages-Endpoint) reicht ein dict mit den
         # SkillsDto-Feldern durch. Fehlende oder None → Server-Defaults
@@ -506,6 +560,20 @@ async def stream_reply(
                 )
         if need_read_tool:
             allowed_tools.append("Read")
+
+        # Bild-Werkzeug. Laeuft als In-Process-MCP-Server, damit Claude im Chat
+        # dieselben Bilder erzeugen kann wie die Zusatz-Modelle.
+        image_attachments: list[dict] = []
+        image_events: asyncio.Queue = asyncio.Queue()
+        mcp_servers: dict = {}
+        if sk.get("image_generation", True):
+            img_server, img_tool_name = _build_image_mcp_server(
+                user_id, image_defaults, image_attachments, image_events,
+            )
+            if img_server is not None and img_tool_name:
+                mcp_servers["pocket"] = img_server
+                allowed_tools.append(img_tool_name)
+
         log.info("Skills enabled → allowed_tools: %s", allowed_tools)
 
         # Sandbox cwd so Claude Code (even if setting_sources had leaks)
@@ -556,13 +624,18 @@ async def stream_reply(
         #   1. model_override  → Bedrock-Pin (build_provider_env), gewinnt im
         #      Bedrock-Modus immer (eigener IDs-Namespace).
         #   2. default_model   → globales User-Standard-Modell bzw. Gem-Modell
-        #      (Pro/Max + API-Key), z.B. "claude-opus-4-8".
+        #      (Pro/Max + API-Key), z.B. "claude-opus-5".
         #   3. settings.claude_model → Server-Default aus der .env.
-        #   4. None            → SDK-Default.
+        #   4. DEFAULT_CLAUDE_MODEL → das aktuelle Alltagsmodell.
+        #
+        # Frueher endete die Kette bei None und damit beim CLI-Default. Das war
+        # unsichtbar versionsabhaengig: nach einem CLI-Update konnte ploetzlich
+        # ein anderes Modell antworten, ohne dass sich in der App etwas aenderte.
         effective_model = (
             model_override
             or (default_model or None)
             or (settings.claude_model or None)
+            or DEFAULT_CLAUDE_MODEL
         )
         log.info(
             "PC_RESOLVE: model bedrock=%s default=%s server=%s effective=%s",
@@ -598,6 +671,8 @@ async def stream_reply(
             env=engine_env,
             stderr=_capture_stderr,
         )
+        if mcp_servers:
+            options_kwargs["mcp_servers"] = mcp_servers
         # cli_path: global installiertes `claude` (Dein Login + Sessions) statt SDK-Bundle
         resolved_cli = settings.claude_binary or shutil.which("claude")
         if resolved_cli:
@@ -623,8 +698,15 @@ async def stream_reply(
         # AssistantMessage gelesenen Wert NICHT auf 0 zurücksetzen.
         usage_acc: dict = {}
         emitted_via_stream = False
+        received_success_result = False
 
         async for message in query(prompt=prompt, options=options):
+            # Vom Bild-Werkzeug erzeugte Events sofort rausschieben, damit das
+            # Bild in der App erscheint, sobald es fertig ist, und nicht erst
+            # wenn Claude seinen Text zu Ende geschrieben hat.
+            while not image_events.empty():
+                yield image_events.get_nowait()
+
             # Session-ID aus jedem Event abfischen (Init, Stream, Result haben sie)
             sid = getattr(message, "session_id", None)
             if sid:
@@ -703,9 +785,41 @@ async def stream_reply(
                     cache_read = usage_acc.get("cache_read", cache_read)
                     cache_write = usage_acc.get("cache_write", cache_write)
                 if message.is_error:
-                    err_msg = (message.errors or ["unbekannter Fehler"])[0]
-                    yield {"type": "error", "message": f"Claude: {err_msg}"}
+                    log.error(
+                        "Claude ResultMessage error: subtype=%s api_status=%s "
+                        "stop_reason=%s errors_count=%d result_len=%d "
+                        "assistant_text_len=%d stderr_len=%d",
+                        message.subtype,
+                        getattr(message, "api_error_status", None),
+                        message.stop_reason,
+                        len(message.errors or []),
+                        len(message.result or ""),
+                        sum(len(part) for part in full_text_parts),
+                        sum(len(line) for line in cli_stderr_lines),
+                    )
+                    yield {"type": "error", "message": _result_error_message(message)}
                     return
+                received_success_result = True
+
+        while not image_events.empty():
+            yield image_events.get_nowait()
+
+        if not received_success_result:
+            log.error(
+                "Claude stream ended without ResultMessage: assistant_text_len=%d "
+                "generated_images=%d session_received=%s",
+                sum(len(part) for part in full_text_parts),
+                len(image_attachments),
+                bool(new_session_id),
+            )
+            yield {
+                "type": "error",
+                "message": (
+                    "Claude: Die Antwort wurde ohne Abschlussmeldung unterbrochen. "
+                    "Bitte erneut versuchen."
+                ),
+            }
+            return
 
         full_text = "".join(full_text_parts).strip()
 
@@ -724,7 +838,11 @@ async def stream_reply(
             "(no response)",
         }
         normalized = full_text.lower().rstrip(".").strip()
-        is_skip_turn = not full_text or normalized in SKIP_TURN_SENTINELS
+        # Ein reiner Bild-Turn ohne Begleittext ist eine legitime Antwort.
+        is_skip_turn = (
+            not image_attachments
+            and (not full_text or normalized in SKIP_TURN_SENTINELS)
+        )
         if is_skip_turn:
             log.warning(
                 "Skip-turn / empty reply detected (text=%r). Surfacing error to client.",
@@ -751,6 +869,7 @@ async def stream_reply(
             role="assistant",
             content=full_text,
             tokens=current_context,
+            attachment_ids=[a["id"] for a in image_attachments] or None,
         )
         await db.set_total_tokens(cid, current_context)
 
@@ -770,7 +889,7 @@ async def stream_reply(
                 )
             except Exception as e:  # noqa: BLE001
                 # Usage tracking must never break the user's chat reply.
-                log.warning("usage.record failed: %s", e)
+                log.warning("usage.record failed: error_type=%s", type(e).__name__)
 
         log.info("PC_SSE: stream_reply ABOUT TO YIELD done cid=%s msg_id=%s "
                  "in=%d out=%d cr=%d cw=%d full_text_len=%d",
@@ -787,7 +906,7 @@ async def stream_reply(
         log.info("PC_SSE: stream_reply YIELDED done cid=%s msg_id=%s", cid, msg_id)
 
     except CLINotFoundError as exc:
-        log.error("Claude-CLI nicht gefunden: %s (Pfad: %s)", exc, exc.cli_path)
+        log.error("Claude-CLI nicht gefunden; error_type=%s", type(exc).__name__)
         yield {
             "type": "error",
             "message": (
@@ -800,16 +919,17 @@ async def stream_reply(
         # details" placeholder — the real CLI stderr is what we collected via
         # our `_capture_stderr` callback above. Prefer the captured lines.
         captured_stderr = "".join(cli_stderr_lines).strip()
-        stderr_excerpt = (captured_stderr or (exc.stderr or "")).strip()[:1200]
+        diagnostic = (captured_stderr or (exc.stderr or "")).strip()
         log.error(
-            "Claude-Subprocess abgestürzt (exit=%s):\n%s",
-            exc.exit_code, stderr_excerpt or "(kein stderr)",
+            "Claude-Subprocess abgestuerzt: exit=%s stderr_len=%d",
+            exc.exit_code,
+            len(diagnostic),
         )
 
         # Auto-Recovery: Session-ID veraltet (z.B. weil sie mit anderer CLI-Installation
         # angelegt wurde, oder Claude Code hat seinen Session-Storage aufgeräumt).
         # Wir löschen die Session-ID aus der DB und sagen dem User Bescheid.
-        combined = stderr_excerpt + " " + str(exc)
+        combined = diagnostic + " " + str(exc)
         if (
             "no conversation found" in combined.lower()
             or "session id" in combined.lower()
@@ -830,25 +950,20 @@ async def stream_reply(
             }
             return
 
-        # Häufige Diagnosen für andere Fehler
-        hint = ""
-        if "Invalid API key" in stderr_excerpt or "authentication" in stderr_excerpt.lower():
-            hint = "  → Auth fehlt. Auf dem Server `claude login` ausführen."
-        elif "unknown option" in stderr_excerpt.lower():
-            hint = "  → Claude-CLI ist veraltet. `npm install -g @anthropic-ai/claude-code` aktualisieren."
-        elif "permission" in stderr_excerpt.lower():
-            hint = "  → Permission-Mode-Problem oder Tool-Zugriff verweigert."
         yield {
             "type": "error",
-            "message": (
-                f"Claude-CLI exit={exc.exit_code}.\n\n"
-                f"{stderr_excerpt or '(kein stderr)'}"
-                f"{hint}"
-            ),
+            "message": _process_error_client_message(exc.exit_code, combined),
         }
     except Exception as exc:  # noqa: BLE001
-        log.exception("SDK-Stream-Fehler in %s", cid)
-        yield {"type": "error", "message": f"{type(exc).__name__}: {exc}"}
+        log.error(
+            "SDK-Stream-Fehler: cid=%s error_type=%s",
+            cid,
+            type(exc).__name__,
+        )
+        yield {
+            "type": "error",
+            "message": "Claude: Der Serverprozess ist intern fehlgeschlagen.",
+        }
 
 
 def _accumulate_usage(usage, out: dict) -> None:

@@ -1,10 +1,10 @@
 [Unit]
-# Pocket Claude server — main process (FastAPI + uvicorn).
+# PocketClot server — main process (FastAPI + uvicorn).
 # Installed by deploy/install-linux.sh and run under the service user
 # `pocket-claude`. The tunnel is a separate unit
 # (pocket-claude-tunnel.service OR cloudflared.service depending on setup).
-Description=Pocket Claude — Personal Claude Chat Server
-Documentation=https://github.com/joshtech90/PocketClaude
+Description=PocketClot — Personal Claude Chat Server
+Documentation=https://github.com/joshtech90/PocketClot
 After=network-online.target
 Wants=network-online.target
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Pocket Claude — migration from a source host to the target server
+#  PocketClot — migration from a source host to the target server
 # =============================================================================
 #
 #  What gets transferred:
@@ -106,7 +106,7 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$TARGET" 'echo OK' >/dev/null 2>
 fi
 c_green "    SSH OK."
 
-step "Pre-flight: is Pocket Claude installed on the target?"
+step "Pre-flight: is PocketClot installed on the target?"
 if ! ssh "$TARGET" "test -d $REMOTE_PATH" 2>/dev/null; then
     c_red "    $REMOTE_PATH does not exist on the target."
     echo "    Run on the target first:"
@@ -122,7 +122,7 @@ if pgrep -f "python.*pocket_claude" >/dev/null 2>&1 || \
    pgrep -f "pocket_claude_manager" >/dev/null 2>&1; then
     LOCAL_RUNNING=true
     echo
-    c_yellow "A Pocket Claude process is still running on this host."
+    c_yellow "A PocketClot process is still running on this host."
     echo "Recommendation: stop the local server before migrating so the SQLite DB"
     echo "is in a clean state (no open write transaction)."
     echo
@@ -222,7 +222,7 @@ echo "============================================================"
 c_green "Migration complete."
 echo "============================================================"
 echo
-echo "Pocket Claude is now running on the target host with your data."
+echo "PocketClot is now running on the target host with your data."
 echo
 echo "Verify:"
 echo "  ssh $TARGET 'sudo systemctl status pocket-claude'"

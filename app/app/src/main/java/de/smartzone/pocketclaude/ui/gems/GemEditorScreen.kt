@@ -8,12 +8,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,6 +47,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +65,10 @@ import androidx.compose.ui.unit.dp
 import de.smartzone.pocketclaude.R
 import de.smartzone.pocketclaude.data.ClaudeModels
 import de.smartzone.pocketclaude.data.EFFORT_LEVELS
+import de.smartzone.pocketclaude.ui.components.PocketBackdrop
+import de.smartzone.pocketclaude.ui.components.PocketIconButton
+import de.smartzone.pocketclaude.ui.components.PocketScreenTitle
+import de.smartzone.pocketclaude.ui.theme.PocketTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,21 +93,26 @@ fun GemEditorScreen(
         }
     }
 
+    PocketBackdrop(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        stringResource(
+                    PocketScreenTitle(
+                        eyebrow = stringResource(R.string.app_name),
+                        title = stringResource(
                             if (gemId == null) R.string.gem_editor_title_new
                             else R.string.gem_editor_title_edit
-                        )
+                        ),
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                    }
+                    PocketIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.action_back),
+                        onClick = onBack,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
                 },
                 actions = {
                     if (st.saving) {
@@ -107,13 +121,21 @@ fun GemEditorScreen(
                             modifier = Modifier.size(20.dp).padding(end = 12.dp),
                         )
                     } else {
-                        TextButton(onClick = { vm.save(onBack) }, enabled = st.canSave) {
+                        Button(
+                            onClick = { vm.save(onBack) },
+                            enabled = st.canSave,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.padding(end = 8.dp),
+                        ) {
                             Text(stringResource(R.string.gem_save))
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) { pad ->
         if (st.loading) {
             Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {
@@ -125,6 +147,8 @@ fun GemEditorScreen(
             Modifier
                 .fillMaxSize()
                 .padding(pad)
+                .consumeWindowInsets(pad)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -260,16 +284,21 @@ fun GemEditorScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+    }
 }
 
 @Composable
 private fun EditorSection(title: String, hint: String?, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        shape = RoundedCornerShape(26.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, PocketTheme.colors.outlineSoft),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             if (hint != null) {
                 Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -303,7 +332,7 @@ private fun FileRow(name: String, enabled: Boolean, onRemove: () -> Unit) {
         Spacer(Modifier.width(8.dp))
         Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         if (enabled) {
-            IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
+            IconButton(onClick = onRemove, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.chat_remove), modifier = Modifier.size(16.dp))
             }
         }

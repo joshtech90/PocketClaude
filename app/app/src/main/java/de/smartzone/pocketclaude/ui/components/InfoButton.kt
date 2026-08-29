@@ -51,7 +51,7 @@ fun InfoButton(
     var open by remember { mutableStateOf(false) }
     IconButton(
         onClick = { open = true },
-        modifier = Modifier.size(28.dp),
+        modifier = Modifier.size(48.dp),
     ) {
         Icon(
             imageVector = Icons.Outlined.Info,

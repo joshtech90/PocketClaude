@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Pocket Claude — clean removal from the Linux host
+#  PocketClot — clean removal from the Linux host
 # =============================================================================
 #
 #  Stops + removes:
@@ -32,7 +32,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 echo
-c_red "WARNING: This removes Pocket Claude completely from the system."
+c_red "WARNING: This removes PocketClot completely from the system."
 echo "What happens:"
 echo "  - stop + disable systemd services"
 echo "  - back up data as a tar.gz in the home of your sudo user"
@@ -77,7 +77,7 @@ if id -u "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 
 echo
-c_green "Pocket Claude removed."
+c_green "PocketClot removed."
 echo "Data backup: $BACKUP_FILE"
 c_yellow "The cloudflared binary + ~/.cloudflared have been LEFT IN PLACE — if you want to remove them too:"
 echo "    sudo apt remove cloudflared   # or dnf remove cloudflared"

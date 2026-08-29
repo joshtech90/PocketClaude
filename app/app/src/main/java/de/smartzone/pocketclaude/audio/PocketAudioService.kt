@@ -49,7 +49,7 @@ class PocketAudioService : MediaSessionService() {
             .setConnectTimeoutMs(10_000)
             .setReadTimeoutMs(60_000)
             .setAllowCrossProtocolRedirects(true)
-            .setUserAgent("PocketClaude/Android")
+            .setUserAgent("PocketClot/Android")
 
         val cacheFactory = CacheDataSource.Factory()
             .setCache(cacheInstance)

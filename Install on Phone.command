@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pocket Claude — build (if needed) + install + launch on the connected
+# PocketClot — build (if needed) + install + launch on the connected
 # Android phone. Double-click in Finder.
 #
 # Skips the Gradle build when the APK is newer than every source file under
@@ -13,7 +13,7 @@ APP_DIR="$REPO/app"
 APK="$APP_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
 echo "============================================="
-echo " Pocket Claude — Install on Phone"
+echo " PocketClot — Install on Phone"
 echo "============================================="
 
 # Pick up Java + Android SDK from the operator's shell profile

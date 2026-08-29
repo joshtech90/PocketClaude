@@ -43,8 +43,8 @@ import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.RichTextStyle
 import com.halilibo.richtext.ui.material3.RichText
 import com.halilibo.richtext.ui.string.RichTextStringStyle
-import de.smartzone.pocketclaude.ui.theme.SmartzoneBlueDark
-import de.smartzone.pocketclaude.ui.theme.SmartzoneBlueLight
+import de.smartzone.pocketclaude.ui.theme.AtelierIce
+import de.smartzone.pocketclaude.ui.theme.AtelierIceDeep
 
 /**
  * Markdown-Renderer mit Custom-Code-Block-Handling. Code-Blöcke werden aus dem
@@ -61,11 +61,11 @@ fun MarkdownText(
 ) {
     val segments = remember(text) { splitIntoSegments(text) }
     // Links sollen je nach Theme genug Kontrast haben:
-    // - Dark: helles Brand-Blau (SmartzoneBlueLight) - auf dem fast schwarzen
+    // - Dark: helles Eisblau auf dem fast schwarzen
     //   Bubble-Hintergrund deutlich lesbarer als das mittelblaue Primary.
-    // - Light: kräftiges Brand-Blau-Dark (gut lesbar auf hellem Bubble-Bg).
+    // - Light: tiefes Eisblau mit gutem Kontrast auf hellem Hintergrund.
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val linkColor = if (isDarkTheme) SmartzoneBlueLight else SmartzoneBlueDark
+    val linkColor = if (isDarkTheme) AtelierIce else AtelierIceDeep
     val richTextStyle = remember(linkColor) {
         RichTextStyle(
             stringStyle = RichTextStringStyle(
@@ -191,4 +191,3 @@ private fun CodeBlock(
         }
     }
 }
-

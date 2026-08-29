@@ -1,16 +1,17 @@
 """Google Gemini Image Generation (Nano Banana).
 
 Direkter REST-Aufruf an `generativelanguage.googleapis.com`, kein extra Package
-nötig. Unterstützt:
+noetig. Unterstuetzt:
 
 - Text-to-Image  (nur `prompt`)
 - Image-to-Image (Editing: `prompt` + 1..n Referenz-Bilder als Inline-Data)
-- Aspect-Ratio   (1:1, 16:9, 9:16, 4:3, 3:4 → via `imageConfig.aspectRatio`)
+- Aspect-Ratio   (1:1, 16:9, 9:16, 4:3, 3:4 via `imageConfig.aspectRatio`)
+- Aufloesung     (1K, 2K, 4K via `imageConfig.imageSize`)
 - Mehrere Output-Bilder pro Call (`candidateCount`)
 - Modell-Wahl   (Nano-Banana 2.5 / 3.1 preview)
 
 Liefert eine Liste von `GeneratedImage`-Objekten (bytes + mime_type + index).
-Fehler werden als `ImageGenError` mit aussagekräftiger Message geworfen.
+Fehler werden als `ImageGenError` mit aussagekraeftiger Message geworfen.
 """
 from __future__ import annotations
 
@@ -23,25 +24,25 @@ import httpx
 log = logging.getLogger(__name__)
 
 # Modelle die wir anbieten. Modellnamen via ListModels-Endpoint verifiziert.
-# Nano Banana = Gemini-Image. Pro = beste Qualität, Flash = schneller.
+# Nano Banana = Gemini-Image. Pro = beste Qualitaet, Flash = schneller.
 AVAILABLE_MODELS: list[dict] = [
     {
         "id": "gemini-3.1-flash-image-preview",
         "label": "Nano Banana 2 (Gemini 3.1 Flash Image)",
         "default": True,
-        "description": "Aktuellster Flash — sehr gute Qualität, schnell. Beste Allround-Wahl.",
+        "description": "Aktuellster Flash: sehr gute Qualitaet, schnell. Beste Allround-Wahl.",
     },
     {
         "id": "gemini-3-pro-image-preview",
         "label": "Nano Banana Pro (Gemini 3 Pro Image)",
         "default": False,
-        "description": "Höchste Qualität — Photo-Realismus, komplexe Komposition. Langsamer + teurer.",
+        "description": "Hoechste Qualitaet: Photo-Realismus, komplexe Komposition. Langsamer und teurer.",
     },
     {
         "id": "gemini-2.5-flash-image",
         "label": "Nano Banana (Gemini 2.5 Flash Image)",
         "default": False,
-        "description": "Stabile Vorversion. Günstigste Option, immer noch sehr gute Qualität.",
+        "description": "Stabile Vorversion. Guenstigste Option, immer noch sehr gute Qualitaet.",
     },
 ]
 
@@ -53,7 +54,15 @@ ASPECT_RATIOS: list[dict] = [
     {"id": "3:4",  "label": "Foto Hoch (3:4)"},
 ]
 
-MAX_CANDIDATES = 4  # Anzahl Bilder pro Call — Gemini cappt bei 4
+IMAGE_SIZES: list[dict] = [
+    {"id": "1K", "label": "Standard (1K)"},
+    {"id": "2K", "label": "Hoch (2K)"},
+    {"id": "4K", "label": "Sehr hoch (4K)"},
+]
+
+DEFAULT_IMAGE_SIZE = "2K"
+
+MAX_CANDIDATES = 4  # Anzahl Bilder pro Call: Gemini cappt bei 4
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -67,12 +76,12 @@ class GeneratedImage:
     index: int           # 0..n innerhalb dieses Calls
     mime_type: str       # i.d.R. "image/png"
     data: bytes          # rohe Bild-Bytes
-    text: str | None = None  # falls das Modell Text zusätzlich produziert hat
+    text: str | None = None  # falls das Modell Text zusaetzlich produziert hat
 
 
 @dataclass
 class ReferenceImage:
-    """Input-Bild für Editing/Variations."""
+    """Input-Bild fuer Editing/Variations."""
     mime_type: str
     data: bytes
 
@@ -83,6 +92,7 @@ async def generate(
     prompt: str,
     model: str | None = None,
     aspect_ratio: str | None = None,
+    image_size: str | None = None,
     count: int = 1,
     references: list[ReferenceImage] | None = None,
     timeout: float = 90.0,
@@ -90,7 +100,7 @@ async def generate(
     """Generiert `count` Bilder aus `prompt` (optional mit `references` als
     Edit-Input). Wirft `ImageGenError` bei Problemen."""
     if not api_key or not api_key.strip():
-        raise ImageGenError("Kein Gemini-API-Key gesetzt — bitte in Einstellungen eintragen.")
+        raise ImageGenError("Kein Gemini-API-Key gesetzt: bitte in Einstellungen eintragen.")
     if not prompt or not prompt.strip():
         raise ImageGenError("Prompt darf nicht leer sein.")
 
@@ -114,28 +124,56 @@ async def generate(
             "candidateCount": count,
         },
     }
+
+    image_config: dict[str, str] = {}
     if aspect_ratio and aspect_ratio.strip():
-        body["generationConfig"]["imageConfig"] = {"aspectRatio": aspect_ratio.strip()}
+        image_config["aspectRatio"] = aspect_ratio.strip()
+    if image_size and image_size.strip():
+        image_config["imageSize"] = image_size.strip()
+    if image_config:
+        body["generationConfig"]["imageConfig"] = image_config
 
     url = f"{API_BASE}/models/{model}:generateContent"
 
     log.info(
-        "image-gen: model=%s aspect=%s count=%d refs=%d prompt=%r",
-        model, aspect_ratio, count, len(references or []), prompt[:80],
+        "image-gen: model=%s aspect=%s size=%s count=%d refs=%d prompt=%r",
+        model, aspect_ratio, image_size, count, len(references or []), prompt[:80],
     )
 
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as cli:
-            r = await cli.post(
-                url,
-                params={"key": api_key},
-                headers={"Content-Type": "application/json"},
-                json=body,
+    async def _send_request(req_body: dict) -> httpx.Response:
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as cli:
+                return await cli.post(
+                    url,
+                    params={"key": api_key},
+                    headers={"Content-Type": "application/json"},
+                    json=req_body,
+                )
+        except httpx.TimeoutException as e:
+            raise ImageGenError(f"Timeout nach {timeout:.0f}s: Bild zu komplex oder API ueberlastet.") from e
+        except httpx.RequestError as e:
+            raise ImageGenError(f"Netzwerk-Fehler: {e}") from e
+
+    r = await _send_request(body)
+
+    # Retry ohne imageSize bei HTTP 400 wenn das Modell imageSize nicht unterstuetzt
+    if r.status_code == 400 and image_size:
+        err_lower = r.text.lower()
+        if "imagesize" in err_lower or "image_config" in err_lower or "imageconfig" in err_lower:
+            log.info(
+                "image-gen: API meldet Fehler zu imageSize fuer Modell %s, wiederhole ohne imageSize",
+                model,
             )
-    except httpx.TimeoutException as e:
-        raise ImageGenError(f"Timeout nach {timeout:.0f}s — Bild zu komplex oder API überlastet.") from e
-    except httpx.RequestError as e:
-        raise ImageGenError(f"Netzwerk-Fehler: {e}") from e
+            retry_body = {
+                "contents": body["contents"],
+                "generationConfig": {
+                    "responseModalities": body["generationConfig"]["responseModalities"],
+                    "candidateCount": body["generationConfig"]["candidateCount"],
+                },
+            }
+            if aspect_ratio and aspect_ratio.strip():
+                retry_body["generationConfig"]["imageConfig"] = {"aspectRatio": aspect_ratio.strip()}
+            r = await _send_request(retry_body)
 
     if r.status_code >= 400:
         # Versuche, die Google-Fehlermeldung lesbar zu machen
@@ -159,7 +197,7 @@ async def generate(
 
     images = _extract_images(data)
     if not images:
-        # Manchmal blockt Google den Prompt (Safety) — finishReason mitgeben
+        # Manchmal blockt Google den Prompt (Safety): finishReason mitgeben
         finish_reasons = []
         for cand in data.get("candidates", []):
             fr = cand.get("finishReason")
@@ -168,7 +206,7 @@ async def generate(
         fr_str = ", ".join(finish_reasons) or "unbekannt"
         raise ImageGenError(
             f"Keine Bilder erhalten (finishReason: {fr_str}). "
-            "Häufig: Prompt wurde blockiert (Safety) oder das Modell hat nur Text zurückgegeben."
+            "Haeufig: Prompt wurde blockiert (Safety) oder das Modell hat nur Text zurueckgegeben."
         )
     return images
 
@@ -200,11 +238,13 @@ def _collect_text(content: dict) -> str | None:
 
 
 def get_config() -> dict:
-    """Statische Config-Info fürs Frontend (Modelle, Aspect-Ratios, Limits)."""
+    """Statische Config-Info fuers Frontend (Modelle, Aspect-Ratios, Bildgroessen, Limits)."""
     return {
         "models": AVAILABLE_MODELS,
         "aspect_ratios": ASPECT_RATIOS,
+        "image_sizes": IMAGE_SIZES,
         "max_candidates": MAX_CANDIDATES,
         "default_model": next(m["id"] for m in AVAILABLE_MODELS if m.get("default")),
         "default_aspect": "1:1",
+        "default_image_size": DEFAULT_IMAGE_SIZE,
     }

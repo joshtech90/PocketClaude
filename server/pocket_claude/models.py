@@ -42,6 +42,9 @@ class ConversationOut(BaseModel):
     # Chat. Server speist dann pro Nachricht die Gem-Instructions/-Skills/-Modell
     # und -Wissensdateien ein.
     gem_id: str | None = None
+    # Zuletzt in diesem Chat benutztes Modell (siehe SendMessageRequest.model).
+    # NULL = Claude.
+    chat_model: str | None = None
 
 
 class ConversationDetail(ConversationOut):
@@ -59,6 +62,8 @@ class ConversationPatch(BaseModel):
     title: str | None = None
     pinned: bool | None = None
     locked: bool | None = None
+    # "" setzt den Chat auf Claude zurueck, None laesst den Wert unveraendert.
+    chat_model: str | None = None
 
 
 class SendMessageRequest(BaseModel):
@@ -67,9 +72,14 @@ class SendMessageRequest(BaseModel):
     # Effort-Level für Claude-Code-Thinking: off | low | medium | high | xhigh | max
     # "off"  → keine Thinking-Steuerung (CLI-Default greift)
     # andere → CLAUDE_CODE_EFFORT_LEVEL wird auf den Wert gesetzt
-    # `xhigh` ist Opus-4.7-only und greift bei uns (claude-opus-4-7) als
+    # `xhigh` gibt es ab Opus 4.7 und greift bei uns (claude-opus-5) als
     # echtes Extra-Level zwischen high und max.
     effort: str = "high"
+    # Zusatz-Modelle: "" oder None = Claude (bisheriges Verhalten). Sonst der
+    # `key` eines Modells aus GET /chat/models, also entweder eine reine
+    # Claude-Modell-ID ("claude-opus-4-8") oder ein Gateway-Key
+    # ("gw:pool:gemini-3.7-flash").
+    model: str | None = None
     # System-Prompt komplett vorgegeben — ersetzt den Claude-Code-Default.
     # None/leer → Server-Fallback (kurzer Pocket-Claude-Prompt).
     # Die Android-App schickt hier den vollen String. Das Web-UI schickt
@@ -290,6 +300,45 @@ class SettingsImportResponse(BaseModel):
     tts_keys_imported: int  # Anzahl Keys, die in den Pool gewandert sind
 
 
+class ChatModelDto(BaseModel):
+    """Ein waehlbares Chat-Modell fuer App und Web-UI.
+
+    `key` ist das, was der Client spaeter als `SendMessageRequest.model`
+    zurueckschickt: fuer Claude die reine Modell-ID, fuer Zusatz-Modelle der
+    Gateway-Key `gw:<gateway>:<modell>`.
+    """
+    key: str
+    family: str            # "claude" | "gemini" | "gpt" | "other"
+    label: str
+    efforts: list[str] = Field(default_factory=list)
+    default_effort: str = ""
+    supports_vision: bool = True
+    context_length: int | None = None
+    gateway_label: str = ""
+
+
+class GatewayStatusDto(BaseModel):
+    """Erreichbarkeit eines Zusatz-Modell-Gateways. Der API-Key bleibt draussen."""
+    id: str
+    label: str
+    base_url: str
+    reachable: bool = False
+    model_count: int = 0
+    last_error: str | None = None
+    checked_at: str | None = None
+
+
+class ChatModelsDto(BaseModel):
+    """Antwort von GET /chat/models.
+
+    Claude steht immer zuerst und ist auch dann da, wenn kein Gateway laeuft.
+    """
+    models: list[ChatModelDto] = Field(default_factory=list)
+    gateways: list[GatewayStatusDto] = Field(default_factory=list)
+    # Standard-Modell des Users ("" = Claude-Automatik).
+    default_key: str = ""
+
+
 class SkillsDto(BaseModel):
     """Welche Tools darf Claude pro Konversation/User nutzen.
 
@@ -305,6 +354,10 @@ class SkillsDto(BaseModel):
     web_search: bool = True
     web_fetch: bool = True
     code_execution: bool = False
+    # Bilderzeugung im Chat. Das Werkzeug heisst in beiden Engines
+    # `generate_image` und laeuft immer ueber Nano Banana (image_engine),
+    # egal welches Modell gerade antwortet.
+    image_generation: bool = True
 
 
 class SkillsDefaultsRequest(BaseModel):

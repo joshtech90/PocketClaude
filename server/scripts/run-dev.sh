@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pocket Claude — run locally (for development on macOS / Linux)
+# PocketClot — run locally (for development on macOS / Linux)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -53,5 +53,5 @@ if [[ ! -f .env ]]; then
     echo ""
 fi
 
-echo "==> Pocket Claude starting on http://localhost:8787 ..."
+echo "==> PocketClot starting on http://localhost:8787 ..."
 exec python -m pocket_claude

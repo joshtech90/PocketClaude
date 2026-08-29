@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="../../assets/logo.png" alt="Pocket Claude" width="160" height="160">
+<img src="../../assets/logo.png" alt="PocketClot" width="160" height="160">
 
-# Pocket Claude
+# PocketClot
 
 **Tu Claude personal en tu teléfono — respaldado por tu propia suscripción Pro/Max, una clave de API de Anthropic o AWS Bedrock. Alojado en tu propio hardware.**
 
@@ -19,7 +19,7 @@
 
 ## Acerca de
 
-**Pocket Claude** es un front-end de chat autoalojado para [Claude](https://claude.ai) de Anthropic. Un pequeño servidor Python se ejecuta en tu propia máquina Linux (Mini-PC, Raspberry Pi, laptop vieja, NAS); una aplicación nativa para Android y una interfaz web integrada se comunican con él desde cualquier lugar a través de [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) o un túnel de Cloudflare.
+**PocketClot** es un front-end de chat autoalojado para [Claude](https://claude.ai) de Anthropic. Un pequeño servidor Python se ejecuta en tu propia máquina Linux (Mini-PC, Raspberry Pi, laptop vieja, NAS); una aplicación nativa para Android y una interfaz web integrada se comunican con él desde cualquier lugar a través de [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) o un túnel de Cloudflare.
 
 **Elige el backend por usuario**, intercambiable en cualquier momento desde la app:
 
@@ -27,7 +27,7 @@
 - **Clave de API de Anthropic** — `sk-ant-…` desde la [Consola de Anthropic](https://console.anthropic.com), facturación por consumo.
 - **AWS Bedrock** — tus credenciales de AWS, compatible con Claude Opus 4.7 mediante los IDs de modelo específicos de Bedrock.
 
-**Por qué existe.** Las aplicaciones oficiales de Claude de Anthropic son geniales — Pocket Claude existe para las cosas que ellas (todavía) no hacen:
+**Por qué existe.** Las aplicaciones oficiales de Claude de Anthropic son geniales — PocketClot existe para las cosas que ellas (todavía) no hacen:
 
 - **Código abierto.** Audítalo, bifúrcalo, extiéndelo. Sin telemetría misteriosa, sin eliminaciones sorpresa de funciones.
 - **Funciones extra.** Lectura en voz alta con TTS (tres proveedores, controles en la pantalla de bloqueo), generación de imágenes, colapso de mensajes largos al estilo ChatGPT, búsqueda de texto completo en todos tus chats, copias de seguridad cifradas, cuatro modos seleccionables de prompt del sistema.
@@ -35,7 +35,7 @@
 - **Un segundo "Claude" limpio.** ¿Quieres una separación estricta entre lo personal y el trabajo sin tener que malabarear dos cuentas de Anthropic? Levanta tu propio servidor, inicia sesión en paralelo con el cliente oficial, listo.
 - **Tú eres dueño de los datos.** Tus conversaciones viven en una base de datos SQLite en tu hardware. Migrala, respáldala, consúltala directamente — es tuya.
 
-**No se requiere una clave de API adicional de Anthropic.** La autenticación es la sesión OAuth que utiliza tu CLI de Claude Code instalada localmente (`claude login`). Pocket Claude inicia la CLI; la CLI se encarga del resto — funcionando con la misma cuota Pro/Max que ya pagas.
+**No se requiere una clave de API adicional de Anthropic.** La autenticación es la sesión OAuth que utiliza tu CLI de Claude Code instalada localmente (`claude login`). PocketClot inicia la CLI; la CLI se encarga del resto — funcionando con la misma cuota Pro/Max que ya pagas.
 
 > **Nota** — esto es un proyecto autoalojado por afición, no un producto de Anthropic. Tú aportas tu propia suscripción Pro/Max. Nunca vemos ni intermediamos tus conversaciones.
 
@@ -58,7 +58,7 @@
 
 ```
                 ┌───────────────────────────┐
-                │  Pocket Claude (Android)  │
+                │  PocketClot (Android)  │
                 │      or built-in web UI   │
                 └─────────────┬─────────────┘
                               │ HTTPS  (persistent URL)
@@ -98,7 +98,7 @@ Dos componentes, un repositorio:
 En una máquina Ubuntu / Debian / Fedora nueva:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClaude/main/server/deploy/install-linux.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClot/main/server/deploy/install-linux.sh | sudo bash
 ```
 
 El instalador crea un usuario de sistema `pocket-claude`, coloca el código en `/opt/pocket-claude/`, instala la CLI de Claude Code, instala las dependencias de Python en un venv, escribe una unidad systemd y la inicia en el puerto `8787` (loopback).
@@ -121,7 +121,7 @@ Imprime la URL pública cuando termina — se ve como `https://your-host.your-ta
 
 ### 4 — Instala la aplicación Android
 
-Descarga el APK desde [la última release](https://github.com/joshtech90/PocketClaude/releases) o constrúyelo tú mismo:
+Descarga el APK desde [la última release](https://github.com/joshtech90/PocketClot/releases) o constrúyelo tú mismo:
 
 ```bash
 cd app && ./gradlew assembleDebug

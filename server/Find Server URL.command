@@ -6,7 +6,7 @@
 set -e
 
 echo "═══════════════════════════════════════════════════"
-echo " Pocket Claude — Server-URL ermitteln"
+echo " PocketClot — Server-URL ermitteln"
 echo "═══════════════════════════════════════════════════"
 echo
 

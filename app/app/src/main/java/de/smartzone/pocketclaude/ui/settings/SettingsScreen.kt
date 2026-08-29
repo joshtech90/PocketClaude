@@ -3,6 +3,7 @@ package de.smartzone.pocketclaude.ui.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -20,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.animateContentSize
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -91,6 +95,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.luminance
+import de.smartzone.pocketclaude.ui.theme.PocketPalette
+import de.smartzone.pocketclaude.ui.theme.specFor
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,7 +111,12 @@ import androidx.compose.ui.unit.dp
 import android.app.Activity
 import de.smartzone.pocketclaude.data.BillingStatusDto
 import de.smartzone.pocketclaude.data.ClaudeAuthUpdateRequest
-import de.smartzone.pocketclaude.data.ClaudeModels
+import de.smartzone.pocketclaude.R
+import de.smartzone.pocketclaude.data.ChatModelFamilies
+import de.smartzone.pocketclaude.data.EFFORT_LEVELS
+import de.smartzone.pocketclaude.data.EFFORT_LEVELS_ALL
+import de.smartzone.pocketclaude.data.ChatModelOption
+import de.smartzone.pocketclaude.data.ImageConfigDto
 import de.smartzone.pocketclaude.data.GemDto
 import de.smartzone.pocketclaude.data.LocalePrefs
 import de.smartzone.pocketclaude.data.SystemPromptMode
@@ -112,6 +127,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.smartzone.pocketclaude.ui.components.InfoBulletParagraph
 import de.smartzone.pocketclaude.ui.components.InfoButton
 import de.smartzone.pocketclaude.ui.components.InfoParagraph
+import de.smartzone.pocketclaude.ui.components.PocketBackdrop
+import de.smartzone.pocketclaude.ui.components.PocketIconButton
+import de.smartzone.pocketclaude.ui.components.PocketScreenTitle
 import de.smartzone.pocketclaude.ui.theme.PocketTheme
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -140,30 +158,42 @@ fun SettingsScreen(
     val ttsStatus by vm.ttsStatus.collectAsState()
     // (showToken früher hier — Token-Feld ist entfallen; Username/PW ersetzen es)
 
+    PocketBackdrop(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(de.smartzone.pocketclaude.R.string.title_settings), style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    PocketScreenTitle(
+                        eyebrow = stringResource(de.smartzone.pocketclaude.R.string.app_name),
+                        title = stringResource(de.smartzone.pocketclaude.R.string.title_settings),
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(de.smartzone.pocketclaude.R.string.action_back))
-                    }
+                    PocketIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(de.smartzone.pocketclaude.R.string.action_back),
+                        onClick = onBack,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
                 ),
             )
         },
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) { pad ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(pad)
+                .consumeWindowInsets(pad)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             // ─── Quick-Setup-Banner — nur sichtbar bis alles eingerichtet ───
             val hasProfile = settings.activeProfile != null
@@ -402,6 +432,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -456,10 +487,14 @@ private fun ProfileAndServerCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        shape = RoundedCornerShape(28.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, PocketTheme.colors.outlineSoft),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             OutlinedTextField(
                 value = settings.serverUrl,
                 onValueChange = vm::setServerUrl,
@@ -570,11 +605,57 @@ private fun ClaudeBehaviorCard(
         shape = RoundedCornerShape(20.dp),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Denktiefe
-            SubsectionLabel(stringResource(de.smartzone.pocketclaude.R.string.settings_subsection_effort))
-            EffortChips(
-                selected = settings.effort,
-                onSelect = vm::setEffort,
+            // Globales Standard-Modell für neue Chats, über alle Familien.
+            val chatModels by vm.chatModels.collectAsState()
+            val chatModelsLoading by vm.chatModelsLoading.collectAsState()
+            DefaultModelPicker(
+                models = chatModels,
+                selectedKey = settings.chatModelKey,
+                loading = chatModelsLoading,
+                onSelect = vm::setDefaultChatModel,
+                onRefresh = vm::refreshChatModels,
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            // Ein Block je Anbieter: welches Modell, und direkt darunter dessen
+            // Denktiefe. Vorher standen Modell und Denktiefe in zwei getrennten
+            // Listen, und die Stufen waren fest verdrahtet statt vom Modell
+            // abgeleitet. Dann liess sich eine Stufe waehlen, die der Server
+            // still verworfen hat.
+            SubsectionLabel(stringResource(de.smartzone.pocketclaude.R.string.settings_provider_defaults))
+            listOf(
+                ChatModelFamilies.CLAUDE to de.smartzone.pocketclaude.R.string.settings_effort_claude,
+                ChatModelFamilies.GEMINI to de.smartzone.pocketclaude.R.string.settings_effort_gemini,
+                ChatModelFamilies.GPT to de.smartzone.pocketclaude.R.string.settings_effort_gpt,
+            ).forEach { (family, labelRes) ->
+                val familyModels = chatModels.filter { it.family == family }
+                val selectedKey = settings.defaultModelFor(family)
+                val selectedModel = familyModels.firstOrNull { it.key == selectedKey }
+                // Claude ist immer da, auch ohne Gateway, und kennt zusaetzlich
+                // die Stufe „aus". Bei den Zusatz-Modellen bestimmt das konkrete
+                // Modell, welche Stufen es ueberhaupt gibt.
+                // Dieselbe Quelle wie im Chat-Sheet und im Sendepfad. Ohne
+                // gewaehltes Zusatz-Modell gibt es nichts einzustellen, dann
+                // bleibt die Liste leer und der Block sagt das auch.
+                val availableEfforts =
+                    if (family != ChatModelFamilies.CLAUDE && selectedModel == null) emptyList()
+                    else settings.availableEffortsFor(family, selectedModel)
+
+                ProviderDefaultsBlock(
+                    familyLabel = stringResource(labelRes),
+                    models = familyModels,
+                    selectedKey = selectedKey,
+                    onSelectModel = { key -> vm.setDefaultModelForFamily(family, key) },
+                    availableEfforts = availableEfforts,
+                    selectedEffort = settings.effortForModelKey(selectedKey, selectedModel),
+                    onSelectEffort = { value -> vm.setEffortForFamily(family, value) },
+                )
+            }
+            Text(
+                stringResource(de.smartzone.pocketclaude.R.string.settings_provider_defaults_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -647,6 +728,21 @@ private fun ThemeCard(
                     )
                 }
             }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            // Farbschema. Hell/Dunkel oben bleibt davon unabhaengig: jede
+            // Palette bringt beide Varianten mit.
+            SubsectionLabel(stringResource(de.smartzone.pocketclaude.R.string.settings_palette_label))
+            PalettePicker(
+                selectedId = settings.paletteId,
+                onSelect = vm::setPaletteId,
+            )
+            Text(
+                stringResource(de.smartzone.pocketclaude.R.string.settings_palette_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
@@ -877,63 +973,12 @@ private fun ClaudeAuthSection(vm: SettingsViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            // ── Globales Standard-Modell (Pro/Max + API-Key) ──
-            // Im Bedrock-Modus ausgeblendet: dort steuert der Alias/die IDs
-            // unten die Modellwahl.
+            // Das globale Standard-Modell steht jetzt im Abschnitt
+            // „Modelle und Denktiefe": dort sind auch die Zusatz-Modelle
+            // wählbar, und es gibt nur EINE Stelle, die den Wert schreibt.
             if (current != "bedrock") {
-                var modelMenuOpen by remember { mutableStateOf(false) }
-                val curModel = auth?.defaultModel.orEmpty()
-                val automaticLabel =
-                    stringResource(de.smartzone.pocketclaude.R.string.model_automatic)
-                val curModelLabel = ClaudeModels.labelFor(curModel) ?: automaticLabel
-                SubsectionLabel(
-                    stringResource(de.smartzone.pocketclaude.R.string.settings_default_model_label)
-                )
-                ExposedDropdownMenuBox(
-                    expanded = modelMenuOpen,
-                    onExpandedChange = { modelMenuOpen = it },
-                ) {
-                    OutlinedTextField(
-                        value = curModelLabel,
-                        onValueChange = {},
-                        readOnly = true,
-                        enabled = !busy,
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuOpen)
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                    )
-                    DropdownMenu(
-                        expanded = modelMenuOpen,
-                        onDismissRequest = { modelMenuOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(automaticLabel) },
-                            onClick = {
-                                modelMenuOpen = false
-                                if (curModel.isNotEmpty()) {
-                                    vm.updateClaudeAuth(ClaudeAuthUpdateRequest(defaultModel = ""))
-                                }
-                            },
-                        )
-                        ClaudeModels.all.forEach { opt ->
-                            DropdownMenuItem(
-                                text = { Text(opt.label) },
-                                onClick = {
-                                    modelMenuOpen = false
-                                    if (curModel != opt.id) {
-                                        vm.updateClaudeAuth(
-                                            ClaudeAuthUpdateRequest(defaultModel = opt.id)
-                                        )
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
                 Text(
-                    stringResource(de.smartzone.pocketclaude.R.string.settings_default_model_hint),
+                    stringResource(de.smartzone.pocketclaude.R.string.settings_default_model_moved),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1347,13 +1392,19 @@ private fun SectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(
-            text = text.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(
             modifier = Modifier
-                .padding(start = 8.dp)
-                .weight(1f),
+                .width(4.dp)
+                .height(18.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.primary)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
         )
         if (infoTitle != null && infoBody != null) {
             InfoButton(title = infoTitle, body = infoBody)
@@ -1374,15 +1425,27 @@ private fun SubsectionLabel(text: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EffortChips(selected: String, onSelect: (String) -> Unit) {
-    val options = listOf(
+private fun EffortChips(
+    available: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    // Frueher stand hier eine feste Liste, unabhaengig davon, was das Modell
+    // wirklich kann. `available` kommt jetzt vom Modell selbst, sortiert nach
+    // der gemeinsamen Skala, damit die Reihenfolge immer gleich bleibt.
+    val labels = mapOf(
         "off" to stringResource(de.smartzone.pocketclaude.R.string.effort_off),
+        "minimal" to stringResource(de.smartzone.pocketclaude.R.string.effort_minimal_label),
         "low" to stringResource(de.smartzone.pocketclaude.R.string.effort_low),
         "medium" to stringResource(de.smartzone.pocketclaude.R.string.effort_medium),
         "high" to stringResource(de.smartzone.pocketclaude.R.string.effort_high),
         "xhigh" to stringResource(de.smartzone.pocketclaude.R.string.effort_xhigh),
         "max" to stringResource(de.smartzone.pocketclaude.R.string.effort_max),
+        "ultra" to stringResource(de.smartzone.pocketclaude.R.string.effort_ultra_label),
     )
+    val options = EFFORT_LEVELS_ALL
+        .filter { it in available }
+        .map { it to (labels[it] ?: it) }
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1450,14 +1513,24 @@ private fun QuickSetupBanner(
     isLoggedIn: Boolean,
     ttsReady: Boolean,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+    val shape = RoundedCornerShape(26.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.76f),
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.42f),
+                    )
+                )
+            )
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), shape),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
                 stringResource(de.smartzone.pocketclaude.R.string.settings_quick_setup_header),
@@ -1525,17 +1598,24 @@ private fun ExpandableSection(
     content: @Composable () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(initiallyExpanded) }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, PocketTheme.colors.outlineSoft),
+    ) {
     Column(
-        modifier = Modifier.animateContentSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.animateContentSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         // Header-Row: Titel + (optional) Info-Button + Chevron
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .clickable { expanded = !expanded }
-                .padding(vertical = 6.dp, horizontal = 4.dp),
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -1563,6 +1643,7 @@ private fun ExpandableSection(
         if (expanded) {
             content()
         }
+    }
     }
 }
 
@@ -2630,10 +2711,14 @@ private fun FirstRunSignInCard(vm: SettingsViewModel) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        shape = RoundedCornerShape(28.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, PocketTheme.colors.outlineSoft),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
                 stringResource(de.smartzone.pocketclaude.R.string.login_title),
                 style = MaterialTheme.typography.titleMedium,
@@ -2652,7 +2737,7 @@ private fun FirstRunSignInCard(vm: SettingsViewModel) {
                 placeholder = { Text(stringResource(de.smartzone.pocketclaude.R.string.server_url_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(18.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 enabled = !working,
             )
@@ -2662,7 +2747,7 @@ private fun FirstRunSignInCard(vm: SettingsViewModel) {
                 label = { Text(stringResource(de.smartzone.pocketclaude.R.string.username)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(18.dp),
                 enabled = !working,
             )
             OutlinedTextField(
@@ -2671,7 +2756,7 @@ private fun FirstRunSignInCard(vm: SettingsViewModel) {
                 label = { Text(stringResource(de.smartzone.pocketclaude.R.string.password)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(18.dp),
                 visualTransformation = if (showPw) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 trailingIcon = {
@@ -2693,7 +2778,7 @@ private fun FirstRunSignInCard(vm: SettingsViewModel) {
                 label = { Text(stringResource(de.smartzone.pocketclaude.R.string.settings_label_display_name_optional)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(18.dp),
                 enabled = !working,
             )
 
@@ -2714,7 +2799,7 @@ private fun FirstRunSignInCard(vm: SettingsViewModel) {
                     }
                 },
                 enabled = !working && url.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (working) {
@@ -3375,6 +3460,16 @@ private fun SkillsDefaultsSection(vm: SettingsViewModel) {
                     vm.setDefaultSkills(current.copy(codeExecution = it))
                 },
             )
+
+            SkillToggleRow(
+                label = stringResource(de.smartzone.pocketclaude.R.string.skill_image_generation),
+                description = stringResource(de.smartzone.pocketclaude.R.string.settings_image_in_chat_hint),
+                enabled = !busy,
+                checked = current.imageGeneration,
+                onCheckedChange = {
+                    vm.setDefaultSkills(current.copy(imageGeneration = it))
+                },
+            )
         }
     }
 }
@@ -3590,6 +3685,15 @@ private fun ImageGenSection(vm: SettingsViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Standardwerte für erzeugte Bilder. Gelten auch für Bilder, die
+            // ein Modell mitten im Chat erzeugt.
+            ImageDefaultsRow(
+                cfg = cfg,
+                onSetSize = { vm.setImageDefaults(size = it) },
+                onSetAspect = { vm.setImageDefaults(aspectRatio = it) },
+                onSetModel = { vm.setImageDefaults(model = it) },
+            )
+
             // Status
             cfg?.let { c ->
                 if (c.configured) {
@@ -4125,6 +4229,385 @@ private fun CloudBillingWidget(vm: SettingsViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Globaler Standard-Modell-Picker für alle Modell-Familien.
+ * Zeigt die Modelle gruppiert nach ChatModelFamilies.order an.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DefaultModelPicker(
+    models: List<ChatModelOption>,
+    selectedKey: String,
+    loading: Boolean,
+    onSelect: (String) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedLabel = if (selectedKey.isBlank()) {
+        stringResource(R.string.model_auto)
+    } else {
+        models.firstOrNull { it.key == selectedKey }?.label ?: selectedKey
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SubsectionLabel(stringResource(R.string.settings_default_model))
+            if (loading) {
+                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = stringResource(R.string.model_refresh),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            OutlinedTextField(
+                value = selectedLabel,
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(),
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.model_auto)) },
+                    onClick = {
+                        onSelect("")
+                        expanded = false
+                    },
+                )
+                ChatModelFamilies.order.forEach { family ->
+                    val groupModels = models.filter { it.family == family }
+                    if (groupModels.isNotEmpty()) {
+                        val familyLabelRes = when (family) {
+                            ChatModelFamilies.CLAUDE -> R.string.model_family_claude
+                            ChatModelFamilies.GEMINI -> R.string.model_family_gemini
+                            ChatModelFamilies.GPT -> R.string.model_family_gpt
+                            else -> R.string.model_family_other
+                        }
+                        Text(
+                            text = stringResource(familyLabelRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                        groupModels.forEach { opt ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(opt.label)
+                                        if (opt.gatewayLabel.isNotBlank()) {
+                                            Text(
+                                                text = opt.gatewayLabel,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSelect(opt.key)
+                                    expanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.settings_default_model_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * Standard-Einstellungen für die Bildgenerierung: Größe, Seitenverhältnis und Modell.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ImageDefaultsRow(
+    cfg: ImageConfigDto?,
+    onSetSize: (String) -> Unit,
+    onSetAspect: (String) -> Unit,
+    onSetModel: (String) -> Unit,
+) {
+    if (cfg == null) return
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        // 1. Standard-Bildgröße
+        SubsectionLabel(stringResource(R.string.settings_image_default_size))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            cfg.imageSizes.forEach { item ->
+                FilterChip(
+                    selected = cfg.defaults.size == item.id,
+                    onClick = { onSetSize(item.id) },
+                    label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                )
+            }
+        }
+
+        // 2. Standard-Seitenverhältnis
+        SubsectionLabel(stringResource(R.string.settings_image_default_aspect))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            cfg.aspectRatios.forEach { item ->
+                FilterChip(
+                    selected = cfg.defaults.aspectRatio == item.id,
+                    onClick = { onSetAspect(item.id) },
+                    label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                )
+            }
+        }
+
+        // 3. Standard-Modell
+        SubsectionLabel(stringResource(R.string.settings_image_default_model))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            cfg.models.forEach { item ->
+                FilterChip(
+                    selected = cfg.defaults.model == item.id,
+                    onClick = { onSetModel(item.id) },
+                    label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Farbschema-Auswahl. Jede Palette wird als Farbprobe gezeigt statt nur als
+ * Name: welche Farbe ein Schema hat, laesst sich nicht sinnvoll lesen, nur
+ * ansehen. Die Proben zeigen die Variante, die gerade aktiv ist, damit die
+ * Vorschau zum tatsaechlichen Ergebnis passt.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PalettePicker(
+    selectedId: String,
+    onSelect: (String) -> Unit,
+) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val selected = PocketPalette.fromId(selectedId)
+
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        PocketPalette.entries.forEach { palette ->
+            val spec = specFor(palette)
+            val scheme = if (dark) spec.darkScheme else spec.lightScheme
+            val isSelected = palette == selected
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
+                    .border(
+                        width = if (isSelected) 2.dp else 1.dp,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant,
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                    .clickable { onSelect(palette.id) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                // Drei Tupfer: Hintergrund, Primaerfarbe, Akzent. Das reicht,
+                // um zwei Schemata auf einen Blick zu unterscheiden.
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    listOf(scheme.background, scheme.primary, scheme.secondary).forEach { c ->
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .background(c)
+                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                        )
+                    }
+                }
+                Text(
+                    palette.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurface,
+                )
+                if (isSelected) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Ein Anbieter-Block: Standardmodell plus die Denktiefen, die genau dieses
+ * Modell kann.
+ *
+ * Bewusst zusammen und nicht in zwei Listen: die waehlbaren Denktiefen haengen
+ * am Modell, nicht am Anbieter. Gemini 3.7 Flash gibt es im Gateway zum Beispiel
+ * nur in „hoch", und eine Stufenliste, die trotzdem sechs Knoepfe zeigt, ist
+ * schlicht gelogen.
+ *
+ * Ist die Modell-Liste leer, laeuft das Gateway dieser Familie nicht. Der Block
+ * bleibt dann sichtbar, aber gesperrt, statt kommentarlos zu verschwinden.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProviderDefaultsBlock(
+    familyLabel: String,
+    models: List<ChatModelOption>,
+    selectedKey: String,
+    onSelectModel: (String) -> Unit,
+    availableEfforts: List<String>,
+    selectedEffort: String,
+    onSelectEffort: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val available = models.isNotEmpty()
+    val label = when {
+        !available -> stringResource(de.smartzone.pocketclaude.R.string.settings_default_model_family_unavailable)
+        selectedKey.isBlank() -> stringResource(de.smartzone.pocketclaude.R.string.model_auto)
+        else -> models.firstOrNull { it.key == selectedKey }?.label ?: selectedKey
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            familyLabel,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ExposedDropdownMenuBox(
+            expanded = expanded && available,
+            onExpandedChange = { if (available) expanded = !expanded },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            OutlinedTextField(
+                value = label,
+                onValueChange = {},
+                readOnly = true,
+                enabled = available,
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && available)
+                },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(),
+            )
+            ExposedDropdownMenu(
+                expanded = expanded && available,
+                onDismissRequest = { expanded = false },
+            ) {
+                models.forEach { opt ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(opt.label)
+                                if (opt.gatewayLabel.isNotBlank()) {
+                                    Text(
+                                        text = opt.gatewayLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
+                        onClick = {
+                            onSelectModel(opt.key)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+
+        when {
+            !available -> Unit
+            availableEfforts.isEmpty() -> Text(
+                stringResource(de.smartzone.pocketclaude.R.string.effort_not_supported),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            else -> EffortChips(
+                available = availableEfforts,
+                selected = selectedEffort,
+                onSelect = onSelectEffort,
+            )
         }
     }
 }

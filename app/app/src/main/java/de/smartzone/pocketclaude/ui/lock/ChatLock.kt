@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Fingerprint
@@ -51,6 +53,8 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import de.smartzone.pocketclaude.R
 import de.smartzone.pocketclaude.data.ChatLockVerifyResponse
+import de.smartzone.pocketclaude.ui.components.PocketIconButton
+import de.smartzone.pocketclaude.ui.theme.PocketTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -219,27 +223,36 @@ fun ChatLockGate(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
             Box(
                 modifier = Modifier
-                    .size(72.dp)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
+                    .size(82.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                        RoundedCornerShape(28.dp),
+                    )
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                        RoundedCornerShape(28.dp),
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Filled.Lock,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(34.dp),
+                    modifier = Modifier.size(36.dp),
                 )
             }
             Spacer(Modifier.height(20.dp))
             Text(
                 stringResource(R.string.chat_lock_locked_heading),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.headlineMedium,
             )
             Spacer(Modifier.height(6.dp))
             val isProblem = cooldown > 0 || wrong || error != null
@@ -283,15 +296,15 @@ fun ChatLockGate(
         // anderen Chat wechseln kann. Ohne diesen Ausweg steckt man bei
         // geschlossener App komplett fest.
         if (onOpenMenu != null) {
-            IconButton(
+            PocketIconButton(
+                icon = Icons.Filled.Menu,
+                contentDescription = menuContentDescription,
                 onClick = onOpenMenu,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(4.dp),
-            ) {
-                Icon(Icons.Filled.Menu, contentDescription = menuContentDescription)
-            }
+                    .padding(8.dp),
+            )
         }
     }
 }
@@ -438,7 +451,7 @@ fun PinPad(
                         "⌫" -> PinKey(enabled = enabled, onClick = onBackspace) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Backspace,
-                                contentDescription = "Löschen",
+                                contentDescription = stringResource(R.string.action_delete),
                                 tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
@@ -466,8 +479,9 @@ private fun PinKey(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, PocketTheme.colors.outlineSoft),
         modifier = Modifier.size(64.dp),
     ) {
         Box(contentAlignment = Alignment.Center) { content() }

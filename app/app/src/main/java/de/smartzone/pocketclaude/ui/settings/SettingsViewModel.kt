@@ -10,6 +10,7 @@ import de.smartzone.pocketclaude.data.AppSettings
 import de.smartzone.pocketclaude.data.ApiException
 import de.smartzone.pocketclaude.data.AudioController
 import de.smartzone.pocketclaude.data.BillingStatusDto
+import de.smartzone.pocketclaude.data.ChatModelFamilies
 import de.smartzone.pocketclaude.data.ChatRepository
 import de.smartzone.pocketclaude.data.ClaudeAuthDto
 import de.smartzone.pocketclaude.data.ClaudeAuthUpdateRequest
@@ -199,6 +200,7 @@ class SettingsViewModel(
             refreshTtsKeyPool()
             refreshBillingStatus()
             refreshClaudeAuth()
+            refreshChatModels(force = false)
             refreshUsage()
             refreshGems()
             refreshChatLock()
@@ -335,6 +337,81 @@ class SettingsViewModel(
 
     fun setThemeMode(mode: ThemeMode) = viewModelScope.launch {
         settingsRepo.setThemeMode(mode)
+    }
+
+    // ----- Chat-Modelle (Claude plus Zusatz-Modelle) -----
+
+    private val _chatModels =
+        MutableStateFlow<List<de.smartzone.pocketclaude.data.ChatModelOption>>(emptyList())
+    val chatModels: StateFlow<List<de.smartzone.pocketclaude.data.ChatModelOption>> =
+        _chatModels.asStateFlow()
+
+    private val _chatModelsLoading = MutableStateFlow(false)
+    val chatModelsLoading: StateFlow<Boolean> = _chatModelsLoading.asStateFlow()
+
+    /** Holt die Modell-Liste vom Server. Schlaegt das fehl, bleibt die Liste
+     *  leer und der Picker zeigt nur „Automatisch"; Claude funktioniert
+     *  trotzdem, weil der Server dann seinen eigenen Default nimmt. */
+    fun refreshChatModels(force: Boolean = true) = viewModelScope.launch {
+        if (!settings.value.isConfigured) return@launch
+        _chatModelsLoading.value = true
+        runCatching { chatRepo.getChatModels(force) }
+            .onSuccess { dto ->
+                _chatModels.value = dto.models.map { m ->
+                    de.smartzone.pocketclaude.data.ChatModelOption(
+                        key = m.key,
+                        family = m.family,
+                        label = m.label,
+                        efforts = m.efforts,
+                        defaultEffort = m.defaultEffort,
+                        supportsVision = m.supportsVision,
+                        gatewayLabel = m.gatewayLabel,
+                    )
+                }
+            }
+        _chatModelsLoading.value = false
+    }
+
+    /** Setzt das globale Standard-Modell. Wandert in die App-Einstellungen
+     *  (die App schickt es pro Nachricht mit) UND in den Server-KV, damit die
+     *  Web-UI dieselbe Vorauswahl sieht. */
+    fun setDefaultChatModel(key: String) = viewModelScope.launch {
+        settingsRepo.setChatModelKey(key)
+        runCatching { chatRepo.updateClaudeAuth(ClaudeAuthUpdateRequest(defaultModel = key)) }
+    }
+
+    /** Denktiefe je Modell-Familie. Claude schreibt zusaetzlich das alte
+     *  `effort`-Feld, damit bestehende Aufrufer unveraendert weiterlaufen. */
+    fun setEffortForFamily(family: String, value: String) = viewModelScope.launch {
+        settingsRepo.setEffortForFamily(family, value)
+    }
+
+    /**
+     * Standardmodell je Anbieter. Fuer Claude wandert der Wert zusaetzlich in
+     * den Server-KV: das ist derselbe Schluessel, aus dem sich die Web-UI und
+     * die serverseitige Modellkette bedienen. Fuer Gemini und GPT gibt es
+     * serverseitig keinen Default-Begriff, die bleiben App-lokal.
+     */
+    fun setDefaultModelForFamily(family: String, key: String) = viewModelScope.launch {
+        settingsRepo.setDefaultModelForFamily(family, key)
+        if (family == ChatModelFamilies.CLAUDE) {
+            runCatching { chatRepo.updateClaudeAuth(ClaudeAuthUpdateRequest(defaultModel = key)) }
+        }
+    }
+
+    /** Farbschema der App. Rein lokal, betrifft nur die Darstellung. */
+    fun setPaletteId(value: String) = viewModelScope.launch {
+        settingsRepo.setPaletteId(value)
+    }
+
+    /** Standardwerte fuer erzeugte Bilder. Gelten fuer den Bilder-Screen UND
+     *  fuer das Bild-Werkzeug im Chat, deshalb landen sie auf dem Server. */
+    fun setImageDefaults(size: String? = null, aspectRatio: String? = null,
+                         model: String? = null) = viewModelScope.launch {
+        runCatching { chatRepo.setImageDefaults(size, aspectRatio, model) }
+            .onSuccess { _imageConfig.value = it }
+        if (size != null) settingsRepo.setImageDefaultSize(size)
+        if (aspectRatio != null) settingsRepo.setImageDefaultAspect(aspectRatio)
     }
 
     fun setEffort(value: String) = viewModelScope.launch {
@@ -967,7 +1044,7 @@ class SettingsViewModel(
         } catch (e: Exception) {
             val hint = if (e is kotlinx.serialization.SerializationException)
                 "JSON ist nicht im erwarteten Format. Stelle sicher, dass das die " +
-                    "Export-Datei von Pocket Claude ist."
+                    "Export-Datei von PocketClot ist."
             else (e.message ?: e::class.java.simpleName)
             _settingsTransfer.value = SettingsTransferState.Failure("Import fehlgeschlagen: $hint")
         }

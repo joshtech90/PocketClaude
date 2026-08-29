@@ -1,5 +1,5 @@
 // =====================================================================
-// Pocket Claude Web-UI v2 — vanilla JS, neue DOM-Struktur.
+// PocketClot Web-UI v2 — vanilla JS, neue DOM-Struktur.
 // =====================================================================
 // PC_SSE LOAD MARKER — bump this any time you change PC_SSE logging.
 // If you don't see this exact line in the console after reload, the
@@ -22,12 +22,35 @@ const LS = {
   // Lange User-Messages einklappen (ChatGPT-Style). Default: AN. Tap auf die
   // Bubble klappt sie auf / „Mehr anzeigen"-Button.
   collapseUserMsgs: 'pc.collapseUserMsgs',
+  // Zusatz-Modelle: gewaehltes Modell und Denktiefe je Familie.
+  chatModel:      'pc.chatModel',
+  effortByFamily: 'pc.effortByFamily',
 };
+
+// Denktiefe je Modell-Familie, defensiv aus dem localStorage geladen.
+const EFFORT_DEFAULTS = { claude: 'high', gemini: 'high', gpt: 'high', other: 'high' };
+function loadLocalEffortByFamily() {
+  try {
+    const raw = localStorage.getItem(LS.effortByFamily);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return Object.assign({}, EFFORT_DEFAULTS, parsed);
+    }
+  } catch (e) { /* kaputter Eintrag: Defaults nehmen */ }
+  return Object.assign({}, EFFORT_DEFAULTS);
+}
 
 const state = {
   serverUrl: localStorage.getItem(LS.url)        || '',
   token:     localStorage.getItem(LS.token)      || '',
   effort:    localStorage.getItem(LS.effort)     || 'high',
+  // Gewaehltes Modell. Leer = Claude-Automatik. Zusatz-Modelle tragen "gw:".
+  chatModel:      localStorage.getItem(LS.chatModel) || '',
+  effortByFamily: loadLocalEffortByFamily(),
+  chatModels:     [],
+  gateways:       [],
+  // Waehrend eines Turns vom Bild-Werkzeug erzeugte Anhaenge.
+  _streamAttachments: [],
   spMode:    localStorage.getItem(LS.spMode)     || 'STANDARD',
   spCustom:  localStorage.getItem(LS.spCustom)   || '',
   // Default-Voice ist Cloud-TTS Studio-B (deutsch, männlich, premium). Mit
@@ -40,7 +63,7 @@ const state = {
   me: null,  // { id, name, is_admin } — vom Server nach Login
 
   cid:            null,
-  title:          'Pocket Claude',
+  title:          'PocketClot',
   pinned:         false,
   messages:       [],
   streamingText:  '',
@@ -357,7 +380,8 @@ $('pwchange-form').addEventListener('submit', async (ev) => {
 // jeder Browser/Gerät dieselben Settings sieht. Lokales localStorage bleibt
 // als Cache + Pre-Login-Fallback.
 // =========================================================
-const SERVER_SETTING_KEYS = ['theme', 'effort', 'spMode', 'spCustom', 'ttsVoice', 'ttsSpeed', 'sidebar'];
+const SERVER_SETTING_KEYS = ['theme', 'effort', 'spMode', 'spCustom', 'ttsVoice', 'ttsSpeed', 'sidebar',
+                             'chatModel', 'effortByFamily'];
 let _settingsPushTimer = null;
 
 async function loadServerSettings() {
@@ -381,6 +405,20 @@ async function loadServerSettings() {
         els.app.classList.add('sidebar-collapsed');
       }
     }
+    if (s.chatModel !== undefined) {
+      localStorage.setItem(LS.chatModel, s.chatModel);
+      state.chatModel = s.chatModel;
+    }
+    if (s.effortByFamily !== undefined) {
+      try {
+        const parsed = typeof s.effortByFamily === 'string'
+          ? JSON.parse(s.effortByFamily) : s.effortByFamily;
+        if (parsed && typeof parsed === 'object') {
+          state.effortByFamily = Object.assign({}, EFFORT_DEFAULTS, parsed);
+          localStorage.setItem(LS.effortByFamily, JSON.stringify(state.effortByFamily));
+        }
+      } catch (e) { console.log('effortByFamily unlesbar:', e.message); }
+    }
   } catch (e) {
     // Server kann älter sein und den Endpoint nicht haben — nicht fatal
     console.log('Server-Settings nicht abrufbar:', e.message);
@@ -402,6 +440,8 @@ async function pushSettingsToServer() {
     ttsVoice: state.ttsVoice,
     ttsSpeed: state.ttsSpeed.toString(),
     sidebar:  localStorage.getItem(LS.sidebar) || '0',
+    chatModel:      state.chatModel,
+    effortByFamily: JSON.stringify(state.effortByFamily),
   };
   try { await api('PUT', '/ui-settings', payload); }
   catch (e) { console.log('Settings-Push fehlgeschlagen:', e.message); }
@@ -430,7 +470,8 @@ async function showApp() {
   }
   // Server-Settings holen (überschreibt lokales), dann UI initialisieren
   await loadServerSettings();
-  setEffort(state.effort, /*persist*/false);
+  // Modell-Liste holen (baut auch das Dropdown und den Button-Text auf).
+  await loadChatModels(false);
   if (window.PocketGems) window.PocketGems.load();
   refreshChatList().then(() => {
     // Cleaner Link öffnet immer einen neuen Chat (wie ChatGPT/Gemini Web).
@@ -828,7 +869,7 @@ async function newChat() {
 
 function updateTopbar(tokens) {
   const gemPrefix = (state.gem && state.gem.emoji) ? state.gem.emoji + '  ' : '';
-  els.topbarTitle.textContent = gemPrefix + (state.title || 'Pocket Claude');
+  els.topbarTitle.textContent = gemPrefix + (state.title || 'PocketClot');
   const pct = Math.round((tokens / 200000) * 100);
   if (state.messages.length) {
     els.topbarMeta.textContent = t('messages_context_format', state.messages.length, pct);
@@ -855,29 +896,246 @@ if (localStorage.getItem(LS.sidebar) === '1' &&
 }
 
 // =========================================================
-// Effort-Dropdown
+// Modell- und Denktiefe-Dropdown
+// Claude bleibt das primaere Modell und steht immer zuoberst. Die
+// Zusatz-Modelle kommen live vom Server (GET /chat/models), damit neu
+// eingeloggte Konten ohne App-Update auftauchen.
 // =========================================================
-function setEffort(value, persist = true) {
-  state.effort = value;
+// Hilfsfunktion: Ermittelt die Modell-Familie anhand des Keys
+function familyForKey(key) {
+  if (!key) return 'claude';
+  const found = state.chatModels.find(m => m.key === key);
+  if (found && found.family) return found.family;
+  if (!key.startsWith('gw:')) return 'claude';
+
+  const lower = key.toLowerCase();
+  if (lower.includes('gemini')) return 'gemini';
+  if (lower.includes('gpt') || lower.includes('o1') || lower.includes('o3') || lower.includes('o4')) return 'gpt';
+  return 'other';
+}
+
+// Liefert die Denktiefe fuer die aktuell ausgewaehlte Familie
+function currentEffort() {
+  const fam = familyForKey(state.chatModel);
+  return (state.effortByFamily && state.effortByFamily[fam]) || 'high';
+}
+
+// Laedt die Modell- und Gateway-Liste vom Server
+async function loadChatModels(force = false) {
+  try {
+    const url = '/chat/models' + (force ? '?refresh=1' : '');
+    const resp = await api('GET', url);
+    state.chatModels = Array.isArray(resp.models) ? resp.models : [];
+    state.gateways   = Array.isArray(resp.gateways) ? resp.gateways : [];
+  } catch (e) {
+    console.log('Modell-Liste nicht abrufbar, Fallback auf Claude:', e.message);
+    state.chatModels = [
+      {
+        key: '',
+        family: 'claude',
+        label: t('model_auto'),
+        efforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
+        default_effort: 'high'
+      }
+    ];
+    state.gateways = [];
+  }
+  renderModelMenu();
+  updateModelButton();
+}
+
+// Formatiert die Bezeichnung einer Denktiefe
+function formatEffortLabel(eff) {
+  if (!eff) return '';
+  if (eff === 'minimal') return t('effort_minimal');
+  if (eff === 'ultra')   return t('effort_ultra');
+  if (eff === 'xhigh')   return 'xHigh';
+  return eff.charAt(0).toUpperCase() + eff.slice(1);
+}
+
+// Baut das Modell- und Denktiefe-Dropdown dynamisch auf
+function renderModelMenu() {
+  const menu = els.effortMenu || document.getElementById('effort-menu');
+  if (!menu) return;
+
+  let html = '';
+
+  // 1. Kopfzeile mit Titel und Reload-Button
+  html += '<div class="dropdown-header flex-between">';
+  html += '  <span class="dropdown-title">' + t('model_menu_title') + '</span>';
+  html += '  <button type="button" id="model-refresh-btn" class="icon-btn-sm" title="' + t('model_refresh') + '">';
+  html += '    <svg class="icon icon-sm"><use href="#icon-loop"/></svg>';
+  html += '  </button>';
+  html += '</div>';
+
+  // 2. Modelle nach Familien geordnet
+  const families = [
+    { id: 'claude', label: t('model_family_claude') },
+    { id: 'gemini', label: t('model_family_gemini') },
+    { id: 'gpt',    label: t('model_family_gpt') },
+    { id: 'other',  label: t('model_family_other') }
+  ];
+
+  families.forEach(fam => {
+    const list = state.chatModels.filter(m => m.family === fam.id);
+    if (fam.id !== 'claude' && list.length === 0) return;
+
+    html += '<div class="dropdown-section-title">' + fam.label + '</div>';
+
+    // Bei Claude steht immer der Automatik-Eintrag an oberster Stelle
+    if (fam.id === 'claude') {
+      const isAutoActive = (state.chatModel === '');
+      html += '<button type="button" class="dropdown-item' + (isAutoActive ? ' active' : '') + '" data-model="">';
+      html += '  <span>' + t('model_auto') + '</span>';
+      html += '</button>';
+    }
+
+    list.forEach(m => {
+      if (fam.id === 'claude' && m.key === '') return;
+      const isActive = (state.chatModel === m.key);
+      html += '<button type="button" class="dropdown-item' + (isActive ? ' active' : '') + '" data-model="' + m.key + '">';
+      html += '  <span class="model-name">' + (m.label || m.key) + '</span>';
+      if (m.gateway_label) {
+        html += '  <small class="gateway-tag muted">' + m.gateway_label + '</small>';
+      }
+      html += '</button>';
+    });
+  });
+
+  // 3. Nicht erreichbare Gateways anzeigen
+  if (Array.isArray(state.gateways)) {
+    const unreachable = state.gateways.filter(g => g && g.reachable === false);
+    if (unreachable.length > 0) {
+      unreachable.forEach(gw => {
+        const errText = gw.last_error || t('model_gateway_unreachable');
+        html += '<div class="dropdown-notice muted">';
+        html += '  <span>' + (gw.label || gw.id) + ': ' + errText + '</span>';
+        html += '</div>';
+      });
+    }
+  }
+
+  // 4. Trennstrich
+  html += '<div class="dropdown-divider"></div>';
+
+  // 5. Denktiefe-Buttons fuer das aktuell gewaehlte Modell ermitteln
+  let availableEfforts = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
+  if (state.chatModel !== '') {
+    const selectedModel = state.chatModels.find(m => m.key === state.chatModel);
+    if (selectedModel && Array.isArray(selectedModel.efforts) && selectedModel.efforts.length > 0) {
+      availableEfforts = selectedModel.efforts;
+    }
+  }
+
+  const activeEffort = currentEffort();
+  availableEfforts.forEach(eff => {
+    const isActive = (activeEffort === eff);
+    html += '<button type="button" class="dropdown-item' + (isActive ? ' active' : '') + '" data-effort="' + eff + '">';
+    html += '  <span>' + formatEffortLabel(eff) + '</span>';
+    html += '</button>';
+  });
+
+  menu.innerHTML = html;
+}
+
+// Aktualisiert das gewaehlte Chat-Modell
+function setChatModel(key, persist = true) {
+  state.chatModel = key || '';
   if (persist) {
+    localStorage.setItem(LS.chatModel, state.chatModel);
+    queueSettingsPush();
+  }
+
+  // Pruefen, ob die bisherige Denktiefe vom neuen Modell unterstuetzt wird
+  const fam = familyForKey(state.chatModel);
+  const curEff = currentEffort();
+  if (state.chatModel !== '') {
+    const selected = state.chatModels.find(m => m.key === state.chatModel);
+    if (selected && Array.isArray(selected.efforts) && selected.efforts.length > 0) {
+      if (!selected.efforts.includes(curEff)) {
+        const nextEff = selected.default_effort || selected.efforts[0] || 'high';
+        state.effortByFamily[fam] = nextEff;
+        if (persist) {
+          localStorage.setItem(LS.effortByFamily, JSON.stringify(state.effortByFamily));
+        }
+      }
+    }
+  }
+
+  renderModelMenu();
+  updateModelButton();
+}
+
+// Aktualisiert die Denktiefe der aktiven Modell-Familie
+function setEffort(value, persist = true) {
+  const fam = familyForKey(state.chatModel);
+  if (!state.effortByFamily) {
+    state.effortByFamily = { claude: 'high', gemini: 'high', gpt: 'high' };
+  }
+  state.effortByFamily[fam] = value;
+  state.effort = value; // Abwaertskompatibilitaet
+
+  if (persist) {
+    localStorage.setItem(LS.effortByFamily, JSON.stringify(state.effortByFamily));
     localStorage.setItem(LS.effort, value);
     queueSettingsPush();
   }
-  els.effortLabel.textContent = value.charAt(0).toUpperCase() + value.slice(1);
-  els.effortMenu.querySelectorAll('button').forEach(b => {
-    b.classList.toggle('active', b.dataset.effort === value);
-  });
+
+  renderModelMenu();
+  updateModelButton();
 }
+
+// Aktualisiert die Anzeige im Pill-Button
+function updateModelButton() {
+  const modelSpan  = document.getElementById('model-label');
+  const effortSpan = document.getElementById('effort-label');
+
+  if (modelSpan) {
+    if (!state.chatModel) {
+      modelSpan.textContent = '';
+    } else {
+      const found = state.chatModels.find(m => m.key === state.chatModel);
+      modelSpan.textContent = found ? (found.label || found.key) : state.chatModel;
+    }
+  }
+
+  if (effortSpan) {
+    effortSpan.textContent = formatEffortLabel(currentEffort());
+  }
+}
+
+// Event-Listener fuer Button und Dropdown
 els.effortBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   els.effortMenu.classList.toggle('hidden');
-  els.moreMenu.classList.add('hidden');
+  if (els.moreMenu) els.moreMenu.classList.add('hidden');
 });
+
 els.effortMenu.addEventListener('click', (e) => {
-  const v = e.target.dataset.effort;
-  if (!v) return;
-  setEffort(v);
-  els.effortMenu.classList.add('hidden');
+  // Reload-Button im Header
+  const refreshBtn = e.target.closest('#model-refresh-btn');
+  if (refreshBtn) {
+    e.stopPropagation();
+    loadChatModels(true);
+    return;
+  }
+
+  // Klick auf ein Modell
+  const modelBtn = e.target.closest('button[data-model]');
+  if (modelBtn) {
+    const modelKey = modelBtn.dataset.model;
+    setChatModel(modelKey);
+    return;
+  }
+
+  // Klick auf eine Denktiefe
+  const effortBtn = e.target.closest('button[data-effort]');
+  if (effortBtn) {
+    const eff = effortBtn.dataset.effort;
+    setEffort(eff);
+    els.effortMenu.classList.add('hidden');
+    return;
+  }
 });
 
 // More-Menü
@@ -1765,7 +2023,11 @@ async function streamReply(content) {
     body: JSON.stringify({
       content,
       attachment_ids: state.messages[state.messages.length - 1]?.attachments?.map(a => a.id) || [],
-      effort: state.effort,
+      effort: currentEffort(),
+      // Leerer String heisst ausdruecklich "nimm Claude". `null` waere
+      // "keine Angabe" und wuerde das zuletzt benutzte Modell weiterlaufen
+      // lassen, deshalb hier bewusst kein `|| null`.
+      model: state.chatModel,
       system_prompt_mode: state.spMode,
       system_prompt: state.spMode === 'CUSTOM' ? state.spCustom : null,
       // TTS-Hints: Server startet nach Done-Event eine Pre-Generation,
@@ -1849,15 +2111,27 @@ function handleSseEvent(raw) {
       updateStreaming();
       scrollToBottom();
       break;
+    case 'image':
+      // Das Modell hat mitten in der Antwort Bilder erzeugt. Sie haengen beim
+      // `done` auch an der DB-Nachricht; hier sammeln wir sie, damit sie sofort
+      // an der fertigen Bubble stehen.
+      (payload.attachments || []).forEach(a => {
+        if (a && a.id && !state._streamAttachments.some(x => x.id === a.id)) {
+          state._streamAttachments.push(a);
+        }
+      });
+      break;
     case 'done':
       state._sseGotDone = true;
       state.messages.push({
         id: payload.assistant_message_id || payload.message_id,
         role: 'assistant',
         content: state.streamingText,
+        attachments: state._streamAttachments.slice(),
         tokens: (payload.tokens_in || 0) + (payload.tokens_out || 0),
         created_at: new Date().toISOString(),
       });
+      state._streamAttachments = [];
       state.streamingText = '';
       state.isStreaming = false;
       renderMessages();
@@ -1866,6 +2140,7 @@ function handleSseEvent(raw) {
       break;
     case 'error':
       state._sseGotError = true;
+      state._streamAttachments = [];
       toast(t('toast_server_error', payload.message || ''), { error: true });
       state.isStreaming = false;
       renderMessages();
@@ -3260,13 +3535,14 @@ window.PocketVoice = (() => {
 // Gems (Custom Agents) — wie ChatGPT-GPTs / Gemini-Gems
 // =========================================================
 
+// Muss zu SELECTABLE_MODELS in claude_engine.py passen. Aeltere IDs stehen hier
+// bewusst nicht mehr: der Server akzeptiert sie zwar weiter (LEGACY_MODELS), neu
+// auswaehlen soll man sie aber nicht.
 const CLAUDE_MODELS = [
-  { id: 'claude-opus-4-8',   label: 'Opus 4.8' },
-  { id: 'claude-opus-4-7',   label: 'Opus 4.7' },
-  { id: 'claude-opus-4-6',   label: 'Opus 4.6' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'claude-haiku-4-5',  label: 'Haiku 4.5' },
+  { id: 'claude-opus-5',     label: 'Opus 5' },
   { id: 'claude-fable-5',    label: 'Fable 5' },
+  { id: 'claude-sonnet-5',   label: 'Sonnet 5' },
+  { id: 'claude-haiku-4-5',  label: 'Haiku 4.5' },
 ];
 window.PC_CLAUDE_MODELS = CLAUDE_MODELS;
 const GEM_EFFORTS = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];

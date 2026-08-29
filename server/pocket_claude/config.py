@@ -63,6 +63,40 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # ---------- Zusatz-Modelle (Gemini / GPT ueber OpenAI-kompatible Gateways) ----------
+    #
+    # Claude bleibt das primaere Modell. Wer zusaetzlich Gemini oder GPT im Chat
+    # anbieten will, traegt hier die Gateways ein, die auf dem Server erreichbar
+    # sind (CLIProxyAPI fuer die Google-Konten, CodexLB fuer die ChatGPT-Konten).
+    # Beide sprechen /v1/models und /v1/chat/completions.
+    #
+    # Variante 1 (empfohlen, beliebig viele Gateways), JSON-Liste:
+    #   EXTRA_MODEL_GATEWAYS='[{"id":"pool","label":"Paradies-Pool",
+    #     "base_url":"http://127.0.0.1:8317/v1","api_key":"...","timeout":120}]'
+    #
+    # Variante 2 (Kurzform fuer den Normalfall): die vier Felder darunter.
+    # Zeigen beide URLs auf dasselbe Gateway, wird daraus automatisch eins.
+    #
+    # Alles leer = keine Zusatz-Modelle, die App zeigt nur Claude.
+    extra_model_gateways: str = ""
+    gemini_gateway_url: str = ""
+    gemini_gateway_key: str = ""
+    gpt_gateway_url: str = ""
+    gpt_gateway_key: str = ""
+
+    # Denktiefe, mit der Zusatz-Modelle laufen, wenn der Client keine mitschickt.
+    extra_model_default_effort: str = "high"
+
+    # Kuratierung der Zusatz-Modelle. Ein Gateway meldet alles, was irgendein
+    # eingeloggtes Konto kann, und das sind schnell ein Dutzend Varianten
+    # ("-agent", "-lite", vier Generationen parallel). Im Picker sollen aber nur
+    # die Modelle stehen, die man wirklich benutzen will.
+    #
+    # Komma-getrennte Glob-Muster auf die BASIS-ID (ohne Denktiefe-Suffix und
+    # ohne "gw:<gateway>:"-Praefix), z.B. "gemini-3.7-flash,gpt-5*".
+    # Leer = keine Filterung, alles wird angeboten.
+    model_allowlist: str = "gemini-3.7-flash,gpt-*,codex*"
+
     # Security: allow the per-chat "Bash" skill at all? Off by default — an
     # app user would otherwise be able to execute arbitrary commands on the
     # host as the `pocket-claude` system user. Operators who explicitly want

@@ -12,6 +12,12 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+/** Vorgabe-Farbschema. Muss zur ID von `PocketPalette.MIDNIGHT_ATELIER` passen. */
+const val DEFAULT_PALETTE_ID = "midnight_atelier"
+
+/** Claude-Alltagsmodell. Muss zu `DEFAULT_CLAUDE_MODEL` in claude_engine.py passen. */
+const val DEFAULT_CLAUDE_MODEL = "claude-opus-5"
+
 enum class ThemeMode {
     SYSTEM, LIGHT, DARK;
 
@@ -50,6 +56,11 @@ data class AppSettings(
     /** ID des aktuell aktiven Profils. Leer wenn keins gewählt. */
     val activeProfileId: String = "",
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** ID des Farbschemas (siehe `PocketPalette` in ui.theme). Bewusst als
+     *  String und nicht als Enum: die Datenschicht soll nichts aus der
+     *  UI-Schicht importieren muessen. Unbekannte Werte fallen in der UI
+     *  automatisch auf die Standardpalette zurueck. */
+    val paletteId: String = DEFAULT_PALETTE_ID,
     /** Default-Voice ist Edge KatjaNeural (gratis, kein Setup nötig). Passt
      *  zum Default-Provider `edge_tts`. Für User mit Cloud-TTS-/Gemini-API-
      *  Setup liefert der Server via /tts/status einen passenden Default
@@ -82,6 +93,20 @@ data class AppSettings(
      *  Gerät-lokal (Biometrie ist gerätspezifisch), Default: AN — wenn das
      *  Gerät Biometrie hat, ist das der bequemste Weg; PIN bleibt Fallback. */
     val chatLockBiometricEnabled: Boolean = true,
+    /** Global gewähltes Chat-Modell. Leer = Claude (Server-Automatik). Zusatz-
+     *  Modelle tragen den Präfix „gw:". */
+    val chatModelKey: String = "",
+    /** Denktiefe je Modell-Familie („claude", „gemini", „gpt"). Fehlt ein
+     *  Eintrag, gilt „high". Claude liest weiterhin aus `effort`, damit alte
+     *  Einstellungen erhalten bleiben. */
+    val effortByFamily: Map<String, String> = emptyMap(),
+    /** Standardmodell je Anbieter, z.B. {"claude": "claude-opus-5"}. Leer heisst:
+     *  nimm den eingebauten Standard der Familie. */
+    val defaultModelByFamily: Map<String, String> = emptyMap(),
+    /** Standard-Auflösung für erzeugte Bilder. 2K passt zu Handy-Displays. */
+    val imageDefaultSize: String = "2K",
+    /** Standard-Seitenverhältnis für erzeugte Bilder. */
+    val imageDefaultAspect: String = "1:1",
 ) {
     /** Aktuell aktives Profil (oder null wenn keins gewählt). */
     val activeProfile: Profile?
@@ -98,6 +123,67 @@ data class AppSettings(
     /** Den finalen String, der an den Server geschickt wird. */
     val resolvedSystemPrompt: String
         get() = effectiveSystemPrompt(systemPromptMode, customSystemPrompt)
+
+    /** Denktiefe für eine Modell-Familie. Claude nutzt weiter `effort`, alles
+     *  andere die Map. Nichts gesetzt heißt „high". */
+    fun effortFor(family: String): String =
+        if (family == ChatModelFamilies.CLAUDE) effort.ifBlank { DEFAULT_EFFORT }
+        else effortByFamily[family]?.takeIf { it.isNotBlank() } ?: DEFAULT_EFFORT
+
+    /**
+     * Standardmodell einer Familie. Fuer Claude gibt es einen eingebauten
+     * Rueckfall, damit ohne jede Einstellung das aktuelle Alltagsmodell laeuft
+     * statt irgendeines CLI-Defaults. Die Zusatz-Familien haben keinen festen
+     * Rueckfall: welche Modelle es dort gibt, sagt erst das Gateway.
+     */
+    fun defaultModelFor(family: String): String =
+        defaultModelByFamily[family]?.takeIf { it.isNotBlank() }
+            ?: if (family == ChatModelFamilies.CLAUDE) DEFAULT_CLAUDE_MODEL else ""
+
+    /** Modellschluessel fuer einen NEUEN Chat: explizite Wahl vor Claude-Standard. */
+    fun modelKeyForNewChat(): String =
+        chatModelKey.ifBlank { defaultModelFor(ChatModelFamilies.CLAUDE) }
+
+    /**
+     * Die Denktiefe, die fuer ein konkretes Modell wirklich gilt.
+     *
+     * Gemerkt wird die Denktiefe pro Familie („bei Gemini denke gruendlich"),
+     * koennen tut sie aber das einzelne Modell. Deshalb wird die Familien-Wahl
+     * hier auf die Stufen des Modells geklemmt, genau wie es der Server tut.
+     * Meldet ein Modell gar keine Stufen (`efforts` leer), gibt es nichts zu
+     * waehlen und das Ergebnis ist leer.
+     */
+    fun effortForModel(option: ChatModelOption?): String =
+        effortForModelKey(option?.key ?: "", option)
+
+    /**
+     * Wie [effortForModel], aber auch dann verwendbar, wenn zum Modell-Key
+     * gerade keine Beschreibung vorliegt: etwa weil die Liste noch laedt oder
+     * ein Gateway kurz weg ist.
+     *
+     * Claude ist der Sonderfall. Es laeuft nicht ueber die Gateways, seine
+     * Stufen stehen fest (inklusive „aus") und duerfen nicht davon abhaengen,
+     * ob der Server gerade eine Stufenliste mitgeschickt hat.
+     */
+    fun effortForModelKey(modelKey: String, option: ChatModelOption?): String {
+        val family = option?.family ?: familyForKey(modelKey)
+        val available = availableEffortsFor(family, option)
+        if (available.isEmpty()) return ""
+        return clampEffort(effortFor(family), available)
+    }
+
+    /**
+     * Die Stufen, die fuer ein Modell zur Wahl stehen.
+     *
+     * Fuer Claude sind das immer [EFFORT_LEVELS]. Fuer die Zusatz-Modelle sagt
+     * das Modell selbst, was es kann; ist es unbekannt, wird die gemeinsame
+     * Skala OHNE „aus" angenommen, denn Abschalten kennen die Gateways nicht.
+     */
+    fun availableEffortsFor(family: String, option: ChatModelOption?): List<String> = when {
+        family == ChatModelFamilies.CLAUDE -> EFFORT_LEVELS
+        option != null -> option.efforts
+        else -> EFFORT_LEVELS.filter { it != "off" }
+    }
 }
 
 class SettingsRepository(private val dataStore: DataStore<Preferences>) {
@@ -116,6 +202,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
      *  Wenn ein Chat KEINEN Eintrag hat → globaler ttsAutoSpeak greift. */
     private val keyTtsAutoSpeakPerChat = stringPreferencesKey("tts_auto_speak_per_chat")
     private val keyThemeMode = stringPreferencesKey("theme_mode")
+    private val keyPaletteId = stringPreferencesKey("palette_id")
     private val keyTtsVoice = stringPreferencesKey("tts_voice")
     private val keyTtsAutoSpeak = stringPreferencesKey("tts_auto_speak")
     private val keyTtsSpeed = floatPreferencesKey("tts_speed")
@@ -127,6 +214,20 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     private val keyAutoSendSilenceMs = stringPreferencesKey("auto_send_silence_ms")
     private val keyChatLockBiometric = stringPreferencesKey("chat_lock_biometric")
     private val keyImageHistoryJson = stringPreferencesKey("image_history_json")
+    private val keyChatModelKey = stringPreferencesKey("chat_model_key")
+    private val keyEffortByFamily = stringPreferencesKey("effort_by_family_json")
+    private val keyDefaultModelByFamily = stringPreferencesKey("default_model_by_family_json")
+    private val keyImageDefaultSize = stringPreferencesKey("image_default_size")
+    private val keyImageDefaultAspect = stringPreferencesKey("image_default_aspect")
+
+    /** Liest eine JSON-Map aus den Preferences. Kaputtes JSON gilt als leer,
+     *  damit ein beschaedigter Eintrag nicht die ganzen Settings blockiert. */
+    private fun parseStringMap(raw: String?): Map<String, String> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            json.decodeFromString<Map<String, String>>(raw)
+        }.getOrDefault(emptyMap())
+    }
 
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { prefs ->
         // Profile aus JSON laden; bei leerer Liste aber vorhandenem Legacy-Token
@@ -140,6 +241,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             profiles = profiles,
             activeProfileId = activeId,
             themeMode = ThemeMode.fromString(prefs[keyThemeMode]),
+            paletteId = prefs[keyPaletteId]?.takeIf { it.isNotBlank() } ?: DEFAULT_PALETTE_ID,
             ttsVoice = prefs[keyTtsVoice].orEmpty().ifBlank { "edge-de-DE-KatjaNeural" },
             ttsAutoSpeak = (prefs[keyTtsAutoSpeak] ?: "false").toBooleanStrictOrNull() ?: false,
             ttsSpeed = (prefs[keyTtsSpeed] ?: 1.0f).coerceIn(0.25f, 2.0f),
@@ -154,7 +256,50 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
                 .coerceIn(500L, 10_000L),
             chatLockBiometricEnabled =
                 (prefs[keyChatLockBiometric] ?: "true").toBooleanStrictOrNull() ?: true,
+            chatModelKey = prefs[keyChatModelKey].orEmpty(),
+            effortByFamily = parseStringMap(prefs[keyEffortByFamily]),
+            defaultModelByFamily = parseStringMap(prefs[keyDefaultModelByFamily]),
+            imageDefaultSize = prefs[keyImageDefaultSize]?.takeIf { it.isNotBlank() } ?: "2K",
+            imageDefaultAspect = prefs[keyImageDefaultAspect]?.takeIf { it.isNotBlank() } ?: "1:1",
         )
+    }
+
+    /** Setzt das global gewählte Modell. Leer = zurück auf Claude. */
+    suspend fun setChatModelKey(value: String) {
+        dataStore.edit { prefs ->
+            if (value.isBlank()) prefs.remove(keyChatModelKey)
+            else prefs[keyChatModelKey] = value
+        }
+    }
+
+    /** Merkt sich das Standardmodell einer Familie. Leerer Wert loescht den
+     *  Eintrag und stellt damit den eingebauten Standard wieder her. */
+    suspend fun setDefaultModelForFamily(family: String, value: String) {
+        dataStore.edit { prefs ->
+            val map = parseStringMap(prefs[keyDefaultModelByFamily]).toMutableMap()
+            if (value.isBlank()) map.remove(family) else map[family] = value
+            if (map.isEmpty()) prefs.remove(keyDefaultModelByFamily)
+            else prefs[keyDefaultModelByFamily] = json.encodeToString(map)
+        }
+    }
+
+    /** Merkt sich die Denktiefe pro Familie. Für Claude wird zusätzlich das alte
+     *  `effort`-Feld gepflegt, damit bestehender Code weiter funktioniert. */
+    suspend fun setEffortForFamily(family: String, value: String) {
+        dataStore.edit { prefs ->
+            if (family == ChatModelFamilies.CLAUDE) prefs[keyEffort] = value
+            val map = parseStringMap(prefs[keyEffortByFamily]).toMutableMap()
+            map[family] = value
+            prefs[keyEffortByFamily] = json.encodeToString(map)
+        }
+    }
+
+    suspend fun setImageDefaultSize(value: String) {
+        dataStore.edit { it[keyImageDefaultSize] = value }
+    }
+
+    suspend fun setImageDefaultAspect(value: String) {
+        dataStore.edit { it[keyImageDefaultAspect] = value }
     }
 
     suspend fun setChatLockBiometricEnabled(value: Boolean) {
@@ -287,6 +432,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[keyThemeMode] = mode.name }
     }
 
+    suspend fun setPaletteId(value: String) {
+        dataStore.edit { it[keyPaletteId] = value }
+    }
+
     suspend fun setTtsVoice(value: String) {
         dataStore.edit { it[keyTtsVoice] = value }
     }
@@ -363,6 +512,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val prefs = dataStore.data.first()
         return AppSettingsExportDto(
             themeMode = prefs[keyThemeMode] ?: "SYSTEM",
+            paletteId = prefs[keyPaletteId]?.takeIf { it.isNotBlank() } ?: DEFAULT_PALETTE_ID,
             ttsVoice = prefs[keyTtsVoice].orEmpty().ifBlank { "edge-de-DE-KatjaNeural" },
             ttsAutoSpeak = (prefs[keyTtsAutoSpeak] ?: "false").toBooleanStrictOrNull() ?: false,
             ttsSpeed = (prefs[keyTtsSpeed] ?: 1.0f).coerceIn(0.25f, 2.0f),
@@ -372,6 +522,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             ttsAutoSpeakPerChat = parseAutoSpeakMap(prefs[keyTtsAutoSpeakPerChat]),
             collapseLongUserMessages =
                 (prefs[keyCollapseLongUserMessages] ?: "true").toBooleanStrictOrNull() ?: true,
+            chatModelKey = prefs[keyChatModelKey].orEmpty(),
+            effortByFamily = parseStringMap(prefs[keyEffortByFamily]),
+            defaultModelByFamily = parseStringMap(prefs[keyDefaultModelByFamily]),
+            imageDefaultSize = prefs[keyImageDefaultSize]?.takeIf { it.isNotBlank() } ?: "2K",
+            imageDefaultAspect = prefs[keyImageDefaultAspect]?.takeIf { it.isNotBlank() } ?: "1:1",
         )
     }
 
@@ -380,6 +535,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun applyImport(s: AppSettingsExportDto) {
         dataStore.edit { prefs ->
             prefs[keyThemeMode] = s.themeMode
+            prefs[keyPaletteId] = s.paletteId
             prefs[keyTtsVoice] = s.ttsVoice
             prefs[keyTtsAutoSpeak] = s.ttsAutoSpeak.toString()
             prefs[keyTtsSpeed] = s.ttsSpeed.coerceIn(0.25f, 2.0f)
@@ -387,6 +543,13 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             prefs[keySystemPromptMode] = s.systemPromptMode
             prefs[keyCustomSystemPrompt] = s.customSystemPrompt
             prefs[keyCollapseLongUserMessages] = s.collapseLongUserMessages.toString()
+            prefs[keyChatModelKey] = s.chatModelKey
+            prefs[keyImageDefaultSize] = s.imageDefaultSize
+            prefs[keyImageDefaultAspect] = s.imageDefaultAspect
+            if (s.effortByFamily.isEmpty()) prefs.remove(keyEffortByFamily)
+            else prefs[keyEffortByFamily] = json.encodeToString(s.effortByFamily)
+            if (s.defaultModelByFamily.isEmpty()) prefs.remove(keyDefaultModelByFamily)
+            else prefs[keyDefaultModelByFamily] = json.encodeToString(s.defaultModelByFamily)
             if (s.ttsAutoSpeakPerChat.isEmpty()) {
                 prefs.remove(keyTtsAutoSpeakPerChat)
             } else {

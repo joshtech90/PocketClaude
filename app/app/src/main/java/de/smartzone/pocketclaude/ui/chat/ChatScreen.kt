@@ -5,10 +5,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,9 +18,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.union
@@ -29,14 +29,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -89,6 +89,7 @@ import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -102,29 +103,43 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.Image
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.smartzone.pocketclaude.data.ConversationDto
 import de.smartzone.pocketclaude.ui.components.AssistantBubble
 import de.smartzone.pocketclaude.ui.components.CompactionNotice
+import de.smartzone.pocketclaude.ui.components.PocketBackdrop
+import de.smartzone.pocketclaude.ui.components.PocketBrandMark
+import de.smartzone.pocketclaude.ui.components.PocketIconButton
 import de.smartzone.pocketclaude.ui.components.TtsState
 import de.smartzone.pocketclaude.ui.components.UserBubble
-import de.smartzone.pocketclaude.util.formatTime
+import de.smartzone.pocketclaude.ui.theme.PocketTheme
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import de.smartzone.pocketclaude.data.ChatModelFamilies
+import de.smartzone.pocketclaude.data.ChatModelOption
+import de.smartzone.pocketclaude.data.ClaudeModels
+import de.smartzone.pocketclaude.data.EFFORT_LEVELS
+import de.smartzone.pocketclaude.data.EFFORT_LEVELS_ALL
+import de.smartzone.pocketclaude.data.GatewayStatusDto
+import de.smartzone.pocketclaude.data.familyForKey
+import de.smartzone.pocketclaude.data.shortModelLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -140,6 +155,7 @@ fun ChatScreen(
     val state by vm.state.collectAsState()
     val audioState by vm.audioState.collectAsState()
     val context = LocalContext.current
+    val showTopBarDetails = LocalDensity.current.fontScale <= 1.3f
     val container = remember {
         (context.applicationContext as de.smartzone.pocketclaude.PocketClaudeApp).container
     }
@@ -152,7 +168,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var effortMenuOpen by remember { mutableStateOf(false) }
+    var modelSheetOpen by remember { mutableStateOf(false) }
     var moreMenuOpen by remember { mutableStateOf(false) }
     var renameOpen by remember { mutableStateOf(false) }
     var renameInput by remember { mutableStateOf("") }
@@ -392,13 +408,21 @@ fun ChatScreen(
             )
         },
     ) {
-    Box(Modifier.fillMaxSize()) {
+    PocketBackdrop(Modifier.fillMaxSize()) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         // Wir kümmern uns ums Bottom-Inset selbst (im InputBar via union(ime, navBar)),
         // damit Tastatur und Navigation-Bar sich nicht aufsummieren.
         contentWindowInsets = WindowInsets(0),
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbar,
+                modifier = Modifier
+                    .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                    .padding(bottom = 76.dp),
+            )
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -420,19 +444,53 @@ fun ChatScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            val pct = (state.totalTokens.toFloat() / 200_000f * 100f).toInt().coerceIn(0, 999)
-                            val warn = pct >= 85
-                            val cachedLast = state.lastTurnCachedRead
-                            val cacheInfo = if (cachedLast > 0)
-                                stringResource(de.smartzone.pocketclaude.R.string.chat_cache_suffix, cachedLast / 1000)
-                            else ""
-                            Text(
-                                stringResource(de.smartzone.pocketclaude.R.string.chat_context_status, pct, formatTokens(context, state.totalTokens), cacheInfo),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (warn) MaterialTheme.colorScheme.error
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
+                            if (showTopBarDetails) {
+                                val pct = (state.totalTokens.toFloat() / 200_000f * 100f)
+                                    .toInt().coerceIn(0, 999)
+                                val warn = pct >= 85
+                                val cachedLast = state.lastTurnCachedRead
+                                val cacheInfo = if (cachedLast > 0) {
+                                    stringResource(
+                                        de.smartzone.pocketclaude.R.string.chat_cache_suffix,
+                                        cachedLast / 1000,
+                                    )
+                                } else {
+                                    ""
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (state.modelKey.startsWith("gw:")) {
+                                        val label = state.models
+                                            .firstOrNull { it.key == state.modelKey }
+                                            ?.label
+                                        Text(
+                                            shortModelLabel(
+                                                label ?: state.modelKey.substringAfterLast(':'),
+                                            ),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                        )
+                                        Text(
+                                            " · ",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline,
+                                        )
+                                    }
+                                    Text(
+                                        stringResource(
+                                            de.smartzone.pocketclaude.R.string.chat_context_status,
+                                            pct,
+                                            formatTokens(context, state.totalTokens),
+                                            cacheInfo,
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (warn) MaterialTheme.colorScheme.error
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     }
                 },
@@ -442,9 +500,12 @@ fun ChatScreen(
                             Icon(Icons.Filled.Close, contentDescription = stringResource(de.smartzone.pocketclaude.R.string.action_close))
                         }
                     } else {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Filled.Menu, contentDescription = stringResource(de.smartzone.pocketclaude.R.string.title_conversations))
-                        }
+                        PocketIconButton(
+                            icon = Icons.Filled.Menu,
+                            contentDescription = stringResource(de.smartzone.pocketclaude.R.string.title_conversations),
+                            onClick = { scope.launch { drawerState.open() } },
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
                     }
                 },
                 actions = {
@@ -453,45 +514,30 @@ fun ChatScreen(
                     IconButton(onClick = { vm.previousMatch() }, enabled = hasMatches) {
                         Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null)
                     }
-                    IconButton(onClick = { vm.nextMatch() }, enabled = hasMatches) {
+                    IconButton(
+                        onClick = { vm.nextMatch() },
+                        enabled = hasMatches,
+                        modifier = Modifier.padding(end = 8.dp),
+                    ) {
                         Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
                     }
                   } else {
-                    // Quick-toggle for the effort level
-                    Box {
-                        IconButton(onClick = { effortMenuOpen = true }) {
-                            Icon(
-                                Icons.Filled.Psychology,
-                                contentDescription = stringResource(de.smartzone.pocketclaude.R.string.effort_label),
-                                tint = effortTint(appSettings.effort),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = effortMenuOpen,
-                            onDismissRequest = { effortMenuOpen = false },
-                        ) {
-                            effortOptions().forEach { (value, label) ->
-                                val selected = appSettings.effort == value
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    leadingIcon = if (selected) {
-                                        { Icon(Icons.Filled.Check, contentDescription = null) }
-                                    } else null,
-                                    onClick = {
-                                        effortMenuOpen = false
-                                        scope.launch {
-                                            container.settingsRepository.setEffort(value)
-                                        }
-                                    },
-                                )
-                            }
-                        }
-                    }
+                    // Modell und Denktiefe. Das Sheet zeigt Claude zuerst,
+                    // darunter die Zusatz-Modelle der erreichbaren Gateways.
+                    PocketIconButton(
+                        icon = Icons.Filled.Psychology,
+                        contentDescription = stringResource(de.smartzone.pocketclaude.R.string.model_sheet_title),
+                        onClick = { modelSheetOpen = true },
+                        contentColor = effortTint(appSettings.effortFor(familyForKey(state.modelKey))),
+                    )
+                    Spacer(Modifier.width(8.dp))
                     // Three-dot overflow — rename / pin / share / delete
-                    Box {
-                        IconButton(onClick = { moreMenuOpen = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(de.smartzone.pocketclaude.R.string.action_more))
-                        }
+                    Box(modifier = Modifier.padding(end = 8.dp)) {
+                        PocketIconButton(
+                            icon = Icons.Filled.MoreVert,
+                            contentDescription = stringResource(de.smartzone.pocketclaude.R.string.action_more),
+                            onClick = { moreMenuOpen = true },
+                        )
                         DropdownMenu(
                             expanded = moreMenuOpen,
                             onDismissRequest = { moreMenuOpen = false },
@@ -659,14 +705,15 @@ fun ChatScreen(
                   } // else (not searchActive)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
                 ),
             )
         },
     ) { pad ->
         Column(modifier = Modifier.fillMaxSize().padding(pad)) {
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f))
 
             // Message list
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -684,7 +731,7 @@ fun ChatScreen(
                   androidx.compose.foundation.text.selection.SelectionContainer {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(vertical = 8.dp),
+                        contentPadding = PaddingValues(top = 12.dp, bottom = 8.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         if (state.hasMidSummary || state.hasLongSummary) {
@@ -737,6 +784,9 @@ fun ChatScreen(
                             } else if (isStreamingSlot || msg?.role == "assistant") {
                                 val bubbleText = msg?.content ?: state.streamingText
                                 val bubbleThinking = if (isStreamingSlot) state.streamingThinking else ""
+                                val bubbleAttachments =
+                                    if (isStreamingSlot) state.streamingAttachments
+                                    else msg?.attachments.orEmpty()
                                 val ttsState = if (msg != null) when {
                                     audioState.loadingMessageId == msg.id -> TtsState.Loading
                                     audioState.playingMessageId == msg.id -> TtsState.Playing
@@ -748,6 +798,7 @@ fun ChatScreen(
                                 } else null
                                 AssistantBubble(
                                     text = bubbleText,
+                                    attachments = bubbleAttachments,
                                     isStreaming = isStreamingSlot,
                                     thinkingText = bubbleThinking,
                                     ttsState = ttsState,
@@ -901,10 +952,26 @@ fun ChatScreen(
             modifier = Modifier.fillMaxSize(),
         )
     }
-    } // Box (Gate-Overlay)
+    } // Backdrop (Gate-Overlay)
     } // ModalNavigationDrawer
 
     // Rename dialog
+    if (modelSheetOpen) {
+        ModelSheet(
+            models = state.models,
+            gateways = state.gateways,
+            selectedKey = state.modelKey,
+            effortForModel = { key, option -> appSettings.effortForModelKey(key, option) },
+            availableEfforts = { family, option -> appSettings.availableEffortsFor(family, option) },
+            loading = state.modelsLoading,
+            errorText = state.modelsError,
+            onSelectModel = { model -> vm.selectModel(model) },
+            onSelectEffort = { family, effort -> vm.setEffort(family, effort) },
+            onRefresh = { vm.refreshModels() },
+            onDismiss = { modelSheetOpen = false },
+        )
+    }
+
     if (renameOpen) {
         AlertDialog(
             onDismissRequest = { renameOpen = false },
@@ -1189,12 +1256,13 @@ private fun ChatDrawerContent(
         (context.applicationContext as de.smartzone.pocketclaude.PocketClaudeApp).container
     }
     var imageGenAvailable by remember { mutableStateOf(false) }
+    val allConversationsLabel = stringResource(de.smartzone.pocketclaude.R.string.all_conversations)
     LaunchedEffect(Unit) {
         runCatching { container.chatRepository.imagesConfig() }
             .onSuccess { cfg -> imageGenAvailable = cfg.configured }
     }
     ModalDrawerSheet(
-        drawerContainerColor = MaterialTheme.colorScheme.background,
+        drawerContainerColor = PocketTheme.colors.surfaceLow,
         drawerContentColor = MaterialTheme.colorScheme.onBackground,
     ) {
         // Kopf: Logo + Titel + "Alle Chats"-Aufruf
@@ -1205,15 +1273,15 @@ private fun ChatDrawerContent(
                 .clip(RoundedCornerShape(14.dp)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Image(
-                painter = painterResource(
-                    id = de.smartzone.pocketclaude.R.drawable.pocket_claude_icon
-                ),
-                contentDescription = stringResource(de.smartzone.pocketclaude.R.string.app_name),
+            Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clickable { onAllChats() },
-            )
+                    .size(48.dp)
+                    .semantics { contentDescription = allConversationsLabel }
+                    .clickable(role = Role.Button, onClick = onAllChats),
+                contentAlignment = Alignment.Center,
+            ) {
+                PocketBrandMark(size = 42.dp)
+            }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -1222,7 +1290,7 @@ private fun ChatDrawerContent(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    stringResource(de.smartzone.pocketclaude.R.string.all_conversations),
+                    allConversationsLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1407,13 +1475,29 @@ private fun InputBar(
     onMicCancel: () -> Unit,
 ) {
     var attachMenu by remember { mutableStateOf(false) }
-    Row(
+    val inputInteractionSource = remember { MutableInteractionSource() }
+    val inputFocused by inputInteractionSource.collectIsFocusedAsState()
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
-            // Max von IME und Navigation-Bar — kein Aufsummieren mehr.
+            // Max von IME und Navigation-Bar, damit beide Insets nicht addiert werden.
             .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+    ) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(30.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (inputFocused) MaterialTheme.colorScheme.primary
+            else PocketTheme.colors.outlineSoft,
+        ),
+        shadowElevation = 10.dp,
+    ) {
+    Row(
+        modifier = Modifier.padding(5.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
         Box {
@@ -1460,14 +1544,15 @@ private fun InputBar(
                 value = value,
                 onValueChange = onChange,
                 modifier = Modifier.fillMaxWidth(),
+                interactionSource = inputInteractionSource,
                 placeholder = { Text(stringResource(de.smartzone.pocketclaude.R.string.hint_message)) },
                 maxLines = 6,
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
                 ),
             )
         }
@@ -1480,6 +1565,8 @@ private fun InputBar(
             onSend = onSend,
             onStop = onStop,
         )
+    }
+    }
     }
 }
 
@@ -1542,16 +1629,6 @@ private fun formatTokens(context: android.content.Context, n: Int): String = whe
     n >= 1000 -> context.getString(de.smartzone.pocketclaude.R.string.tokens_label_thousands_dot, n / 1000f)
     else -> context.getString(de.smartzone.pocketclaude.R.string.tokens_label_raw, n)
 }
-
-@Composable
-private fun effortOptions(): List<Pair<String, String>> = listOf(
-    "off" to stringResource(de.smartzone.pocketclaude.R.string.effort_off_label),
-    "low" to stringResource(de.smartzone.pocketclaude.R.string.effort_low_label),
-    "medium" to stringResource(de.smartzone.pocketclaude.R.string.effort_medium_label),
-    "high" to stringResource(de.smartzone.pocketclaude.R.string.effort_high_label),
-    "xhigh" to stringResource(de.smartzone.pocketclaude.R.string.effort_xhigh_label),
-    "max" to stringResource(de.smartzone.pocketclaude.R.string.effort_max_label),
-)
 
 @Composable
 private fun effortTint(effort: String): Color = when (effort) {
@@ -1650,3 +1727,291 @@ private suspend fun scrollToVeryBottom(listState: androidx.compose.foundation.la
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ModelSheet(
+    models: List<ChatModelOption>,
+    gateways: List<GatewayStatusDto>,
+    selectedKey: String,
+    effortForModel: (String, ChatModelOption?) -> String,
+    availableEfforts: (String, ChatModelOption?) -> List<String>,
+    loading: Boolean,
+    errorText: String?,
+    onSelectModel: (ChatModelOption) -> Unit,
+    onSelectEffort: (family: String, effort: String) -> Unit,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val selectedOption = models.firstOrNull { it.key == selectedKey }
+    val selectedFamily = selectedOption?.family ?: familyForKey(selectedKey)
+    // Die angezeigte Stufe ist die, die wirklich gilt: die Familien-Vorgabe,
+    // geklemmt auf das, was dieses Modell kann.
+    val currentEffort = effortForModel(selectedKey, selectedOption)
+    val currentEffortText = effortLabel(currentEffort)
+
+    val currentModelLabel = when {
+        selectedKey.isBlank() -> stringResource(de.smartzone.pocketclaude.R.string.model_auto)
+        selectedOption != null -> selectedOption.label
+        else -> ClaudeModels.labelFor(selectedKey) ?: selectedKey
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding(),
+        ) {
+            // 1. Kopfzeile
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(de.smartzone.pocketclaude.R.string.model_sheet_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = "$currentModelLabel · $currentEffortText",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (loading) {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onRefresh) {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = stringResource(
+                                de.smartzone.pocketclaude.R.string.model_refresh,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            // 2. Fehlermeldung
+            if (errorText != null) {
+                Text(
+                    text = errorText,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+
+            // 3., 4. und 5. Abschnitte nach ChatModelFamilies.order
+            ChatModelFamilies.order.forEach { family ->
+                val familyModels = models.filter { it.family == family }
+                val isClaude = family == ChatModelFamilies.CLAUDE
+                if (isClaude || familyModels.isNotEmpty()) {
+                    val familyTitle = when (family) {
+                        ChatModelFamilies.CLAUDE -> stringResource(de.smartzone.pocketclaude.R.string.model_family_claude)
+                        ChatModelFamilies.GEMINI -> stringResource(de.smartzone.pocketclaude.R.string.model_family_gemini)
+                        ChatModelFamilies.GPT -> stringResource(de.smartzone.pocketclaude.R.string.model_family_gpt)
+                        else -> stringResource(de.smartzone.pocketclaude.R.string.model_family_other)
+                    }
+
+                    // Abschnitts-Ueberschrift
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = familyTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        if (isClaude) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(de.smartzone.pocketclaude.R.string.model_family_claude_hint),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    // 4. Automatisch-Zeile bei Claude
+                    if (isClaude) {
+                        val autoLabel = stringResource(de.smartzone.pocketclaude.R.string.model_auto)
+                        val isAutoSelected = selectedKey.isEmpty()
+                        val autoOption = ChatModelOption(
+                            key = "",
+                            family = ChatModelFamilies.CLAUDE,
+                            label = autoLabel,
+                            efforts = EFFORT_LEVELS,
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable { onSelectModel(autoOption) }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (isAutoSelected) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            } else {
+                                Spacer(Modifier.size(20.dp))
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = autoLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isAutoSelected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
+                    }
+
+                    // 5. Modell-Zeilen
+                    familyModels.forEach { model ->
+                        val isSelected = selectedKey == model.key
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable { onSelectModel(model) }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            } else {
+                                Spacer(Modifier.size(20.dp))
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = model.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                )
+                                if (model.gatewayLabel.isNotBlank()) {
+                                    Text(
+                                        text = model.gatewayLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Nicht erreichbare Gateways
+            val unreachableGateways = gateways.filter { !it.reachable }
+            if (unreachableGateways.isNotEmpty()) {
+                val firstError = unreachableGateways.firstNotNullOfOrNull { it.lastError?.takeIf { err -> err.isNotBlank() } }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = stringResource(de.smartzone.pocketclaude.R.string.model_gateway_unreachable),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    if (!firstError.isNullOrBlank()) {
+                        Text(
+                            text = firstError,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            // 7. HorizontalDivider und Denktiefe
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(
+                text = stringResource(de.smartzone.pocketclaude.R.string.effort_label),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+
+            // Nur die Stufen anbieten, die das gewaehlte Modell wirklich kann.
+            // „Automatisch" bei Claude hat kein konkretes Modell, dort gelten die
+            // Claude-Stufen. Ein Modell ohne gemeldete Stufen bekommt gar keine
+            // Auswahl, statt eine vorzutaeuschen, die der Server verwirft.
+            // Eine einzige Quelle fuer „welche Stufen gibt es hier": dieselbe
+            // Funktion, die auch der Sendepfad benutzt. Fuer Zusatz-Modelle ist
+            // „aus" nie dabei, das kennen die Gateways nicht.
+            val modelEfforts = availableEfforts(selectedFamily, selectedOption)
+            val displayEfforts = EFFORT_LEVELS_ALL.filter { it in modelEfforts }
+
+            if (displayEfforts.isEmpty()) {
+                Text(
+                    text = stringResource(de.smartzone.pocketclaude.R.string.effort_not_supported),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                displayEfforts.forEach { effort ->
+                    val isEffortSelected = effort == currentEffort
+                    FilterChip(
+                        selected = isEffortSelected,
+                        onClick = { onSelectEffort(selectedFamily, effort) },
+                        label = { Text(effortLabel(effort)) },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun effortLabel(effort: String): String = when (effort) {
+    "off" -> stringResource(de.smartzone.pocketclaude.R.string.effort_off_label)
+    "minimal" -> stringResource(de.smartzone.pocketclaude.R.string.effort_minimal_label)
+    "low" -> stringResource(de.smartzone.pocketclaude.R.string.effort_low_label)
+    "medium" -> stringResource(de.smartzone.pocketclaude.R.string.effort_medium_label)
+    "high" -> stringResource(de.smartzone.pocketclaude.R.string.effort_high_label)
+    "xhigh" -> stringResource(de.smartzone.pocketclaude.R.string.effort_xhigh_label)
+    "max" -> stringResource(de.smartzone.pocketclaude.R.string.effort_max_label)
+    "ultra" -> stringResource(de.smartzone.pocketclaude.R.string.effort_ultra_label)
+    else -> effort
+}

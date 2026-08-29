@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Pocket Claude — Tailscale Funnel Setup (default path)
+#  PocketClot — Tailscale Funnel Setup (default path)
 # =============================================================================
 #
-#  Makes Pocket Claude publicly reachable via a persistent URL of the form
+#  Makes PocketClot publicly reachable via a persistent URL of the form
 #      https://<hostname>.<tailnet>.ts.net
 #  e.g. https://my-host.my-tailnet.ts.net
 #
@@ -119,11 +119,11 @@ step "Verification"
 # 1. Status output from Tailscale
 tailscale funnel status 2>&1 | sed 's/^/    /'
 
-# 2. Quick test: is the Pocket Claude server running locally?
+# 2. Quick test: is the PocketClot server running locally?
 if curl -fsS --max-time 5 "http://localhost:$LOCAL_PORT/health" >/dev/null 2>&1; then
-    c_green "    ✓ Pocket Claude responds on localhost:$LOCAL_PORT/health"
+    c_green "    ✓ PocketClot responds on localhost:$LOCAL_PORT/health"
 else
-    c_yellow "    ! Pocket Claude does NOT respond on localhost:$LOCAL_PORT — Funnel is still active."
+    c_yellow "    ! PocketClot does NOT respond on localhost:$LOCAL_PORT — Funnel is still active."
     c_yellow "      Check:  systemctl status pocket-claude"
 fi
 
@@ -132,10 +132,10 @@ echo "============================================================"
 c_green "Tailscale Funnel is running."
 echo "============================================================"
 echo
-echo "Pocket Claude is now PERMANENTLY reachable at:"
+echo "PocketClot is now PERMANENTLY reachable at:"
 c_green "  https://$TS_FQDN"
 echo
-echo "This URL survives any reboot — enter it in the Pocket Claude app."
+echo "This URL survives any reboot — enter it in the PocketClot app."
 echo
 echo "Status:       tailscale funnel status"
 echo "Disable:      tailscale funnel reset"

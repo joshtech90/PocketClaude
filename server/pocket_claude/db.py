@@ -196,6 +196,10 @@ async def _ensure_columns(db: aiosqlite.Connection) -> None:
     # Gem-Bindung: wenn gesetzt, ist der Chat „mit einem Gem" gestartet.
     if "gem_id" not in conv_cols:
         await db.execute("ALTER TABLE conversations ADD COLUMN gem_id TEXT")
+    # Zusatz-Modelle: welches Modell wurde in diesem Chat zuletzt benutzt.
+    # NULL bzw. leer = Claude (Standard).
+    if "chat_model" not in conv_cols:
+        await db.execute("ALTER TABLE conversations ADD COLUMN chat_model TEXT")
     cur = await db.execute("PRAGMA table_info(attachments)")
     att_cols = {row[1] for row in await cur.fetchall()}
     if "user_id" not in att_cols:
@@ -331,7 +335,7 @@ async def _bootstrap_admin_user(db: aiosqlite.Connection) -> tuple[str, str] | N
         try:
             init_file = settings.data_dir / "INITIAL_PASSWORD.txt"
             init_file.write_text(
-                f"Pocket Claude — Initial admin password\n"
+                f"PocketClot — Initial admin password\n"
                 f"=======================================\n\n"
                 f"Username: Admin\n"
                 f"Password: {init_pw}\n\n"
@@ -425,7 +429,7 @@ async def list_conversations(user_id: str | None = None) -> list[dict]:
             f"""
             SELECT
                 c.id, c.title, c.created_at, c.last_message_at, c.total_tokens,
-                c.claude_session_id, c.pinned, c.locked, c.user_id, c.gem_id,
+                c.claude_session_id, c.pinned, c.locked, c.user_id, c.gem_id, c.chat_model,
                 (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS msg_count
             FROM conversations c
             {where}
@@ -453,6 +457,24 @@ async def set_locked(cid: str, locked: bool, user_id: str | None = None) -> None
     """Setzt/löscht die Pro-Chat-Sperre. Wenn user_id gegeben, nur wenn Owner."""
     sql = "UPDATE conversations SET locked = ? WHERE id = ?"
     params: tuple = (1 if locked else 0, cid)
+    if user_id is not None:
+        sql += " AND user_id = ?"
+        params = params + (user_id,)
+    async with get_db() as db:
+        await db.execute(sql, params)
+        await db.commit()
+
+
+async def set_chat_model(cid: str, model_key: str | None,
+                         user_id: str | None = None) -> None:
+    """Merkt sich das zuletzt in diesem Chat benutzte Modell.
+
+    Leerer String wird als NULL gespeichert, damit "Claude" genau einen
+    Zustand hat und nicht zwei.
+    """
+    value = (model_key or "").strip() or None
+    sql = "UPDATE conversations SET chat_model = ? WHERE id = ?"
+    params: tuple = (value, cid)
     if user_id is not None:
         sql += " AND user_id = ?"
         params = params + (user_id,)

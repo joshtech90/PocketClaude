@@ -1,5 +1,5 @@
 /* =========================================================
-   Pocket Claude — Web-UI v2 Redesign
+   PocketClot — Web-UI v2 Redesign
    Vanilla CSS, ChatGPT-inspirierter Look, Light/Dark.
    ========================================================= */
 
@@ -612,6 +612,37 @@ button { cursor: pointer; }
 .dropdown button.danger { color: var(--danger); }
 .dropdown button.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .dropdown hr { border: 0; border-top: 1px solid var(--border-soft); margin: 4px 0; }
+
+/* Modell- und Denktiefe-Menue. Das Dropdown wird zur Laufzeit befuellt, weil
+   die Zusatz-Modelle vom Server kommen und sich aendern koennen. */
+#effort-menu { min-width: 260px; max-height: 70vh; overflow-y: auto; }
+.dropdown-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px 4px;
+}
+.dropdown-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.dropdown-section-title {
+  padding: 8px 12px 2px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim, var(--text));
+  opacity: 0.7;
+}
+.dropdown-item { justify-content: flex-start; }
+.dropdown-item .model-name { flex: 1; }
+.dropdown-item .gateway-tag { font-size: 11px; opacity: 0.6; margin-left: 8px; }
+.dropdown-divider { border-top: 1px solid var(--border-soft); margin: 6px 0 2px; }
+.dropdown-notice { padding: 6px 12px; font-size: 11px; line-height: 1.35; }
+.dropdown .muted, .muted { opacity: 0.65; }
+.icon-btn-sm {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0;
+  background: transparent; border: 0; border-radius: 6px;
+  color: var(--text); cursor: pointer;
+}
+.icon-btn-sm:hover { background: var(--bg-elev-2); }
+#effort-btn #model-label:not(:empty) { margin-right: 6px; opacity: 0.85; }
+#effort-btn #model-label:not(:empty)::after { content: "\00b7"; margin-left: 6px; opacity: 0.5; }
 
 /* ----------- Messages ----------- */
 .messages {

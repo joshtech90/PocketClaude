@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pocket Claude server: refresh Python dependencies inside the venv.
+# PocketClot server: refresh Python dependencies inside the venv.
 # Double-click helper for macOS dev hosts. Use this after `requirements.txt`
 # gained a new entry (e.g. pyzipper for encrypted backups).
 

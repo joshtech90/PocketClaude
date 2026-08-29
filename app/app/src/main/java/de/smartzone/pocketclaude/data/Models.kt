@@ -33,6 +33,8 @@ data class ConversationDto(
     val locked: Boolean = false,
     /** Wenn der Chat „mit einem Gem" gestartet wurde: dessen ID (für Badge im Drawer). */
     @SerialName("gem_id") val gemId: String? = null,
+    /** Zuletzt in diesem Chat benutztes Modell. Leer/null = Claude. */
+    @SerialName("chat_model") val chatModel: String? = null,
 )
 
 @Serializable
@@ -67,6 +69,8 @@ data class ConversationDetailDto(
     val pinned: Boolean = false,
     val locked: Boolean = false,
     @SerialName("gem_id") val gemId: String? = null,
+    /** Zuletzt in diesem Chat benutztes Modell. Leer/null = Claude. */
+    @SerialName("chat_model") val chatModel: String? = null,
     val messages: List<MessageDto> = emptyList(),
     @SerialName("mid_summary") val midSummary: String? = null,
     @SerialName("long_summary") val longSummary: String? = null,
@@ -87,6 +91,9 @@ data class SendMessageRequest(
     @SerialName("attachment_ids") val attachmentIds: List<String> = emptyList(),
     /** off | low | medium | high | xhigh | max — steuert CLAUDE_CODE_EFFORT_LEVEL */
     val effort: String = DEFAULT_EFFORT,
+    /** Modell-Key aus GET /chat/models. Leer oder null = Claude-Standard.
+     *  Zusatz-Modelle tragen den Präfix „gw:". */
+    val model: String? = null,
     /** Vom Client gewünschter System-Prompt (ersetzt Server-Default + Claude-Code-Default). */
     @SerialName("system_prompt") val systemPrompt: String? = null,
     /** TTS-Hints: Server startet nach Stream-Ende eine Pre-Generation in der
@@ -107,6 +114,8 @@ data class PatchConversationRequest(
     val title: String? = null,
     val pinned: Boolean? = null,
     val locked: Boolean? = null,
+    /** "" setzt den Chat zurück auf Claude, null lässt den Wert unverändert. */
+    @SerialName("chat_model") val chatModel: String? = null,
 )
 
 // ---------- Chat-Sperre (globaler PIN) ----------
@@ -285,6 +294,9 @@ data class ServerSettingsExportDto(
 @Serializable
 data class AppSettingsExportDto(
     @SerialName("theme_mode") val themeMode: String = "SYSTEM",
+    // Gewaehltes Farbschema. Der Default muss zu AppSettings.paletteId passen,
+    // sonst setzt ein Import aus einer aelteren App-Version die Farbwahl zurueck.
+    @SerialName("palette_id") val paletteId: String = DEFAULT_PALETTE_ID,
     // Default muss zu AppSettings.ttsVoice passen — sonst überschreibt der
     // Import bei fehlendem Feld die User-Wahl mit einer alten Voice.
     @SerialName("tts_voice") val ttsVoice: String = "edge-de-DE-KatjaNeural",
@@ -295,6 +307,12 @@ data class AppSettingsExportDto(
     @SerialName("custom_system_prompt") val customSystemPrompt: String = "",
     @SerialName("tts_auto_speak_per_chat") val ttsAutoSpeakPerChat: Map<String, Boolean> = emptyMap(),
     @SerialName("collapse_long_user_messages") val collapseLongUserMessages: Boolean = true,
+    /** Zusatz-Modelle: gewähltes Standard-Modell und die Denktiefe je Familie. */
+    @SerialName("chat_model_key") val chatModelKey: String = "",
+    @SerialName("effort_by_family") val effortByFamily: Map<String, String> = emptyMap(),
+    @SerialName("default_model_by_family") val defaultModelByFamily: Map<String, String> = emptyMap(),
+    @SerialName("image_default_size") val imageDefaultSize: String = "2K",
+    @SerialName("image_default_aspect") val imageDefaultAspect: String = "1:1",
 )
 
 /** Container für die kombinierte JSON-Datei (Server + App). */
@@ -354,11 +372,47 @@ data class TtsProviderRequest(
  * - webFetch      → "WebFetch"
  * - codeExecution → "Bash" (Sandbox-Cwd, isoliert)
  */
+/** Ein waehlbares Chat-Modell, so wie der Server es meldet. */
+@Serializable
+data class ChatModelDto(
+    val key: String,
+    /** "claude" | "gemini" | "gpt" | "other" */
+    val family: String = "other",
+    val label: String,
+    val efforts: List<String> = emptyList(),
+    @SerialName("default_effort") val defaultEffort: String = "",
+    @SerialName("supports_vision") val supportsVision: Boolean = true,
+    @SerialName("context_length") val contextLength: Int? = null,
+    @SerialName("gateway_label") val gatewayLabel: String = "",
+)
+
+/** Erreichbarkeit eines Zusatz-Modell-Gateways (für die Fehleranzeige im Picker). */
+@Serializable
+data class GatewayStatusDto(
+    val id: String,
+    val label: String,
+    @SerialName("base_url") val baseUrl: String = "",
+    val reachable: Boolean = false,
+    @SerialName("model_count") val modelCount: Int = 0,
+    @SerialName("last_error") val lastError: String? = null,
+    @SerialName("checked_at") val checkedAt: String? = null,
+)
+
+@Serializable
+data class ChatModelsDto(
+    val models: List<ChatModelDto> = emptyList(),
+    val gateways: List<GatewayStatusDto> = emptyList(),
+    @SerialName("default_key") val defaultKey: String = "",
+)
+
 @Serializable
 data class SkillsDto(
     @SerialName("web_search") val webSearch: Boolean = true,
     @SerialName("web_fetch") val webFetch: Boolean = true,
     @SerialName("code_execution") val codeExecution: Boolean = false,
+    /** Bilder direkt im Chat erzeugen (Werkzeug `generate_image`, laeuft immer
+     *  ueber Nano Banana, egal welches Modell gerade antwortet). */
+    @SerialName("image_generation") val imageGeneration: Boolean = true,
 )
 
 @Serializable
@@ -483,8 +537,30 @@ data class ImageConfigDto(
     @SerialName("max_candidates") val maxCandidates: Int = 4,
     @SerialName("default_model") val defaultModel: String,
     @SerialName("default_aspect") val defaultAspect: String,
+    @SerialName("image_sizes") val imageSizes: List<ImageSizeDto> = emptyList(),
+    @SerialName("default_image_size") val defaultImageSize: String = "2K",
     val configured: Boolean = false,
     @SerialName("api_key_masked") val apiKeyMasked: String? = null,
+    /** Die vom User gesetzten Standardwerte. Gelten für den Bilder-Screen UND
+     *  für das Bild-Werkzeug im Chat. */
+    val defaults: ImageDefaultsDto = ImageDefaultsDto(),
+)
+
+@Serializable
+data class ImageSizeDto(val id: String, val label: String)
+
+@Serializable
+data class ImageDefaultsDto(
+    val size: String = "2K",
+    @SerialName("aspect_ratio") val aspectRatio: String = "1:1",
+    val model: String = "",
+)
+
+@Serializable
+data class ImageDefaultsRequest(
+    val size: String? = null,
+    @SerialName("aspect_ratio") val aspectRatio: String? = null,
+    val model: String? = null,
 )
 
 @Serializable
@@ -677,6 +753,8 @@ sealed interface StreamEvent {
     data class Delta(val text: String) : StreamEvent
     data class ThinkingDelta(val text: String) : StreamEvent
     data object BlockStop : StreamEvent
+    /** Das Modell hat mitten in der Antwort Bilder erzeugt. */
+    data class ImagesReady(val attachments: List<AttachmentRefDto>) : StreamEvent
     data class Done(
         val assistantMessageId: Long,
         val tokensIn: Int,

@@ -1,4 +1,4 @@
-"""System-Prompt-Modi für Pocket Claude.
+"""System-Prompt-Modi für PocketClot.
 
 Identisch zu `app/src/main/java/de/smartzone/pocketclaude/data/SystemPrompts.kt`
 in der Android-App — Strings werden 1:1 dort gepflegt und hier kopiert. Bei
@@ -345,6 +345,62 @@ def _substitute_placeholders(prompt: str) -> str:
         .replace("{{currentDateTime}}", now)
         .replace("__CURRENT_DATETIME__", now)
     )
+
+
+# ---------- Anpassung fuer die Zusatz-Modelle ----------
+
+# Wer steckt hinter welcher Modell-Familie. Nur fuer den Identitaets-Satz.
+_FAMILY_VENDOR = {
+    "gemini": "Google",
+    "gpt": "OpenAI",
+}
+
+
+def adapt_for_model(prompt: str | None, *, model_label: str, family: str) -> str | None:
+    """Macht einen Pocket-Claude-Prompt fuer ein Zusatz-Modell brauchbar.
+
+    Die Prompt-Modi sind fuer Claude geschrieben: sie reden durchgehend von
+    „Claude" und enthalten einen langen Block ueber Anthropic-Produkte. Schickt
+    man das unveraendert an Gemini oder GPT, passieren zwei unschoene Dinge:
+    das Modell behauptet, Claude zu sein, und wir bezahlen bei jedem Turn
+    mehrere tausend Tokens fuer Produktwissen, das dort niemanden interessiert.
+
+    Deshalb hier drei Eingriffe, die den Stil und die Freizuegigkeit des
+    gewaehlten Modus unangetastet lassen:
+      1. Der `<product_information>`-Block fliegt raus.
+      2. „Claude" wird durch den echten Modellnamen ersetzt, „Anthropic" durch
+         den Anbieter.
+      3. Ein kurzer Identitaets-Satz kommt voran, damit das Modell auf die
+         Frage „welches Modell bist Du" ehrlich antwortet.
+
+    Ein leerer oder fehlender Prompt bleibt leer: dann greift der Default der
+    jeweiligen Engine.
+    """
+    if not prompt or not prompt.strip():
+        return prompt
+
+    import re as _re
+
+    out = _re.sub(
+        r"<product_information>.*?</product_information>\s*",
+        "", prompt, flags=_re.S,
+    )
+    out = out.replace("<claude_behavior>", "<assistant_behavior>")
+    out = out.replace("</claude_behavior>", "</assistant_behavior>")
+
+    vendor = _FAMILY_VENDOR.get(family, "")
+    label = model_label.strip() or "dieses Modell"
+    out = _re.sub(r"\bClaude\b", label, out)
+    if vendor:
+        out = _re.sub(r"\bAnthropic\b", vendor, out)
+
+    vendor_note = f" von {vendor}" if vendor else ""
+    identity = (
+        f"Du bist {label}{vendor_note} und antwortest hier in der App "
+        f"PocketClot. Du bist NICHT Claude. Fragt jemand, welches Modell "
+        f"antwortet, nenne ehrlich {label}."
+    )
+    return f"{identity}\n\n{out}"
 
 
 def resolve_system_prompt(

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Pocket Claude</string>
+    <string name="app_name">PocketClot</string>
 
     <!-- ─── Generic actions / common ──────────────────────────────────── -->
     <string name="action_ok">OK</string>
@@ -208,12 +208,12 @@
     <string name="error_speak">読み上げに失敗しました: %1$s</string>
     <string name="error_export">エクスポートに失敗しました: %1$s</string>
     <string name="generated_chat_aborted">[中断]</string>
-    <string name="generated_chat_default_title">Pocket Claudeのチャット</string>
+    <string name="generated_chat_default_title">PocketClotのチャット</string>
 
     <!-- ─── Notifications ─────────────────────────────────────────────── -->
     <string name="notif_channel_streaming">ストリーミング</string>
     <string name="notif_channel_result">返信の準備完了</string>
-    <string name="notif_streaming_title">Pocket Claude</string>
+    <string name="notif_streaming_title">PocketClot</string>
     <string name="notif_streaming_text">返信中…</string>
     <string name="notif_result_title">返信の準備完了</string>
     <string name="notif_channel_streaming_name">Claudeが返信中…</string>
@@ -272,7 +272,7 @@
     <string name="long_message_collapse_subtitle">約6行を超えると入力が切り詰められ、「もっと見る」トグルが表示されます。長い返信を読むときのスクロールを節約します。バブルをタップして展開します。</string>
 
     <!-- ─── About section content ─────────────────────────────────────── -->
-    <string name="about_app_description">あなたのPocket Claudeサーバー用の個人向けチャットフロントエンド。</string>
+    <string name="about_app_description">あなたのPocketClotサーバー用の個人向けチャットフロントエンド。</string>
 
     <!-- ─── Toast / error patterns ────────────────────────────────────── -->
     <string name="toast_save_failed">保存に失敗しました: %1$s</string>
@@ -318,7 +318,7 @@
     <string name="chat_skills_save_for_chat">このチャットに保存</string>
     <string name="chat_skills_reset_default">デフォルトにリセット</string>
     <string name="chat_auto_speak_dialog_title">このチャットの自動読み上げ</string>
-    <string name="chat_auto_speak_dialog_body">Pocket Claudeはこのチャットで返信を自動的に読み上げますか？</string>
+    <string name="chat_auto_speak_dialog_body">PocketClotはこのチャットで返信を自動的に読み上げますか？</string>
     <string name="chat_auto_speak_default_label">デフォルト（%1$s）</string>
     <string name="chat_auto_speak_always_on">常にオン</string>
     <string name="chat_auto_speak_always_off">常にオフ</string>
@@ -375,7 +375,7 @@
     <string name="image_share_chooser_title">画像を共有</string>
     <string name="image_share_failed">共有に失敗しました: %1$s</string>
     <string name="image_save_failed">保存に失敗しました: %1$s</string>
-    <string name="image_save_success">Gallery/Pictures/PocketClaudeに保存しました</string>
+    <string name="image_save_success">Gallery/Pictures/PocketClotに保存しました</string>
 
     <!-- ─── Message bubble ────────────────────────────────────────────── -->
     <string name="bubble_copied">コピー済み</string>
@@ -396,7 +396,7 @@
     <string name="settings_section_data">データを保存</string>
     <string name="settings_subtitle_data">チャット + 設定のエクスポート/インポート</string>
     <string name="settings_section_about">情報</string>
-    <string name="settings_subtitle_about">Pocket Claude</string>
+    <string name="settings_subtitle_about">PocketClot</string>
     <string name="settings_theme_system">テーマ: システム</string>
     <string name="settings_theme_light">テーマ: ライト</string>
     <string name="settings_theme_dark">テーマ: ダーク</string>
@@ -438,7 +438,7 @@
     <string name="settings_custom_system_prompt_hint">空 = 標準プロンプトが適用されます。</string>
     <string name="settings_subsection_skills_defaults">スキル — 新規チャットのデフォルト</string>
     <string name="settings_info_tts_title">音声出力 — 3つの設定パス</string>
-    <string name="settings_info_tts_intro">Pocket ClaudeはClaudeの返信を読み上げることができます。3つのプロバイダーが利用可能 — 「設定不要」から「プレミアム音声品質」まで。</string>
+    <string name="settings_info_tts_intro">PocketClotはClaudeの返信を読み上げることができます。3つのプロバイダーが利用可能 — 「設定不要」から「プレミアム音声品質」まで。</string>
     <string name="settings_info_tts_edge_label">Edge（デフォルト、設定不要）:</string>
     <string name="settings_info_tts_edge_body">Microsoft Edgeの読み上げ音声。完全無料、APIキーやサービスアカウント不要。品質はGemini/Chirpよりも機械的ですが、TTSをすぐ試すのに最適です。</string>
     <string name="settings_info_tts_gemini_label">Gemini API（AI Studioキー使用）:</string>
@@ -466,7 +466,7 @@
     <string name="settings_data_no_profiles_body">どちらのバンドルにもプロファイル（サーバーURL、ユーザー名、トークン）は含まれていません — これらはデバイスごとに保持されます。</string>
     <string name="settings_data_subsection_chats">会話（ZIP）</string>
     <string name="settings_data_subsection_settings">設定 + APIキー（JSON）</string>
-    <string name="settings_about_app_desc">あなたのPocket Claudeサーバー用の個人向けチャットフロントエンド。</string>
+    <string name="settings_about_app_desc">あなたのPocketClotサーバー用の個人向けチャットフロントエンド。</string>
     <string name="settings_password_dialog_change_title">パスワードを変更</string>
     <string name="settings_password_dialog_force_title">パスワードを設定してください</string>
     <string name="settings_password_mismatch">パスワードが一致しません。</string>
@@ -629,7 +629,7 @@
     <string name="settings_backup_password_show">パスワードを表示</string>
     <string name="settings_backup_wrong_password">パスワードが間違っています。もう一度入力してください。</string>
     <string name="settings_backup_unlock_btn">ロック解除</string>
-    <string name="settings_backup_share_subject">Pocket Claudeバックアップ</string>
+    <string name="settings_backup_share_subject">PocketClotバックアップ</string>
     <string name="settings_backup_share_chooser">バックアップを共有</string>
     <string name="settings_backup_share_failed">共有に失敗しました: %1$s</string>
     <string name="settings_profile_default">プロファイル</string>
@@ -820,4 +820,42 @@
     <string name="gem_add_file">ファイルを追加</string>
     <string name="gem_builtin_readonly">組み込み Gem — 読み取り専用。</string>
     <string name="gem_duplicate">複製</string>
+
+    <!-- モデルと推論の深さの選択 -->
+    <string name="model_sheet_title">モデルと推論の深さ</string>
+    <string name="model_auto">自動</string>
+    <string name="model_family_claude">Claude</string>
+    <string name="model_family_claude_hint">標準</string>
+    <string name="model_family_gemini">Gemini</string>
+    <string name="model_family_gpt">GPT</string>
+    <string name="model_family_other">その他のモデル</string>
+    <string name="model_gateway_unreachable">追加のモデルは現在利用できません</string>
+    <string name="model_refresh">モデル一覧を再読み込み</string>
+    <string name="effort_minimal_label">最小</string>
+    <string name="effort_ultra_label">ウルトラ</string>
+    <!-- 設定：モデル、推論の深さ、画像のデフォルト -->
+    <string name="settings_models_section">モデルと推論の深さ</string>
+    <string name="settings_default_model">デフォルトのモデル</string>
+    <string name="settings_effort_per_family">モデルごとの推論の深さ</string>
+    <string name="settings_effort_claude">Claude</string>
+    <string name="settings_effort_gemini">Gemini</string>
+    <string name="settings_effort_gpt">GPT</string>
+    <string name="settings_image_default_size">デフォルトの解像度</string>
+    <string name="settings_image_default_aspect">デフォルトのアスペクト比</string>
+    <string name="settings_image_default_model">デフォルトの画像モデル</string>
+    <string name="settings_image_in_chat">チャットで画像を生成</string>
+    <string name="settings_image_in_chat_hint">どのモデルでも画像を生成できます。回答するモデルに関係なく、常に Nano Banana から提供されます。</string>
+    <string name="skill_image_generation">画像生成</string>
+
+    <string name="settings_default_model_moved">既定のモデルは「モデルと思考の深さ」セクションに移動しました。追加モデルもそこで選べます。</string>
+    <string name="settings_palette_label">配色</string>
+    <string name="settings_palette_hint">各配色にはそれぞれライトモードとダークモードがあるため、上の設定は引き続き機能します。</string>
+    <string name="settings_default_model_per_family">プロバイダーごとのデフォルトモデル</string>
+    <string name="settings_default_model_per_family_hint">チャット内でプロバイダーを切り替えたときに適用されます。</string>
+    <string name="settings_default_model_family_unavailable">利用可能なモデルはありません</string>
+    <string name="model_sheet_server_outdated">このサーバーはアプリより古く、まだモデル一覧を提供していません。Claude は動作しており、内蔵モデルを表示しています。</string>
+    <string name="model_sheet_load_failed">モデルを読み込めませんでした: %1$s</string>
+    <string name="settings_provider_defaults">プロバイダーごとのモデルと思考の深さ</string>
+    <string name="settings_provider_defaults_hint">選択したモデルが実際に対応している思考レベルのみを表示します。</string>
+    <string name="effort_not_supported">このモデルには思考レベルがありません。</string>
 </resources>

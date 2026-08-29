@@ -1,6 +1,5 @@
 package de.smartzone.pocketclaude.ui
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +12,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -42,6 +39,8 @@ import de.smartzone.pocketclaude.ui.gems.GemEditorScreen
 import de.smartzone.pocketclaude.ui.gems.GemsViewModel
 import de.smartzone.pocketclaude.ui.settings.SettingsScreen
 import de.smartzone.pocketclaude.ui.settings.SettingsViewModel
+import de.smartzone.pocketclaude.ui.components.PocketBackdrop
+import de.smartzone.pocketclaude.ui.components.PocketBrandMark
 
 object Routes {
     /** Startroute: erzeugt einen frischen Chat (oder zeigt Setup-Hinweis) und leitet weiter. */
@@ -289,6 +288,7 @@ private fun LaunchScreen(
             .onFailure { errorMessage = it.message ?: it::class.java.simpleName }
     }
 
+    PocketBackdrop(Modifier.fillMaxSize()) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (errorMessage != null) {
             // Verbindungs-/Auth-Fehler beim Start: NICHT in der Sackgasse hängen
@@ -316,16 +316,19 @@ private fun LaunchScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Image(
-                    painter = painterResource(
-                        id = de.smartzone.pocketclaude.R.drawable.pocket_claude_icon
-                    ),
-                    contentDescription = "Pocket Claude",
-                    modifier = Modifier.size(120.dp),
+                PocketBrandMark(size = 112.dp)
+                Spacer(Modifier.height(22.dp))
+                Text(
+                    stringResource(de.smartzone.pocketclaude.R.string.app_name),
+                    style = MaterialTheme.typography.headlineMedium,
                 )
-                Spacer(Modifier.height(24.dp))
-                CircularProgressIndicator()
+                Spacer(Modifier.height(18.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                )
             }
         }
+    }
     }
 }

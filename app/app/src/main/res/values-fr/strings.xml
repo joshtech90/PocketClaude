@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Pocket Claude</string>
+    <string name="app_name">PocketClot</string>
 
     <!-- ─── Generic actions / common ──────────────────────────────────── -->
     <string name="action_ok">OK</string>
@@ -208,12 +208,12 @@
     <string name="error_speak">Échec de la lecture à voix haute : %1$s</string>
     <string name="error_export">Échec de l\'exportation : %1$s</string>
     <string name="generated_chat_aborted">[interrompu]</string>
-    <string name="generated_chat_default_title">Discussion Pocket Claude</string>
+    <string name="generated_chat_default_title">Discussion PocketClot</string>
 
     <!-- ─── Notifications ─────────────────────────────────────────────── -->
     <string name="notif_channel_streaming">Streaming</string>
     <string name="notif_channel_result">Réponse prête</string>
-    <string name="notif_streaming_title">Pocket Claude</string>
+    <string name="notif_streaming_title">PocketClot</string>
     <string name="notif_streaming_text">Réponse en cours…</string>
     <string name="notif_result_title">Réponse prête</string>
     <string name="notif_channel_streaming_name">Claude répond…</string>
@@ -272,7 +272,7 @@
     <string name="long_message_collapse_subtitle">Au-delà d\'environ 6 lignes, votre saisie est tronquée avec un bouton « Afficher plus ». Évite de défiler lors de la lecture de longues réponses. Appuyez sur la bulle pour l\'étendre.</string>
 
     <!-- ─── About section content ─────────────────────────────────────── -->
-    <string name="about_app_description">Interface de discussion personnelle pour votre serveur Pocket Claude.</string>
+    <string name="about_app_description">Interface de discussion personnelle pour votre serveur PocketClot.</string>
 
     <!-- ─── Toast / error patterns ────────────────────────────────────── -->
     <string name="toast_save_failed">Échec de l\'enregistrement : %1$s</string>
@@ -318,7 +318,7 @@
     <string name="chat_skills_save_for_chat">Enregistrer pour cette discussion</string>
     <string name="chat_skills_reset_default">Rétablir les valeurs par défaut</string>
     <string name="chat_auto_speak_dialog_title">Lecture automatique pour cette discussion</string>
-    <string name="chat_auto_speak_dialog_body">Pocket Claude doit-il lire les réponses de cette discussion automatiquement ?</string>
+    <string name="chat_auto_speak_dialog_body">PocketClot doit-il lire les réponses de cette discussion automatiquement ?</string>
     <string name="chat_auto_speak_default_label">Par défaut (%1$s)</string>
     <string name="chat_auto_speak_always_on">Toujours activée</string>
     <string name="chat_auto_speak_always_off">Toujours désactivée</string>
@@ -375,7 +375,7 @@
     <string name="image_share_chooser_title">Partager l\'image</string>
     <string name="image_share_failed">Échec du partage : %1$s</string>
     <string name="image_save_failed">Échec de l\'enregistrement : %1$s</string>
-    <string name="image_save_success">Enregistré dans Galerie/Images/PocketClaude</string>
+    <string name="image_save_success">Enregistré dans Galerie/Images/PocketClot</string>
 
     <!-- ─── Message bubble ────────────────────────────────────────────── -->
     <string name="bubble_copied">Copié</string>
@@ -396,7 +396,7 @@
     <string name="settings_section_data">Enregistrement des données</string>
     <string name="settings_subtitle_data">Exporter/importer discussions + paramètres</string>
     <string name="settings_section_about">À propos</string>
-    <string name="settings_subtitle_about">Pocket Claude</string>
+    <string name="settings_subtitle_about">PocketClot</string>
     <string name="settings_theme_system">Thème : Système</string>
     <string name="settings_theme_light">Thème : Clair</string>
     <string name="settings_theme_dark">Thème : Sombre</string>
@@ -438,7 +438,7 @@
     <string name="settings_custom_system_prompt_hint">Vide = le prompt standard s\'applique.</string>
     <string name="settings_subsection_skills_defaults">Compétences — par défaut pour les nouvelles discussions</string>
     <string name="settings_info_tts_title">Sortie vocale — trois chemins de configuration</string>
-    <string name="settings_info_tts_intro">Pocket Claude peut lire à voix haute les réponses de Claude. Trois fournisseurs sont disponibles — de &quot;aucune configuration&quot; à &quot;qualité vocale premium&quot;.</string>
+    <string name="settings_info_tts_intro">PocketClot peut lire à voix haute les réponses de Claude. Trois fournisseurs sont disponibles — de &quot;aucune configuration&quot; à &quot;qualité vocale premium&quot;.</string>
     <string name="settings_info_tts_edge_label">Edge (par défaut, aucune configuration) :</string>
     <string name="settings_info_tts_edge_body">Voix de lecture Microsoft Edge. Complètement gratuit, aucune clé API ni compte de service. La qualité est plus mécanique que Gemini/Chirp mais parfait pour essayer le TTS immédiatement.</string>
     <string name="settings_info_tts_gemini_label">API Gemini (avec clé AI Studio) :</string>
@@ -466,7 +466,7 @@
     <string name="settings_data_no_profiles_body">Aucun des deux ensembles ne contient les profils (URL du serveur, nom d\'utilisateur, jeton) — ceux-ci restent propres à chaque appareil.</string>
     <string name="settings_data_subsection_chats">Conversations (ZIP)</string>
     <string name="settings_data_subsection_settings">Paramètres + clés API (JSON)</string>
-    <string name="settings_about_app_desc">Interface de discussion personnelle pour votre serveur Pocket Claude.</string>
+    <string name="settings_about_app_desc">Interface de discussion personnelle pour votre serveur PocketClot.</string>
     <string name="settings_password_dialog_change_title">Changer le mot de passe</string>
     <string name="settings_password_dialog_force_title">Définir un mot de passe maintenant</string>
     <string name="settings_password_mismatch">Les mots de passe ne correspondent pas.</string>
@@ -629,7 +629,7 @@
     <string name="settings_backup_password_show">Afficher le mot de passe</string>
     <string name="settings_backup_wrong_password">Mot de passe incorrect. Veuillez le saisir à nouveau.</string>
     <string name="settings_backup_unlock_btn">Déverrouiller</string>
-    <string name="settings_backup_share_subject">Sauvegarde Pocket Claude</string>
+    <string name="settings_backup_share_subject">Sauvegarde PocketClot</string>
     <string name="settings_backup_share_chooser">Partager la sauvegarde</string>
     <string name="settings_backup_share_failed">Échec du partage : %1$s</string>
     <string name="settings_profile_default">Profil</string>
@@ -820,4 +820,42 @@
     <string name="gem_add_file">Ajouter un fichier</string>
     <string name="gem_builtin_readonly">Gem intégré — lecture seule.</string>
     <string name="gem_duplicate">Dupliquer</string>
+
+    <!-- Sélecteur de modèle et de profondeur de raisonnement -->
+    <string name="model_sheet_title">Modèle et profondeur de raisonnement</string>
+    <string name="model_auto">Automatique</string>
+    <string name="model_family_claude">Claude</string>
+    <string name="model_family_claude_hint">standard</string>
+    <string name="model_family_gemini">Gemini</string>
+    <string name="model_family_gpt">GPT</string>
+    <string name="model_family_other">Plus de modèles</string>
+    <string name="model_gateway_unreachable">Les modèles supplémentaires ne sont pas disponibles pour le moment</string>
+    <string name="model_refresh">Recharger la liste des modèles</string>
+    <string name="effort_minimal_label">Minimal</string>
+    <string name="effort_ultra_label">Ultra</string>
+    <!-- Paramètres : modèles, profondeur de raisonnement, images par défaut -->
+    <string name="settings_models_section">Modèles et profondeur de raisonnement</string>
+    <string name="settings_default_model">Modèle par défaut</string>
+    <string name="settings_effort_per_family">Profondeur de raisonnement par modèle</string>
+    <string name="settings_effort_claude">Claude</string>
+    <string name="settings_effort_gemini">Gemini</string>
+    <string name="settings_effort_gpt">GPT</string>
+    <string name="settings_image_default_size">Résolution par défaut</string>
+    <string name="settings_image_default_aspect">Format d\'image par défaut</string>
+    <string name="settings_image_default_model">Modèle d\'image par défaut</string>
+    <string name="settings_image_in_chat">Créer des images dans le chat</string>
+    <string name="settings_image_in_chat_hint">Chaque modèle peut générer des images. Elles proviennent toujours de Nano Banana, quel que soit le modèle qui répond.</string>
+    <string name="skill_image_generation">Génération d\'images</string>
+
+    <string name="settings_default_model_moved">Le modèle par défaut se trouve désormais dans la section « Modèles et profondeur de raisonnement », où les modèles supplémentaires sont aussi disponibles.</string>
+    <string name="settings_palette_label">Schéma de couleurs</string>
+    <string name="settings_palette_hint">Chaque schéma possède une variante claire et une autre sombre, de sorte que le réglage ci-dessus reste fonctionnel.</string>
+    <string name="settings_default_model_per_family">Modèle par défaut pour chaque fournisseur</string>
+    <string name="settings_default_model_per_family_hint">S\'applique lorsque tu changes de fournisseur dans un chat.</string>
+    <string name="settings_default_model_family_unavailable">Aucun modèle disponible</string>
+    <string name="model_sheet_server_outdated">Ce serveur est plus ancien que l\'application et ne fournit pas encore de liste de modèles. Claude fonctionne, les modèles intégrés sont affichés.</string>
+    <string name="model_sheet_load_failed">Impossible de charger les modèles : %1$s</string>
+    <string name="settings_provider_defaults">Modèle et profondeur de réflexion par fournisseur</string>
+    <string name="settings_provider_defaults_hint">Seuls les niveaux de réflexion réellement pris en charge par le modèle choisi sont affichés.</string>
+    <string name="effort_not_supported">Ce modèle n\'a pas de niveaux de réflexion.</string>
 </resources>

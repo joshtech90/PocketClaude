@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="../../assets/logo.png" alt="Pocket Claude" width="160" height="160">
+<img src="../../assets/logo.png" alt="PocketClot" width="160" height="160">
 
-# Pocket Claude
+# PocketClot
 
 **Dein persönlicher Claude auf dem Handy — wahlweise über Dein eigenes Pro/Max-Abo, einen Anthropic-API-Key oder AWS Bedrock. Gehostet auf Deiner eigenen Hardware.**
 
@@ -19,7 +19,7 @@
 
 ## Worum geht's
 
-**Pocket Claude** ist ein selbst-gehostetes Chat-Frontend für Anthropic's [Claude](https://claude.ai). Ein kleiner Python-Server läuft auf Deinem eigenen Linux-Host (Mini-PC, Raspberry Pi, alter Laptop, NAS); eine native Android-App und eine integrierte Web-UI sprechen via [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) oder Cloudflare-Tunnel von überall mit ihm.
+**PocketClot** ist ein selbst-gehostetes Chat-Frontend für Anthropic's [Claude](https://claude.ai). Ein kleiner Python-Server läuft auf Deinem eigenen Linux-Host (Mini-PC, Raspberry Pi, alter Laptop, NAS); eine native Android-App und eine integrierte Web-UI sprechen via [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) oder Cloudflare-Tunnel von überall mit ihm.
 
 **Backend pro User frei wählbar**, jederzeit in der App umschaltbar:
 
@@ -27,7 +27,7 @@
 - **Anthropic-API-Key** — `sk-ant-…` aus der [Anthropic Console](https://console.anthropic.com), Pay-as-you-go-Abrechnung.
 - **AWS Bedrock** — Deine AWS-Credentials, unterstützt Claude Opus 4.7 über die Bedrock-spezifischen Modell-IDs.
 
-**Warum?** Anthropics offizielle Claude-Apps sind super — Pocket Claude ist für die Dinge da, die sie (noch) nicht können:
+**Warum?** Anthropics offizielle Claude-Apps sind super — PocketClot ist für die Dinge da, die sie (noch) nicht können:
 
 - **Open Source.** Quellcode einsehbar, forkbar, erweiterbar. Keine Mystery-Telemetrie, keine überraschend entfernten Features.
 - **Mehr Features.** TTS-Vorlesen (drei Provider, Lockscreen-Controls), Bild-Generation, ChatGPT-Style-Einklappen langer Nachrichten, Volltextsuche über alle Chats, verschlüsselte Backups, vier wählbare System-Prompt-Modi.
@@ -35,7 +35,7 @@
 - **Ein zweiter "Claude" sauber getrennt.** Privat und Job strikt trennen, ohne zwei Anthropic-Accounts zu jonglieren? Eigenen Server hochziehen, parallel zum offiziellen Client einloggen, fertig.
 - **Deine Daten gehören Dir.** Konversationen liegen in einer SQLite-DB auf Deiner Hardware. Migrierbar, backup-bar, direkt abfragbar.
 
-**Kein zusätzlicher Anthropic-API-Key nötig.** Authentifizierung läuft über die OAuth-Session, die Dein lokal installiertes Claude-Code-CLI nutzt (`claude login`). Pocket Claude spawnt das CLI; das CLI macht den Rest — auf demselben Pro/Max-Kontingent, das Du bereits bezahlst.
+**Kein zusätzlicher Anthropic-API-Key nötig.** Authentifizierung läuft über die OAuth-Session, die Dein lokal installiertes Claude-Code-CLI nutzt (`claude login`). PocketClot spawnt das CLI; das CLI macht den Rest — auf demselben Pro/Max-Kontingent, das Du bereits bezahlst.
 
 > **Hinweis** — das ist ein selbst-gehostetes Hobby-Projekt, kein Anthropic-Produkt. Du bringst Dein eigenes Pro/Max-Abo mit. Wir sehen oder proxien Deine Konversationen nie.
 
@@ -58,7 +58,7 @@
 
 ```
                 ┌───────────────────────────┐
-                │  Pocket Claude (Android)  │
+                │  PocketClot (Android)  │
                 │       oder Web-UI         │
                 └─────────────┬─────────────┘
                               │ HTTPS  (persistente URL)
@@ -98,7 +98,7 @@ Zwei Komponenten, ein Repo:
 Auf einer frischen Ubuntu-/Debian-/Fedora-Box:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClaude/main/server/deploy/install-linux.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClot/main/server/deploy/install-linux.sh | sudo bash
 ```
 
 Der Installer legt einen `pocket-claude`-Systemuser an, deployt den Code nach `/opt/pocket-claude/`, installiert das Claude-Code-CLI + Python-Dependencies in ein venv, schreibt eine systemd-Unit und startet sie auf Port `8787` (Loopback).
@@ -121,7 +121,7 @@ Gibt am Ende die öffentliche URL aus — sieht aus wie `https://dein-host.dein-
 
 ### 4 — Android-App installieren
 
-Entweder APK aus dem [letzten Release](https://github.com/joshtech90/PocketClaude/releases) ziehen oder selbst bauen:
+Entweder APK aus dem [letzten Release](https://github.com/joshtech90/PocketClot/releases) ziehen oder selbst bauen:
 
 ```bash
 cd app && ./gradlew assembleDebug

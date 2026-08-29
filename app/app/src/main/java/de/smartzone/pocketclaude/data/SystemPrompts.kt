@@ -1,7 +1,7 @@
 package de.smartzone.pocketclaude.data
 
 /**
- * System-Prompts für Pocket Claude.
+ * System-Prompts für PocketClot.
  *
  * Drei Modi (siehe [SystemPromptMode]):
  *  - STANDARD    → Anthropic-Default (wie auf claude.ai)
@@ -343,7 +343,7 @@ Claude's reliable knowledge cutoff date - the date past which it cannot answer q
  * to reply with "No response requested." when the user's message looks
  * like a statement rather than a question.
  *
- * Pocket Claude is a chat app, not an agent-loop coding tool — there is
+ * PocketClot is a chat app, not an agent-loop coding tool — there is
  * always a human waiting for a response. The CLI's skip-turn shortcut
  * (intended for autonomous task runs) makes no sense here and confuses
  * users into thinking their message wasn't received.
@@ -351,7 +351,7 @@ Claude's reliable knowledge cutoff date - the date past which it cannot answer q
 private const val ALWAYS_RESPOND_ADDENDUM = """
 
 <pocket_claude_chat_mode>
-You are running inside Pocket Claude, a personal chat client. Every user message expects a substantive assistant reply — even if the message is a statement, an observation, a single word, or a passing comment rather than an explicit question. Never reply with "No response requested.", "(no reply)", or any other skip-turn placeholder. If you genuinely have nothing to add beyond acknowledging, briefly acknowledge and offer one relevant follow-up thought or question. The interface assumes every turn produces visible text; an empty turn is shown to the user as a silent failure.
+You are running inside PocketClot, a personal chat client. Every user message expects a substantive assistant reply — even if the message is a statement, an observation, a single word, or a passing comment rather than an explicit question. Never reply with "No response requested.", "(no reply)", or any other skip-turn placeholder. If you genuinely have nothing to add beyond acknowledging, briefly acknowledge and offer one relevant follow-up thought or question. The interface assumes every turn produces visible text; an empty turn is shown to the user as a silent failure.
 </pocket_claude_chat_mode>"""
 
 fun effectiveSystemPrompt(

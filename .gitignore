@@ -6,6 +6,7 @@ __pycache__/
 .Python
 .venv/
 venv/
+.venv-check/
 env/
 ENV/
 .eggs/
@@ -62,3 +63,9 @@ OpenClaw-TTS-Kit.zip
 # Lokale Agent-Notizen (Wissen liegt gesichert im privaten claude-memory)
 CLAUDE.md
 AGENTS.md
+
+# Delegations-Laufzeitdaten der Worker (lokal, nicht versionieren)
+.ai/
+
+# Entscheidungsboegen sind Wegwerf-Artefakte (globale Konvention)
+00 HTML/

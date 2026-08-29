@@ -1,3 +1,3 @@
-"""Pocket Claude — Personal Claude chat server."""
+"""PocketClot — Personal Claude chat server."""
 
 __version__ = "0.1.0"

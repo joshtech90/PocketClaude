@@ -1,6 +1,6 @@
 # Daily Workflow
 
-Recommended workflow for continued development of Pocket Claude after
+Recommended workflow for continued development of PocketClot after
 the initial setup is complete (server running on your mini-PC, app
 installed on your phone, your own Tailnet FQDN active).
 
@@ -134,7 +134,7 @@ funnel URL stays the same.
 | `deploy/migrate-to-server.sh` | One-shot data transfer from old host → new host |
 | `deploy/helpers/update.sh` | On the mini-PC: `git pull`-based update (fallback) |
 | `deploy/helpers/uninstall.sh` | On the mini-PC: tear everything down |
-| `Build & Install PocketClaude.command` (app repo) | Push APK to Android device |
+| `Build & Install PocketClot.command` (app repo) | Push APK to Android device |
 | `Find Server URL.command` | Resolve Tailscale URL + copy to clipboard |
 | `Deploy to Mini-PC.command` | First-time migration (mostly historical) |
 

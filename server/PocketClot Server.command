@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pocket Claude Server — Doppelklick-Starter.
+# PocketClot Server — Doppelklick-Starter.
 #
 # Öffnet die Manager-GUI. Wenn ein .venv existiert, wird das venv-Python
 # verwendet (damit FastAPI etc. verfügbar sind, falls Du Tkinter unter

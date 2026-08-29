@@ -1,12 +1,12 @@
 #!/bin/bash
-# Build + install the Pocket Claude app from your Mac onto a connected phone.
+# Build + install the PocketClot app from your Mac onto a connected phone.
 # Double-click in Finder to run.
 
 set -e
 cd "$(dirname "$0")"
 
 echo "============================================="
-echo " Pocket Claude — Build & Install"
+echo " PocketClot — Build & Install"
 echo "============================================="
 echo ""
 

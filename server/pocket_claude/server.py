@@ -1,4 +1,4 @@
-"""FastAPI-Server: HTTP-Endpoints für Pocket Claude."""
+"""FastAPI-Server: HTTP-Endpoints für PocketClot."""
 from __future__ import annotations
 
 import asyncio
@@ -28,8 +28,9 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from pocket_claude import (
-    __version__, auth_modes, backup, billing, claude_engine, db, image_engine,
-    system_prompts, tts, tts_cache, usage, voice,
+    __version__, auth_modes, backup, billing, claude_engine, db, gateways,
+    image_engine, image_tool, openai_engine, system_prompts, tts, tts_cache,
+    usage, voice,
 )
 from pocket_claude.auth import (
     require_admin,
@@ -48,6 +49,8 @@ from pocket_claude.models import (
     ChatLockStatusDto,
     ChatLockVerifyRequest,
     ChatLockVerifyResponse,
+    ChatModelDto,
+    ChatModelsDto,
     ClaudeAuthDto,
     ClaudeAuthUpdateRequest,
     ConversationCreate,
@@ -56,6 +59,7 @@ from pocket_claude.models import (
     ConversationPatch,
     ConversationSkillsRequest,
     ConversationSkillsResponse,
+    GatewayStatusDto,
     GemDto,
     GemFileDto,
     GemUpsertRequest,
@@ -107,7 +111,7 @@ install_query_secret_redaction()
 async def lifespan(app: FastAPI):  # noqa: ARG001
     await db.init_db()
     await usage.ensure_schema()
-    log.info("Pocket Claude Server v%s gestartet — DB: %s", __version__, settings.db_path)
+    log.info("PocketClot Server v%s gestartet — DB: %s", __version__, settings.db_path)
     # TTS-Pre-Warm: Service-Account-JSON laden, OAuth-Token holen, gRPC-Channel
     # zu Google öffnen — spart 200-500ms beim ersten echten TTS-Tap.
     import asyncio as _asyncio
@@ -153,9 +157,9 @@ async def _tts_prewarm() -> None:
 
 
 app = FastAPI(
-    title="Pocket Claude",
+    title="PocketClot",
     version=__version__,
-    description="Persönlicher Claude-Chat-Server für die Pocket Claude Android-App.",
+    description="Persönlicher Claude-Chat-Server für die PocketClot Android-App.",
     lifespan=lifespan,
 )
 
@@ -192,6 +196,7 @@ def _row_to_conv_out(row: dict) -> ConversationOut:
         pinned=bool(row.get("pinned", 0)),
         locked=bool(row.get("locked", 0)),
         gem_id=row.get("gem_id"),
+        chat_model=row.get("chat_model") or None,
     )
 
 
@@ -289,6 +294,7 @@ async def get_conversation(cid: str = PathParam(...), user=Depends(require_user)
         pinned=bool(conv.get("pinned", 0)),
         locked=bool(conv.get("locked", 0)),
         gem_id=conv.get("gem_id"),
+        chat_model=conv.get("chat_model") or None,
         messages=messages,
     )
 
@@ -302,6 +308,16 @@ async def patch_conversation(cid: str, body: ConversationPatch, user=Depends(req
         await db.update_conversation_title(cid, body.title, user_id=user["id"])
     if body.pinned is not None:
         await db.set_pinned(cid, body.pinned, user_id=user["id"])
+    if body.chat_model is not None:
+        # Wie in send_message: ein Modellwechsel macht die Claude-Session
+        # ungueltig, weil sie die Turns des anderen Modells nicht kennt.
+        old_model = (conv.get("chat_model") or "").strip()
+        new_model = body.chat_model.strip()
+        await db.set_chat_model(cid, new_model, user_id=user["id"])
+        if old_model and new_model != old_model and conv.get("claude_session_id"):
+            await db.set_claude_session_id(cid, None)
+            log.info("PC_RESOLVE: cid=%s Modellwechsel per PATCH %r -> %r, "
+                     "Claude-Session verworfen", cid, old_model, new_model)
     if body.locked is not None:
         # Sperren nur erlauben, wenn ein globaler PIN gesetzt ist — sonst hätte
         # der User einen gesperrten Chat, den er nicht mehr aufbekommt.
@@ -339,6 +355,7 @@ async def patch_conversation(cid: str, body: ConversationPatch, user=Depends(req
         pinned=bool(updated.get("pinned", 0)),
         locked=bool(updated.get("locked", 0)),
         gem_id=updated.get("gem_id"),
+        chat_model=updated.get("chat_model") or None,
     )
 
 
@@ -356,6 +373,91 @@ async def delete_conversation(cid: str, user=Depends(require_user)):
 
 # ---------- Messages ----------
 
+# ---------- Chat-Modelle (Claude plus Zusatz-Modelle) ----------
+
+@app.get("/chat/models", response_model=ChatModelsDto)
+async def list_chat_models(
+    refresh: bool = Query(False, description="Gateway-Cache umgehen"),
+    include: str = Query("", description="Zusaetzlich diesen Modell-Key mitliefern, "
+                                         "auch wenn er nicht kuratiert ist"),
+    user=Depends(require_user),
+) -> ChatModelsDto:
+    """Alle waehlbaren Modelle plus den Zustand der Zusatz-Gateways.
+
+    Claude steht immer an erster Stelle und ist auch dann waehlbar, wenn kein
+    Gateway laeuft. Faellt ein Gateway aus, taucht es mit `reachable=false` und
+    der Fehlermeldung in `gateways` auf; die App zeigt das an, statt einfach
+    Modelle verschwinden zu lassen.
+    """
+    models: list[ChatModelDto] = [
+        ChatModelDto(
+            key=model_id,
+            family="claude",
+            label=label,
+            efforts=list(claude_engine.CLAUDE_EFFORTS),
+            default_effort="high",
+            supports_vision=True,
+            gateway_label="",
+        )
+        for model_id, label in claude_engine.SELECTABLE_MODELS
+    ]
+
+    gw_models = await gateways.list_models(force=refresh)
+    # Das Modell, das im aktuellen Chat steht, gehoert immer in die Liste, auch
+    # wenn es nicht kuratiert ist. Sonst haelt die App es faelschlich fuer
+    # verschwunden und setzt den Chat auf ein anderes Modell zurueck.
+    wanted = (include or "").strip()
+    if wanted and not any(m.key == wanted for m in gw_models):
+        extra = next((m for m in await gateways.list_models(curated=False)
+                      if m.key == wanted), None)
+        if extra is not None:
+            gw_models = [*gw_models, extra]
+
+    for gm in gw_models:
+        models.append(ChatModelDto(
+            key=gm.key,
+            family=gm.family,
+            label=gm.label,
+            efforts=list(gm.efforts),
+            default_effort=gm.default_effort,
+            supports_vision=gm.supports_vision,
+            context_length=gm.context_length,
+            gateway_label=gm.gateway_label,
+        ))
+
+    # Die interne Basis-URL geht nur an Admins. Normale User sehen nur, ob das
+    # Gateway laeuft und woran es ggf. klemmt.
+    is_admin = bool(user.get("is_admin"))
+    gw_status = []
+    for g in await gateways.status():
+        entry = dict(g)
+        if not is_admin:
+            entry["base_url"] = ""
+        gw_status.append(GatewayStatusDto(**entry))
+    kv = await db.kv_get_all(scope=user["id"])
+    default_key = (kv.get(auth_modes.KV_DEFAULT_MODEL) or "").strip()
+
+    log.info("PC_RESOLVE: /chat/models -> %d Modelle, %d Gateways, default=%r",
+             len(models), len(gw_status), default_key)
+    return ChatModelsDto(models=models, gateways=gw_status, default_key=default_key)
+
+
+# Pro Konversation darf immer nur EIN Turn laufen. Ohne das koennen zwei
+# Requests (Doppeltipp, Retry, zweites Geraet) denselben Ausgangszustand lesen
+# und danach Modell, Session, Nachrichten und Token-Stand gegenseitig
+# ueberschreiben. Der Lock ist prozesslokal, was reicht: der Server laeuft als
+# EIN uvicorn-Prozess.
+_CONV_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _conv_lock(cid: str) -> asyncio.Lock:
+    lock = _CONV_LOCKS.get(cid)
+    if lock is None:
+        lock = asyncio.Lock()
+        _CONV_LOCKS[cid] = lock
+    return lock
+
+
 @app.post("/conversations/{cid}/messages")
 async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_user)) -> EventSourceResponse:
     """Sendet eine User-Message und streamt die Assistant-Antwort via SSE."""
@@ -372,16 +474,76 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
             if a.get("user_id") != user["id"]:
                 raise HTTPException(403, "Attachment belongs to a different user.")
 
-    # User-Message speichern (Token-Schätzung machen wir grob über Zeichenlänge ÷ 4,
-    # die genauen Werte trägt das message_start-Event später nach)
-    estimated_tokens = max(1, len(body.content) // 4)
-    user_msg_id = await db.add_message(
-        cid,
-        role="user",
-        content=body.content,
-        tokens=estimated_tokens,
-        attachment_ids=body.attachment_ids,
+    # Gem und Modell werden VOR dem Speichern der User-Nachricht aufgeloest.
+    # Ein ungueltiges Modell soll mit 400 abbrechen, ohne eine verwaiste
+    # Nachricht im Chat zu hinterlassen.
+    gem = None
+    if conv.get("gem_id"):
+        gem = await db.get_gem(conv["gem_id"], user_id=user["id"])
+
+    # Modell-Aufloesung. Die erste Quelle, die etwas sagt, gewinnt:
+    #   1. was die App diesmal mitschickt. Ein LEERER String ist hier eine
+    #      Aussage ("nimm Claude"), `None` heisst "hab ich nicht mitgeschickt".
+    #   2. das Modell des Gems (ein Gem definiert sein Modell wie ein GPT)
+    #   3. das zuletzt in diesem Chat benutzte Modell
+    #   4. das globale Standard-Modell des Users
+    #   5. leer = Claude-Automatik (Bedrock-Alias bzw. SDK-Default)
+    user_kv = await db.kv_get_all(scope=user["id"])
+    previous_model = (conv.get("chat_model") or "").strip()
+    if body.model is not None:
+        resolved_model = body.model.strip()
+    else:
+        resolved_model = (
+            ((gem.get("model") or "").strip() if gem else "")
+            or previous_model
+            or (user_kv.get(auth_modes.KV_DEFAULT_MODEL) or "").strip()
+        )
+
+    # Zusatz-Modelle tragen den Gateway-Praefix. Alles andere ist Claude.
+    use_gateway = resolved_model.startswith("gw:")
+
+    # Allowlist. Ohne die waere `SELECTABLE_MODELS` reine UI-Dekoration und ein
+    # Client koennte beliebige Modell-Strings an die Claude-CLI durchreichen.
+    # Der Bedrock-Pin bleibt unberuehrt, der kommt aus dem KV, nicht von hier.
+    # Ungefiltert pruefen: kuratiert wird nur der Picker. Sonst wuerde ein
+    # Bestandschat, dessen Modell inzwischen aus der Allowlist gefallen ist,
+    # beim naechsten Turn mit 400 abbrechen.
+    gateway_models = await gateways.list_models(curated=False) if use_gateway else []
+    gw_model = next((m for m in gateway_models if m.key == resolved_model), None)
+    if use_gateway and gw_model is None:
+        raise HTTPException(400, (
+            f"Das Modell '{resolved_model}' wird gerade nicht angeboten. "
+            f"Bitte in den Einstellungen ein anderes waehlen."
+        ))
+    if resolved_model and not use_gateway:
+        if resolved_model not in claude_engine.ALLOWED_MODELS:
+            raise HTTPException(400, f"Unbekanntes Modell: {resolved_model!r}")
+
+    default_model = None if use_gateway else (resolved_model or None)
+
+    # Modellwechsel im laufenden Chat: die Claude-Session kennt die Turns der
+    # anderen Modelle nicht, also wird sie verworfen und der naechste
+    # Claude-Turn bekommt den Verlauf ueber `replay_history` neu.
+    #
+    # Wichtig: NUR wenn der Chat vorher schon ein Modell vermerkt hatte. Bei
+    # Bestandschats ist `chat_model` NULL, obwohl dort die ganze Zeit dasselbe
+    # Claude-Modell lief. Wuerden wir dort die Session wegwerfen, waere das eine
+    # Regression fuer jeden bestehenden Chat.
+    model_changed = bool(previous_model) and resolved_model != previous_model
+    drop_session = bool(model_changed and conv.get("claude_session_id"))
+    if drop_session:
+        # Fuer `replay_history` unten so tun, als waere die Session schon weg.
+        conv["claude_session_id"] = None
+
+    # Claude soll auch dann den Faden kennen, wenn die Session frisch ist, weil
+    # zwischendurch ein Zusatz-Modell geantwortet hat (oder die Session verloren
+    # ging). Nur wenn es ueberhaupt aeltere Nachrichten gibt.
+    replay_history = (
+        not use_gateway
+        and not conv.get("claude_session_id")
+        and conv.get("last_message_at") is not None
     )
+
 
     # Kurzer Auto-Titel (1-2 Wörter) wird — falls das die erste Nachricht des
     # Chats ist — im Hintergrund per günstigem Haiku erzeugt (siehe event_gen).
@@ -396,10 +558,6 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
     # Server dessen Instructions/Skills/Modell/Wissensdateien ein (server-
     # autoritativ). Effort bleibt app-getrieben (die App lädt gem.effort als
     # Startwert in den Chat-Picker).
-    gem = None
-    if conv.get("gem_id"):
-        gem = await db.get_gem(conv["gem_id"], user_id=user["id"])
-
     # Effort: Gem-Default (falls gesetzt) gewinnt — ein Gem definiert seine
     # Denktiefe wie ein GPT. Sonst der vom Client geschickte Wert.
     if gem and (gem.get("effort") or "").strip():
@@ -425,23 +583,31 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
     )
     skills_dict = effective_skills.model_dump()
 
-    # Globales Standard-Modell: Gem-Modell > User-KV-Default (Pro/Max + API;
-    # im Bedrock-Modus gewinnt weiter der Bedrock-Alias in claude_engine).
-    user_kv = await db.kv_get_all(scope=user["id"])
-    default_model = (
-        (gem.get("model") if gem else None)
-        or user_kv.get(auth_modes.KV_DEFAULT_MODEL)
-        or None
-    )
-    default_model = (default_model or "").strip() or None
+    # Bild-Werkzeug: Skill-Schalter des Chats plus die Standardwerte des Users.
+    allow_image_tool = bool(skills_dict.get("image_generation", True))
+    image_defaults = {
+        "size": (user_kv.get(_KV_IMAGE_DEFAULT_SIZE) or "").strip() or None,
+        "aspect_ratio": (user_kv.get(_KV_IMAGE_DEFAULT_ASPECT) or "").strip() or None,
+        "model": (user_kv.get(_KV_IMAGE_DEFAULT_MODEL) or "").strip() or None,
+    }
+
+    # Zusatz-Modelle bekommen den Prompt in einer angepassten Fassung: ohne den
+    # Anthropic-Produktblock und mit dem echten Modellnamen statt „Claude".
+    # Sonst behauptet Gemini oder GPT, Claude zu sein, und wir bezahlen jeden
+    # Turn ein paar tausend Tokens Produktwissen, das dort nichts nutzt.
+    if use_gateway and system_prompt and gw_model is not None:
+        system_prompt = system_prompts.adapt_for_model(
+            system_prompt, model_label=gw_model.label, family=gw_model.family,
+        )
 
     # Gem-Wissensdateien an jede Nachricht des Gem-Chats anhängen.
     extra_attachment_ids = (
         await db.get_gem_file_ids(conv["gem_id"]) if gem else []
     )
     log.info(
-        "PC_GEM: send cid=%s gem=%s default_model=%s gem_files=%d",
-        cid, (gem["id"] if gem else None), default_model, len(extra_attachment_ids),
+        "PC_GEM: send cid=%s gem=%s model=%s gateway=%s replay=%s gem_files=%d",
+        cid, (gem["id"] if gem else None), resolved_model or "claude",
+        use_gateway, replay_history, len(extra_attachment_ids),
     )
 
     async def event_gen() -> AsyncIterator[dict]:
@@ -450,6 +616,7 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
         delta_count = 0
         last_event = None
         assistant_msg_id: int | None = None
+        user_msg_id: int | None = None
         title_sent = False
         # Titel-Task läuft PARALLEL zum Antwort-Stream (überlappt die Wartezeit,
         # kostet also praktisch keine Extra-Latenz) und wird kurz vor `done`
@@ -462,19 +629,60 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
             ) if needs_title else None
         )
         log.info("PC_SSE: event_gen START cid=%s user=%s", cid, user["id"])
+        # Der Lock haelt den zweiten gleichzeitigen Turn desselben Chats auf,
+        # bis der erste durch ist. Sonst schreiben beide Modell, Session und
+        # Token-Stand durcheinander.
+        lock = _conv_lock(cid)
+        await lock.acquire()
         try:
+            # Ab hier ist der Chat exklusiv. Erst jetzt wird geschrieben, damit
+            # ein zweiter gleichzeitiger Turn nicht denselben Ausgangszustand
+            # sieht und ihn anschliessend ueberschreibt.
+            if resolved_model != previous_model:
+                await db.set_chat_model(cid, resolved_model, user_id=user["id"])
+            if drop_session:
+                await db.set_claude_session_id(cid, None)
+                log.info("PC_RESOLVE: cid=%s Modellwechsel %r -> %r, "
+                         "Claude-Session verworfen",
+                         cid, previous_model or "claude", resolved_model or "claude")
+
+            # User-Message speichern (Token-Schaetzung grob ueber Zeichenlaenge
+            # geteilt durch 4, die genauen Werte traegt das Usage-Event nach).
+            user_msg_id = await db.add_message(
+                cid,
+                role="user",
+                content=body.content,
+                tokens=max(1, len(body.content) // 4),
+                attachment_ids=body.attachment_ids,
+            )
             yield {"event": "user_saved", "data": json.dumps({"user_message_id": user_msg_id})}
             log.info("PC_SSE: yield user_saved cid=%s user_msg_id=%s", cid, user_msg_id)
 
-            async for ev in claude_engine.stream_reply(
-                cid, user_msg_id,
-                effort=effort,
-                system_prompt=system_prompt,
-                skills=skills_dict,
-                user_id=user["id"],
-                default_model=default_model,
-                extra_attachment_ids=extra_attachment_ids,
-            ):
+            if use_gateway:
+                engine_stream = openai_engine.stream_reply(
+                    cid, user_msg_id,
+                    model_key=resolved_model,
+                    effort=effort,
+                    system_prompt=system_prompt,
+                    user_id=user["id"],
+                    extra_attachment_ids=extra_attachment_ids,
+                    allow_image_tool=allow_image_tool,
+                    image_defaults=image_defaults,
+                )
+            else:
+                engine_stream = claude_engine.stream_reply(
+                    cid, user_msg_id,
+                    effort=effort,
+                    system_prompt=system_prompt,
+                    skills=skills_dict,
+                    user_id=user["id"],
+                    default_model=default_model,
+                    extra_attachment_ids=extra_attachment_ids,
+                    replay_history=replay_history,
+                    image_defaults=image_defaults,
+                )
+
+            async for ev in engine_stream:
                 etype = ev.pop("type")
                 last_event = etype
                 if etype == "delta":
@@ -545,6 +753,7 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
                 title_task.add_done_callback(
                     lambda t: t.cancelled() or t.exception()
                 )
+            lock.release()
             log.info(
                 "PC_SSE: event_gen END cid=%s deltas=%d last=%s assistant_msg_id=%s",
                 cid, delta_count, last_event, assistant_msg_id,
@@ -762,7 +971,7 @@ async def export_markdown(cid: str, user=Depends(require_user)):
     lines: list[str] = [
         f"# {title}",
         "",
-        f"_Pocket Claude export · started {created} · {len(messages)} messages_",
+        f"_PocketClot export · started {created} · {len(messages)} messages_",
         "",
         "---",
         "",
@@ -1901,6 +2110,13 @@ async def get_billing_status(user=Depends(require_user)) -> BillingStatusDto:
 
 _KV_IMAGE_API_KEY = "image_api_key"
 
+# Bild-Standards des Users. Sie gelten fuer den Bilder-Screen UND fuer das
+# `generate_image`-Werkzeug im Chat, damit ein im Chat erzeugtes Bild genauso
+# aussieht wie eins vom Bilder-Screen.
+_KV_IMAGE_DEFAULT_SIZE = "image_default_size"
+_KV_IMAGE_DEFAULT_ASPECT = "image_default_aspect"
+_KV_IMAGE_DEFAULT_MODEL = "image_default_model"
+
 
 def _mask_key(k: str) -> str:
     """Maskiert einen API-Key fürs UI: 'AIzaSy…pPWk'."""
@@ -1919,7 +2135,50 @@ async def images_config(user=Depends(require_user)):
     api_key = (kv.get(_KV_IMAGE_API_KEY) or "").strip()
     cfg["configured"] = bool(api_key)
     cfg["api_key_masked"] = _mask_key(api_key) if api_key else None
+    # Die vom User gesetzten Standardwerte. Nicht gesetzt = der Wert aus
+    # image_engine, damit der Client immer etwas Sinnvolles vorbelegen kann.
+    cfg["defaults"] = {
+        "size": (kv.get(_KV_IMAGE_DEFAULT_SIZE) or "").strip() or cfg["default_image_size"],
+        "aspect_ratio": (kv.get(_KV_IMAGE_DEFAULT_ASPECT) or "").strip() or cfg["default_aspect"],
+        "model": (kv.get(_KV_IMAGE_DEFAULT_MODEL) or "").strip() or cfg["default_model"],
+    }
     return cfg
+
+
+@app.put("/images/defaults")
+async def images_set_defaults(body: dict, user=Depends(require_user)):
+    """Setzt Standard-Aufloesung, Seitenverhaeltnis und Bildmodell des Users.
+
+    Ein leerer String setzt den jeweiligen Wert auf den Server-Default zurueck,
+    ein fehlendes Feld laesst ihn unveraendert.
+    """
+    if not isinstance(body, dict):
+        raise HTTPException(400, "JSON-Objekt erwartet.")
+    cfg = image_engine.get_config()
+    valid_sizes = {x["id"] for x in cfg["image_sizes"]}
+    valid_aspects = {x["id"] for x in cfg["aspect_ratios"]}
+    valid_models = {x["id"] for x in cfg["models"]}
+
+    mapping = [
+        ("size", _KV_IMAGE_DEFAULT_SIZE, valid_sizes),
+        ("aspect_ratio", _KV_IMAGE_DEFAULT_ASPECT, valid_aspects),
+        ("model", _KV_IMAGE_DEFAULT_MODEL, valid_models),
+    ]
+    updates: dict[str, str] = {}
+    for field, kv_key, allowed in mapping:
+        if field not in body:
+            continue
+        raw = body.get(field)
+        if raw is not None and not isinstance(raw, str):
+            raise HTTPException(400, f"{field} muss ein String sein.")
+        value = (raw or "").strip()
+        if value and value not in allowed:
+            raise HTTPException(400, f"Unbekannter Wert fuer {field}: {value!r}")
+        updates[kv_key] = value
+    if updates:
+        await db.kv_set_many(updates, scope=user["id"])
+
+    return await images_config(user=user)
 
 
 @app.put("/images/credentials")
@@ -2180,13 +2439,14 @@ async def images_generate(body: dict, user=Depends(require_user)):
     als Attachments. Returnt die neuen Attachment-IDs + Metadaten.
 
     Body:
-      prompt:        str (required)
-      conversation_id: str (optional — wenn gesetzt, wird die Generation als
-                       Assistant-Message im Chat-Stream gespeichert)
-      model:         str (optional, default = neuestes Nano-Banana)
-      aspect_ratio:  str (optional, '1:1' | '16:9' | '9:16' | '4:3' | '3:4')
-      count:         int (optional, default 1, max 4)
-      reference_attachment_ids: list[str] (optional, für Image-Editing)
+      prompt:                  str (required)
+      conversation_id:         str (optional: wenn gesetzt, wird die Generation als
+                               Assistant-Message im Chat-Stream gespeichert)
+      model:                   str (optional, default = neuestes Nano-Banana)
+      aspect_ratio:            str (optional, '1:1' | '16:9' | '9:16' | '4:3' | '3:4')
+      image_size / size:       str (optional, '1K' | '2K' | '4K')
+      count:                   int (optional, default 1, max 4)
+      reference_attachment_ids: list[str] (optional, fuer Image-Editing)
     """
     if not isinstance(body, dict):
         raise HTTPException(400, "JSON-Objekt erwartet.")
@@ -2204,7 +2464,7 @@ async def images_generate(body: dict, user=Depends(require_user)):
             "'Bilder' eintragen.",
         )
 
-    # Referenz-Bilder laden (für Image-Editing) — read_bytes in to_thread,
+    # Referenz-Bilder laden (fuer Image-Editing): read_bytes in to_thread,
     # damit ein 10-MB-Bild nicht den Event-Loop blockiert.
     import asyncio as _asyncio_for_imgs
     ref_ids = body.get("reference_attachment_ids") or []
@@ -2223,51 +2483,33 @@ async def images_generate(body: dict, user=Depends(require_user)):
         except OSError:
             raise HTTPException(500, f"Referenz-Datei {aid} konnte nicht gelesen werden.")
 
-    # Generieren — `count` defensiv parsen, sonst crasht der Endpoint mit
-    # 500 wenn der Client versehentlich `count="2"` als String schickt (gültig
-    # in JSON, aber die Pydantic-Loose-Validation greift hier nicht weil body=dict).
+    # Generieren: `count` defensiv parsen, sonst crasht der Endpoint mit
+    # 500 wenn der Client versehentlich `count="2"` als String schickt.
     try:
         raw_count = body.get("count")
         count_val = int(raw_count) if raw_count not in (None, "") else 1
     except (TypeError, ValueError):
         raise HTTPException(400, f"Invalid count value: {raw_count!r}")
+
+    image_size = body.get("image_size") or body.get("size")
     try:
         images = await image_engine.generate(
             api_key=api_key,
             prompt=prompt,
             model=body.get("model"),
             aspect_ratio=body.get("aspect_ratio"),
+            image_size=image_size,
             count=count_val,
             references=references or None,
         )
     except image_engine.ImageGenError as e:
         raise HTTPException(502, str(e))
 
-    # Outputs als Attachments speichern — write_bytes in to_thread, da Bilder
-    # bis zu mehrere MB groß sein können.
-    import secrets as _secrets
-    out_atts: list[dict] = []
-    for img in images:
-        ext = "png" if "png" in img.mime_type else (img.mime_type.split("/")[-1] or "bin")
-        disk_name = f"img_{_secrets.token_urlsafe(10)}.{ext}"
-        target = settings.uploads_dir / disk_name
-        await _asyncio_for_imgs.to_thread(target.write_bytes, img.data)
-        aid = await db.add_attachment(
-            filename=f"gemini-image-{img.index + 1}.{ext}",
-            mime_type=img.mime_type,
-            size_bytes=len(img.data),
-            path=target,
-            user_id=user["id"],
-        )
-        out_atts.append({
-            "id": aid,
-            "filename": f"gemini-image-{img.index + 1}.{ext}",
-            "mime_type": img.mime_type,
-            "size_bytes": len(img.data),
-            "text": img.text,
-        })
+    # Outputs zentral ueber image_tool als Attachments speichern
+    from pocket_claude import image_tool
+    out_atts = await image_tool.store_images(images, user_id=user["id"])
 
-    # Optional: Als Assistant-Message in eine Konversation einhängen, damit es
+    # Optional: Als Assistant-Message in eine Konversation einhaengen, damit es
     # im Chat-Stream auftaucht.
     cid = (body.get("conversation_id") or "").strip()
     saved_message = None
@@ -2289,9 +2531,9 @@ async def images_generate(body: dict, user=Depends(require_user)):
             attachment_ids=[a["id"] for a in out_atts],
             tokens=0,
         )
-        # Gleicher kurzer Auto-Titel wie im Chat-Flow (1-2 Wörter statt der
-        # verbatim ersten Zeile). Non-streaming → Client zieht den Titel beim
-        # nächsten Laden der Liste.
+        # Gleicher kurzer Auto-Titel wie im Chat-Flow (1-2 Woerter statt der
+        # verbatim ersten Zeile). Non-streaming: Client zieht den Titel beim
+        # naechsten Laden der Liste.
         await claude_engine.generate_conversation_title(cid, prompt, user_id=user["id"])
         saved_message = {"id": msg_id, "conversation_id": cid}
 

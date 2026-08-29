@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Pocket Claude — update (on the server host)
+#  PocketClot — update (on the server host)
 # =============================================================================
 #
 #  Fetches the latest version from GitHub and restarts the service.

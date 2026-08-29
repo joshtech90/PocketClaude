@@ -1,6 +1,6 @@
 """Multi-provider authentication for the Claude CLI subprocess.
 
-Pocket Claude can talk to Claude through three different paths, selectable
+PocketClot can talk to Claude through three different paths, selectable
 per user:
 
   - **pro_max** — the default. Uses the OAuth token the operator created
@@ -20,8 +20,8 @@ Per-user KV settings (scope = user_id):
   aws_access_key_id        AWS access key
   aws_secret_access_key    AWS secret key
   aws_session_token        Optional STS session token
-  bedrock_opus_model       e.g. us.anthropic.claude-opus-4-7 (default)
-  bedrock_sonnet_model     e.g. us.anthropic.claude-sonnet-4-6
+  bedrock_opus_model       e.g. us.anthropic.claude-opus-5 (default)
+  bedrock_sonnet_model     e.g. us.anthropic.claude-sonnet-5
   bedrock_haiku_model      e.g. us.anthropic.claude-haiku-4-5-20251001-v1:0
   bedrock_model_alias      Which model alias to pin as the primary
 
@@ -54,7 +54,7 @@ KV_BEDROCK_SONNET = "bedrock_sonnet_model"
 KV_BEDROCK_HAIKU = "bedrock_haiku_model"
 KV_BEDROCK_ALIAS = "bedrock_model_alias"  # "opus" | "sonnet" | "haiku"
 # Globales Standard-Modell für Pro/Max + API-Key-Modus (voller Modell-String
-# wie "claude-opus-4-8"; "" = automatisch). Im Bedrock-Modus ungenutzt.
+# wie "claude-opus-5"; "" = automatisch). Im Bedrock-Modus ungenutzt.
 KV_DEFAULT_MODEL = "claude_default_model"
 
 # Keys that are sensitive — never returned to the client in plaintext.
@@ -68,8 +68,8 @@ SECRET_KEYS: Iterable[str] = (
 # Bedrock cross-region inference-profile IDs. The `us.` prefix is required for
 # cross-region inference; users on other AWS regions can override these via
 # the settings UI.
-DEFAULT_BEDROCK_OPUS = "us.anthropic.claude-opus-4-7"
-DEFAULT_BEDROCK_SONNET = "us.anthropic.claude-sonnet-4-6"
+DEFAULT_BEDROCK_OPUS = "us.anthropic.claude-opus-5"
+DEFAULT_BEDROCK_SONNET = "us.anthropic.claude-sonnet-5"
 DEFAULT_BEDROCK_HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 DEFAULT_BEDROCK_ALIAS = "opus"
 DEFAULT_AWS_REGION = "us-east-1"

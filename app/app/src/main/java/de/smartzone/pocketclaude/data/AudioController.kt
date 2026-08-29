@@ -172,7 +172,7 @@ class AudioController(
                 .setUri(android.net.Uri.parse(url))
                 .setMediaMetadata(
                     MediaMetadata.Builder()
-                        .setTitle("Pocket Claude")
+                        .setTitle("PocketClot")
                         .setArtist("Nachricht $messageId")
                         .setIsBrowsable(false)
                         .setIsPlayable(true)

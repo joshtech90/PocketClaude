@@ -1,6 +1,6 @@
-# Pocket Claude — Server
+# PocketClot — Server
 
-Self-hosted FastAPI backend for [Pocket Claude](../README.md). Talks to Claude through one of three pluggable backends — the [Claude Code CLI](https://github.com/anthropics/claude-code) (OAuth / Pro/Max), a direct Anthropic API key, or AWS Bedrock — and exposes it as a multi-user chat API plus a built-in web UI.
+Self-hosted FastAPI backend for [PocketClot](../README.md). Talks to Claude through one of three pluggable backends — the [Claude Code CLI](https://github.com/anthropics/claude-code) (OAuth / Pro/Max), a direct Anthropic API key, or AWS Bedrock — and exposes it as a multi-user chat API plus a built-in web UI.
 
 For the full project overview, architecture diagram, and quickstart, see the [top-level README](../README.md).
 
@@ -42,7 +42,7 @@ Server listens on `http://127.0.0.1:8787`. First start prints the initial admin 
 See [`deploy/README.md`](deploy/README.md). One-line install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClaude/main/server/deploy/install-linux.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClot/main/server/deploy/install-linux.sh | sudo bash
 ```
 
 ## API surface

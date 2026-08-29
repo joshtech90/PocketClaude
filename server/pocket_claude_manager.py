@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Pocket Claude — Server-Manager (macOS-GUI).
+PocketClot — Server-Manager (macOS-GUI).
 
-Doppelklick-Start über `Pocket Claude Server.command`, oder direkt:
+Doppelklick-Start über `PocketClot Server.command`, oder direkt:
     python3 pocket_claude_manager.py
 
 Was er kann:
@@ -157,7 +157,7 @@ class ManagerWindow:
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Pocket Claude Server")
+        self.root.title("PocketClot Server")
         self.root.geometry("780x640")
         self.root.minsize(680, 520)
 
@@ -188,7 +188,7 @@ class ManagerWindow:
         top = ttk.Frame(self.root, padding=(16, 14, 16, 8))
         top.pack(fill="x")
 
-        title = ttk.Label(top, text="Pocket Claude — Server",
+        title = ttk.Label(top, text="PocketClot — Server",
                           font=("Helvetica", 18, "bold"))
         title.grid(row=0, column=0, columnspan=4, sticky="w")
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Pocket Claude — Cloudflare Named Tunnel Setup
+#  PocketClot — Cloudflare Named Tunnel Setup
 # =============================================================================
 #
 #  Sets up a PERSISTENT Cloudflare tunnel:
@@ -178,10 +178,10 @@ echo "============================================================"
 c_green "Cloudflare Named Tunnel is running."
 echo "============================================================"
 echo
-echo "Pocket Claude is now PERMANENTLY reachable at:"
+echo "PocketClot is now PERMANENTLY reachable at:"
 c_green "  https://$HOSTNAME"
 echo
-echo "This URL survives any reboot — enter it in the Pocket Claude app."
+echo "This URL survives any reboot — enter it in the PocketClot app."
 echo
 echo "Status:    systemctl status cloudflared"
 echo "Logs:      journalctl -u cloudflared -f"

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Pocket Claude are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
+All notable changes to PocketClot are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
 ## [0.2.0] — 2026-05-19
 
@@ -19,7 +19,7 @@ All notable changes to Pocket Claude are documented here. Format follows [Keep a
 
 - `claude-agent-sdk` constraint raised to `>=0.2.82,<1.0` (was `>=0.1.81,<0.2`); the 0.1 line is no longer compatible with current Claude Code CLI builds.
 - `install-linux.sh` now detects an existing system-wide `claude` binary and skips the Node + npm + claude-cli install when one is on PATH — saves time and avoids version collisions on hosts that already have it. Also warns when the binary isn't visible to the `pocket-claude` service user.
-- `install-linux.sh` default `REPO_URL` updated to the new mono-repo (`joshtech90/PocketClaude`).
+- `install-linux.sh` default `REPO_URL` updated to the new mono-repo (`joshtech90/PocketClot`).
 - README rewritten — replaced an incorrect claim about Anthropic API billing with the actual reasons to self-host (open source, extra features, multi-user on one subscription, clean second-Claude separation, data ownership).
 
 ### Security
@@ -32,7 +32,7 @@ All notable changes to Pocket Claude are documented here. Format follows [Keep a
 - **"New chat" button** in the drawer no longer scrolls to the end of the current chat. Now creates a fresh conversation directly.
 - Personal references removed from Python module headers + deploy scripts.
 
-[0.2.0]: https://github.com/joshtech90/PocketClaude/releases/tag/v0.2.0
+[0.2.0]: https://github.com/joshtech90/PocketClot/releases/tag/v0.2.0
 
 ## [0.1.0] — 2026-05-19
 
@@ -71,4 +71,4 @@ All notable changes to Pocket Claude are documented here. Format follows [Keep a
   - `server/deploy/README.md` covering Tailscale + Cloudflare paths, host migration, troubleshooting.
   - `server/deploy/WORKFLOW.md` for the daily Mac → Mini-PC development loop.
 
-[0.1.0]: https://github.com/joshtech90/PocketClaude/releases/tag/v0.1.0
+[0.1.0]: https://github.com/joshtech90/PocketClot/releases/tag/v0.1.0

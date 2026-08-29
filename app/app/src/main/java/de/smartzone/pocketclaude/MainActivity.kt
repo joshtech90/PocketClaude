@@ -133,7 +133,10 @@ private fun PocketApp(initialChatCid: String?, shareNonce: Int) {
     val settings by container.settingsRepository.settingsFlow
         .collectAsState(initial = de.smartzone.pocketclaude.data.AppSettings())
 
-    PocketClaudeTheme(mode = settings.themeMode) {
+    PocketClaudeTheme(
+        mode = settings.themeMode,
+        palette = de.smartzone.pocketclaude.ui.theme.PocketPalette.fromId(settings.paletteId),
+    ) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()

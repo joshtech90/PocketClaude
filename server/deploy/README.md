@@ -1,6 +1,6 @@
-# Pocket Claude — Production Deployment
+# PocketClot — Production Deployment
 
-This is how you get Pocket Claude **permanently online** on a mini-PC (or any
+This is how you get PocketClot **permanently online** on a mini-PC (or any
 Linux host), with a **stable URL** that survives every reboot.
 
 **Default path: Tailscale Funnel.** Persistent `*.ts.net` URL, no domain
@@ -12,7 +12,7 @@ required, free, auto-HTTPS, no port forwarding.
 
 ```bash
 # 1. On the mini-PC: one-shot install
-curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClaude/main/server/deploy/install-linux.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClot/main/server/deploy/install-linux.sh | sudo bash
 
 # 2. Log in to Claude (one-time)
 sudo -u pocket-claude -H claude login
@@ -25,7 +25,7 @@ sudo bash /opt/pocket-claude/deploy/setup-tailscale-funnel.sh
 ./deploy/migrate-to-server.sh me@your-host    # Tailscale name is enough
 ```
 
-After that, Pocket Claude runs **always**, even after reboot, power outage, or
+After that, PocketClot runs **always**, even after reboot, power outage, or
 update. The URL is persistent — enter it in the app once and never touch it
 again.
 
@@ -37,7 +37,7 @@ below).
 ## Architecture
 
 ```
-   Pocket Claude App (Android)
+   PocketClot App (Android)
             │
             │  HTTPS — fixed URL, e.g. https://<host>.<tailnet>.ts.net
             ▼
@@ -82,12 +82,12 @@ makes later migration from a Mac easier):
 ssh-copy-id user@your-host.local
 ```
 
-### Step 2: Install Pocket Claude
+### Step 2: Install PocketClot
 
 On the mini-PC:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClaude/main/server/deploy/install-linux.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClot/main/server/deploy/install-linux.sh | sudo bash
 ```
 
 The script is **idempotent** — you can run it as often as you want without
@@ -108,7 +108,7 @@ After the script finishes, the service is **not yet running**, because
 
 ### Step 3: Pick a Claude backend
 
-Pocket Claude can talk to Claude through three different backends, switchable
+PocketClot can talk to Claude through three different backends, switchable
 per user inside the app (**Settings → Claude connection**):
 
 | Backend | Setup needed on the server | Billing |
@@ -189,7 +189,7 @@ The script:
 
 ### Step 5: App side
 
-Open the Pocket Claude app:
+Open the PocketClot app:
 1. **Add profile**
 2. Server URL = your new tunnel URL from step 4
 3. Username = `Admin`
@@ -204,7 +204,7 @@ Open the Pocket Claude app:
 
 ## Migration from a Mac to the mini-PC
 
-If you have been running Pocket Claude on a Mac and want to move it to the
+If you have been running PocketClot on a Mac and want to move it to the
 mini-PC — no double setup needed.
 
 **On the Mac** (inside the `server/` subdirectory of the PocketClaude repo):
@@ -354,7 +354,7 @@ Most common causes:
 
 ### "Claude does not answer / rate limit"
 
-That is on the Claude CLI / Anthropic side, not Pocket Claude. Check:
+That is on the Claude CLI / Anthropic side, not PocketClot. Check:
 
 ```bash
 sudo -u pocket-claude -H claude -p "Test"
@@ -366,7 +366,7 @@ If that also fails: check your subscription status at claude.com, and re-run
 ### "Migration from the Mac fails"
 
 - SSH access working? `ssh user@your-host.local 'echo OK'`
-- Pocket Claude installed on the mini-PC? `ssh ... 'ls /opt/pocket-claude'`
+- PocketClot installed on the mini-PC? `ssh ... 'ls /opt/pocket-claude'`
 - Passwordless `sudo`? If not, edit `sudoers` once or enter the password by
   hand (the migration script prompts).
 
@@ -401,7 +401,7 @@ should stay enabled.
 
 The Claude Code CLI has an internal "skip turn" optimization for agentic
 runs that sometimes fires on bare user statements ("I'll have a coffee").
-Pocket Claude detects this and surfaces an error to the app so you don't
+PocketClot detects this and surfaces an error to the app so you don't
 see a silent empty bubble.
 
 The app's bundled system prompt explicitly forbids skip-turn replies, so
@@ -445,7 +445,7 @@ sudo systemctl restart pocket-claude
 | Debian 12 | Works | Same as Ubuntu |
 | Fedora 39+ | Theoretical | Script has a dnf path, not live tested |
 | Raspberry Pi OS | Theoretical | armhf/arm64 should work; cloudflared arm64 build is auto-installed |
-| macOS | Dev only | Use `Pocket Claude Server.command` (Tkinter GUI) in the repo root |
+| macOS | Dev only | Use `PocketClot Server.command` (Tkinter GUI) in the repo root |
 | Windows | Not supported | Use WSL2 with Ubuntu |
 
 ---
@@ -474,6 +474,6 @@ person/device (App → Settings → Admin → User management).
 They work — the app starts a foreground service during streaming and posts
 a "reply ready" notification when the app was in the background.
 
-**Can I run multiple Pocket Claude servers in parallel?**
+**Can I run multiple PocketClot servers in parallel?**
 Yes. Each has its own URL, and you create one app profile per server. For
 example, one at home (Cloudflare domain) and one for travel (Tailscale).

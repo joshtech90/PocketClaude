@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0E0E10">
-<title>Pocket Claude</title>
+<title>PocketClot</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%234A90C2' d='M12 2a9 9 0 0 0-9 9c0 2 .6 3.8 1.7 5.3L3 21l4.9-1.6c1.3.7 2.7 1 4.1 1a9 9 0 1 0 0-18zm0 16c-1.2 0-2.4-.3-3.4-.9l-.4-.2-2.4.8.8-2.3-.2-.4A7 7 0 1 1 12 18z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css?v=20260701a">
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
@@ -63,7 +63,7 @@
         <svg viewBox="0 0 24 24" width="40" height="40"><circle cx="12" cy="12" r="10" fill="url(#brand-grad)"/><path d="M12 8v6m-3-3 3 3 3-3" stroke="white" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>
         <defs><linearGradient id="brand-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#5BC0DE"/><stop offset="100%" stop-color="#4A90C2"/></linearGradient></defs>
       </div>
-      <h1 data-i18n="app_name">Pocket Claude</h1>
+      <h1 data-i18n="app_name">PocketClot</h1>
       <p data-i18n="login_subtitle">Mit Deinem Server verbinden.</p>
     </div>
     <label class="field">
@@ -184,23 +184,17 @@
         <svg class="icon"><use href="#icon-sidebar"/></svg>
       </button>
       <div class="topbar-title">
-        <h1 id="chat-title">Pocket Claude</h1>
+        <h1 id="chat-title">PocketClot</h1>
         <span id="chat-meta" class="topbar-meta"></span>
       </div>
       <div class="topbar-actions">
         <div class="effort-wrap">
-          <button id="effort-btn" class="pill-btn" data-i18n-title="effort_title" title="Thinking depth">
+          <button id="effort-btn" class="pill-btn" data-i18n-title="effort_title" title="Model & Thinking depth">
+            <span id="model-label"></span>
             <span id="effort-label">High</span>
             <svg class="icon icon-sm"><use href="#icon-chevron-down"/></svg>
           </button>
-          <div id="effort-menu" class="dropdown hidden">
-            <button data-effort="off">Off</button>
-            <button data-effort="low">Low</button>
-            <button data-effort="medium">Medium</button>
-            <button data-effort="high">High</button>
-            <button data-effort="xhigh">xHigh</button>
-            <button data-effort="max">Max</button>
-          </div>
+          <div id="effort-menu" class="dropdown hidden"></div>
         </div>
         <button id="more-btn" class="icon-btn" data-i18n-title="more_title" title="More">
           <svg class="icon"><use href="#icon-more"/></svg>
@@ -259,7 +253,7 @@
           <span class="mic-pulse mic-pulse-2" aria-hidden="true"></span>
         </button>
         <input id="file-input" type="file" hidden multiple accept="image/*,application/pdf,.txt,.md">
-        <textarea id="input" rows="1" placeholder="Frag Pocket Claude…" data-i18n-placeholder="compose_placeholder" required></textarea>
+        <textarea id="input" rows="1" placeholder="Frag PocketClot…" data-i18n-placeholder="compose_placeholder" required></textarea>
         <button id="send-btn" type="submit" class="composer-btn primary" data-i18n-title="send_title" title="Send">
           <svg class="icon"><use href="#icon-send"/></svg>
         </button>
@@ -270,7 +264,7 @@
         <svg class="icon icon-sm"><use href="#icon-loop"/></svg>
         <span data-i18n="auto_mode_pill_active">Auto-Modus aktiv — Klick zum Stoppen</span>
       </div>
-      <p class="composer-hint" id="composer-hint" data-i18n="composer_hint">⌘/Ctrl + Enter zum Senden · Pocket Claude kann Fehler machen.</p>
+      <p class="composer-hint" id="composer-hint" data-i18n="composer_hint">⌘/Ctrl + Enter zum Senden · PocketClot kann Fehler machen.</p>
     </div>
   </main>
 </div>

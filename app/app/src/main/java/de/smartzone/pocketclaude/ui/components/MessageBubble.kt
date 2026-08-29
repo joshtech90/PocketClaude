@@ -9,6 +9,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import de.smartzone.pocketclaude.R
 import de.smartzone.pocketclaude.data.AttachmentRefDto
 import de.smartzone.pocketclaude.ui.theme.PocketTheme
+import java.util.Locale
 
 @Composable
 fun UserBubble(
@@ -78,11 +80,17 @@ fun UserBubble(
     val showCollapsed = collapseLongMessages && !expanded
     val maxLines = if (showCollapsed) COLLAPSE_MAX_LINES else Int.MAX_VALUE
     val copy = rememberCopyHandler(text)
+    val bubbleShape = RoundedCornerShape(
+        topStart = 24.dp,
+        topEnd = 24.dp,
+        bottomStart = 24.dp,
+        bottomEnd = 7.dp,
+    )
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 56.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            .padding(start = 52.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
         horizontalArrangement = Arrangement.End,
     ) {
         Column(horizontalAlignment = Alignment.End) {
@@ -94,15 +102,9 @@ fun UserBubble(
                 Box(
                     modifier = Modifier
                         .widthIn(max = 320.dp)
-                        .clip(
-                            RoundedCornerShape(
-                                topStart = 22.dp,
-                                topEnd = 22.dp,
-                                bottomStart = 22.dp,
-                                bottomEnd = 6.dp,
-                            )
-                        )
+                        .clip(bubbleShape)
                         .background(pocket.bubbleUser)
+                        .border(1.dp, Color.White.copy(alpha = 0.14f), bubbleShape)
                         // Normaler clickable (NICHT combinedClickable) — Long-
                         // Click bleibt dann beim eingebetteten SelectionContainer
                         // (wird vom ChatScreen umgewickelt), damit native Text-
@@ -131,7 +133,7 @@ fun UserBubble(
                 // long messages back to the clipboard for re-use.
                 IconButton(
                     onClick = copy,
-                    modifier = Modifier.size(28.dp).padding(top = 2.dp, end = 2.dp),
+                    modifier = Modifier.padding(top = 2.dp, end = 2.dp).size(48.dp),
                 ) {
                     Icon(
                         Icons.Filled.ContentCopy,
@@ -210,6 +212,8 @@ private fun ThinkingBlock(text: String, isLive: Boolean) {
 @Composable
 fun AssistantBubble(
     text: String,
+    /** Vom Modell im Chat erzeugte Bilder. Werden unter dem Text gezeigt. */
+    attachments: List<AttachmentRefDto> = emptyList(),
     isStreaming: Boolean = false,
     thinkingText: String = "",
     ttsState: TtsState = TtsState.Idle,
@@ -229,8 +233,18 @@ fun AssistantBubble(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp),
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PocketBrandMark(size = 25.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.app_name).uppercase(Locale.ROOT),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
         // Denk-Block: animiertes Fade+Expand beim Erscheinen, animiertes
         // Shrink+Fade sobald die echte Antwort losgeht. Bleibt weg sobald
         // text einsetzt, auch wenn thinkingText noch was enthält.
@@ -263,17 +277,24 @@ fun AssistantBubble(
                 }
             }
         }
+        // Im Chat erzeugte Bilder. Sie erscheinen sofort, sobald das Werkzeug
+        // fertig ist, und bleiben nach dem Neuladen an der Nachricht haengen.
+        if (attachments.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            AttachmentsStrip(attachments, alignEnd = false)
+        }
         // Tool-Row: Vorlese-Button + Copy-Button nebeneinander. Erscheint nur
         // wenn Streaming fertig und Text da ist.
         if (onSpeakClick != null && !isStreaming && text.isNotBlank()) {
                 Row(
                     modifier = Modifier.padding(start = 4.dp, top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     when (ttsState) {
                         TtsState.Idle -> IconButton(
                             onClick = onSpeakClick,
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(48.dp),
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.VolumeUp,
@@ -283,7 +304,7 @@ fun AssistantBubble(
                             )
                         }
                         TtsState.Loading -> Box(
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(48.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             CircularProgressIndicator(
@@ -295,7 +316,7 @@ fun AssistantBubble(
                             // Pause + Abbrechen nebeneinander
                             IconButton(
                                 onClick = { onPauseClick?.invoke() },
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
                                     Icons.Filled.Pause,
@@ -306,7 +327,7 @@ fun AssistantBubble(
                             }
                             IconButton(
                                 onClick = { onStopClick?.invoke() },
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
                                     Icons.Filled.Stop,
@@ -320,7 +341,7 @@ fun AssistantBubble(
                             // Weiter + Abbrechen nebeneinander
                             IconButton(
                                 onClick = { onResumeClick?.invoke() },
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
                                     Icons.Filled.PlayArrow,
@@ -331,7 +352,7 @@ fun AssistantBubble(
                             }
                             IconButton(
                                 onClick = { onStopClick?.invoke() },
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
                                     Icons.Filled.Stop,
@@ -348,7 +369,7 @@ fun AssistantBubble(
                     // nativen Text-Selektion).
                     IconButton(
                         onClick = copy,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(48.dp),
                     ) {
                         Icon(
                             Icons.Filled.ContentCopy,
@@ -376,7 +397,12 @@ fun CompactionNotice(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                    RoundedCornerShape(50),
+                )
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
             Text(
@@ -440,7 +466,7 @@ private fun AttachmentChip(att: AttachmentRefDto) {
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier
                 .size(width = 200.dp, height = 200.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         )
         return

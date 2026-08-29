@@ -1,0 +1,184 @@
+package de.smartzone.pocketclaude.ui.components
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import de.smartzone.pocketclaude.R
+import de.smartzone.pocketclaude.ui.theme.AtelierCoral
+import de.smartzone.pocketclaude.ui.theme.AtelierGold
+import de.smartzone.pocketclaude.ui.theme.PocketTheme
+import java.util.Locale
+
+@Composable
+fun PocketBackdrop(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val colors = PocketTheme.colors
+    val background = MaterialTheme.colorScheme.background
+    Box(
+        modifier = modifier.background(
+            Brush.verticalGradient(
+                listOf(background, colors.surfaceLow, background)
+            )
+        ),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawCircle(
+                color = colors.ambientPrimary.copy(alpha = 0.075f),
+                radius = size.minDimension * 0.52f,
+                center = Offset(size.width * 1.04f, size.height * 0.03f),
+            )
+            drawCircle(
+                color = colors.ambientSecondary.copy(alpha = 0.055f),
+                radius = size.minDimension * 0.42f,
+                center = Offset(size.width * -0.08f, size.height * 0.48f),
+            )
+        }
+        content()
+    }
+}
+
+@Composable
+fun PocketBrandMark(
+    modifier: Modifier = Modifier,
+    size: Dp = 42.dp,
+) {
+    // Das Markenzeichen der App, dasselbe Motiv wie das Launcher-Icon. Frueher
+    // wurde hier ein generischer Vier-Zacken-Stern gezeichnet; der hatte mit
+    // dem Icon auf dem Homescreen nichts zu tun.
+    Image(
+        painter = painterResource(R.drawable.ic_brand_mark),
+        contentDescription = null,
+        modifier = modifier.size(size),
+    )
+}
+
+@Composable
+fun PocketIconButton(
+    icon: ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    emphasized: Boolean = false,
+    contentColor: Color? = null,
+) {
+    val background = if (emphasized) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.86f)
+    }
+    val defaultForeground = if (emphasized) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val foreground = contentColor ?: defaultForeground
+    Surface(
+        modifier = modifier.size(48.dp),
+        shape = CircleShape,
+        color = background,
+        contentColor = foreground,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (emphasized) Color.Transparent else PocketTheme.colors.outlineSoft,
+        ),
+        shadowElevation = if (emphasized) 7.dp else 0.dp,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(role = Role.Button, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(21.dp))
+        }
+    }
+}
+
+@Composable
+fun PocketScreenTitle(
+    title: String,
+    eyebrow: String,
+    modifier: Modifier = Modifier,
+) {
+    val showEyebrow = androidx.compose.ui.platform.LocalDensity.current.fontScale <= 1.3f
+    androidx.compose.foundation.layout.Column(modifier) {
+        if (showEyebrow) {
+            Text(
+                text = eyebrow.uppercase(Locale.ROOT),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+fun PocketStatusPill(
+    text: String,
+    modifier: Modifier = Modifier,
+    tint: Color = MaterialTheme.colorScheme.secondary,
+    icon: ImageVector? = Icons.Filled.AutoAwesome,
+) {
+    Row(
+        modifier = modifier
+            .background(tint.copy(alpha = 0.12f), RoundedCornerShape(50))
+            .border(1.dp, tint.copy(alpha = 0.2f), RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}

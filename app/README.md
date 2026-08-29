@@ -1,6 +1,6 @@
-# Pocket Claude — Android App
+# PocketClot — Android App
 
-Native Android client for [Pocket Claude](../README.md). Kotlin + Jetpack Compose Material 3, no web wrapper.
+Native Android client for [PocketClot](../README.md). Kotlin + Jetpack Compose Material 3, no web wrapper.
 
 For project overview, architecture, and quickstart, see the [top-level README](../README.md).
 

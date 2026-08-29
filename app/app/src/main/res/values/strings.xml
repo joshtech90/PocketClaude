@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Pocket Claude</string>
+    <string name="app_name">PocketClot</string>
 
     <!-- ─── Generic actions / common ──────────────────────────────────── -->
     <string name="action_ok">OK</string>
@@ -211,12 +211,12 @@
     <string name="error_speak">Read-aloud failed: %1$s</string>
     <string name="error_export">Export failed: %1$s</string>
     <string name="generated_chat_aborted">[aborted]</string>
-    <string name="generated_chat_default_title">Pocket Claude chat</string>
+    <string name="generated_chat_default_title">PocketClot chat</string>
 
     <!-- ─── Notifications ─────────────────────────────────────────────── -->
     <string name="notif_channel_streaming">Streaming</string>
     <string name="notif_channel_result">Reply ready</string>
-    <string name="notif_streaming_title">Pocket Claude</string>
+    <string name="notif_streaming_title">PocketClot</string>
     <string name="notif_streaming_text">Replying…</string>
     <string name="notif_result_title">Reply ready</string>
     <string name="notif_channel_streaming_name">Claude is replying…</string>
@@ -275,7 +275,7 @@
     <string name="long_message_collapse_subtitle">After ~6 lines your input is cut off with a "Show more" toggle. Saves scrolling when reading long replies. Tap the bubble to expand.</string>
 
     <!-- ─── About section content ─────────────────────────────────────── -->
-    <string name="about_app_description">Personal chat front-end for your Pocket Claude server.</string>
+    <string name="about_app_description">Personal chat front-end for your PocketClot server.</string>
 
     <!-- ─── Toast / error patterns ────────────────────────────────────── -->
     <string name="toast_save_failed">Save failed: %1$s</string>
@@ -321,7 +321,7 @@
     <string name="chat_skills_save_for_chat">Save for this chat</string>
     <string name="chat_skills_reset_default">Reset to default</string>
     <string name="chat_auto_speak_dialog_title">Auto-read for this chat</string>
-    <string name="chat_auto_speak_dialog_body">Should Pocket Claude read replies in this chat automatically?</string>
+    <string name="chat_auto_speak_dialog_body">Should PocketClot read replies in this chat automatically?</string>
     <string name="chat_auto_speak_default_label">Default (%1$s)</string>
     <string name="chat_auto_speak_always_on">Always on</string>
     <string name="chat_auto_speak_always_off">Always off</string>
@@ -378,7 +378,7 @@
     <string name="image_share_chooser_title">Share image</string>
     <string name="image_share_failed">Share failed: %1$s</string>
     <string name="image_save_failed">Save failed: %1$s</string>
-    <string name="image_save_success">Saved to Gallery/Pictures/PocketClaude</string>
+    <string name="image_save_success">Saved to Gallery/Pictures/PocketClot</string>
 
     <!-- ─── Message bubble ────────────────────────────────────────────── -->
     <string name="bubble_copied">Copied</string>
@@ -399,7 +399,7 @@
     <string name="settings_section_data">Save data</string>
     <string name="settings_subtitle_data">Export/import chats + settings</string>
     <string name="settings_section_about">About</string>
-    <string name="settings_subtitle_about">Pocket Claude</string>
+    <string name="settings_subtitle_about">PocketClot</string>
     <string name="settings_theme_system">Theme: System</string>
     <string name="settings_theme_light">Theme: Light</string>
     <string name="settings_theme_dark">Theme: Dark</string>
@@ -441,7 +441,7 @@
     <string name="settings_custom_system_prompt_hint">Empty = standard prompt applies.</string>
     <string name="settings_subsection_skills_defaults">Skills — default for new chats</string>
     <string name="settings_info_tts_title">Speech output — three setup paths</string>
-    <string name="settings_info_tts_intro">Pocket Claude can read Claude\'s replies aloud. Three providers are available — from &quot;zero setup&quot; to &quot;premium voice quality&quot;.</string>
+    <string name="settings_info_tts_intro">PocketClot can read Claude\'s replies aloud. Three providers are available — from &quot;zero setup&quot; to &quot;premium voice quality&quot;.</string>
     <string name="settings_info_tts_edge_label">Edge (default, no setup):</string>
     <string name="settings_info_tts_edge_body">Microsoft Edge reading voices. Completely free, no API key or service account. Quality is more mechanical than Gemini/Chirp but perfect to try TTS instantly.</string>
     <string name="settings_info_tts_gemini_label">Gemini API (with AI Studio key):</string>
@@ -469,7 +469,7 @@
     <string name="settings_data_no_profiles_body">Neither bundle contains profiles (server URL, username, token) — those stay per device.</string>
     <string name="settings_data_subsection_chats">Conversations (ZIP)</string>
     <string name="settings_data_subsection_settings">Settings + API keys (JSON)</string>
-    <string name="settings_about_app_desc">Personal chat front-end for your Pocket Claude server.</string>
+    <string name="settings_about_app_desc">Personal chat front-end for your PocketClot server.</string>
     <string name="settings_password_dialog_change_title">Change password</string>
     <string name="settings_password_dialog_force_title">Set a password now</string>
     <string name="settings_password_mismatch">Passwords do not match.</string>
@@ -632,7 +632,7 @@
     <string name="settings_backup_password_show">Show password</string>
     <string name="settings_backup_wrong_password">Password was wrong. Please re-enter.</string>
     <string name="settings_backup_unlock_btn">Unlock</string>
-    <string name="settings_backup_share_subject">Pocket Claude Backup</string>
+    <string name="settings_backup_share_subject">PocketClot Backup</string>
     <string name="settings_backup_share_chooser">Share backup</string>
     <string name="settings_backup_share_failed">Share failed: %1$s</string>
     <string name="settings_profile_default">Profile</string>
@@ -858,4 +858,42 @@
     <string name="chat_lock_no_pin">No PIN set yet.</string>
     <string name="chat_lock_pin_saved">PIN saved.</string>
     <string name="chat_lock_pin_removed">PIN removed.</string>
+
+    <!-- Model and reasoning depth picker -->
+    <string name="model_sheet_title">Model and reasoning depth</string>
+    <string name="model_auto">Automatic</string>
+    <string name="model_family_claude">Claude</string>
+    <string name="model_family_claude_hint">standard</string>
+    <string name="model_family_gemini">Gemini</string>
+    <string name="model_family_gpt">GPT</string>
+    <string name="model_family_other">More models</string>
+    <string name="model_gateway_unreachable">Additional models are unavailable right now</string>
+    <string name="model_refresh">Reload model list</string>
+    <string name="effort_minimal_label">Minimal</string>
+    <string name="effort_ultra_label">Ultra</string>
+    <!-- Settings: models, reasoning depth, image defaults -->
+    <string name="settings_models_section">Models and reasoning depth</string>
+    <string name="settings_default_model">Default model</string>
+    <string name="settings_effort_per_family">Reasoning depth per model</string>
+    <string name="settings_effort_claude">Claude</string>
+    <string name="settings_effort_gemini">Gemini</string>
+    <string name="settings_effort_gpt">GPT</string>
+    <string name="settings_image_default_size">Default resolution</string>
+    <string name="settings_image_default_aspect">Default aspect ratio</string>
+    <string name="settings_image_default_model">Default image model</string>
+    <string name="settings_image_in_chat">Create images in chat</string>
+    <string name="settings_image_in_chat_hint">Every model can generate images. They always come from Nano Banana, no matter which model is answering.</string>
+    <string name="skill_image_generation">Image generation</string>
+
+    <string name="settings_default_model_moved">The default model now lives in the "Models and reasoning depth" section, where the additional models are selectable too.</string>
+    <string name="settings_palette_label">Colour scheme</string>
+    <string name="settings_palette_hint">Each scheme brings its own light and dark variant, so the setting above keeps working.</string>
+    <string name="settings_default_model_per_family">Default model per provider</string>
+    <string name="settings_default_model_per_family_hint">Applies when you switch provider inside a chat.</string>
+    <string name="settings_default_model_family_unavailable">No models available</string>
+    <string name="model_sheet_server_outdated">This server is older than the app and does not offer a model list yet. Claude works, the built-in models are shown.</string>
+    <string name="model_sheet_load_failed">Could not load models: %1$s</string>
+    <string name="settings_provider_defaults">Default model and thinking depth per provider</string>
+    <string name="settings_provider_defaults_hint">The thinking levels shown are the ones the selected model actually supports.</string>
+    <string name="effort_not_supported">This model has no thinking levels.</string>
 </resources>

@@ -74,7 +74,7 @@ rsync -az --delete \
     --exclude='__pycache__' \
     --exclude='*.pyc' \
     --exclude='.DS_Store' \
-    --exclude='Pocket Claude Server.command' \
+    --exclude='PocketClot Server.command' \
     --exclude='Update Dependencies.command' \
     ./ "$TARGET:$REMOTE_PATH/" 2>&1 | tail -3
 

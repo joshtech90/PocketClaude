@@ -5,29 +5,31 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -89,6 +91,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.smartzone.pocketclaude.data.ConversationDto
+import de.smartzone.pocketclaude.ui.components.PocketBackdrop
+import de.smartzone.pocketclaude.ui.components.PocketBrandMark
+import de.smartzone.pocketclaude.ui.components.PocketIconButton
+import de.smartzone.pocketclaude.ui.components.PocketScreenTitle
 import de.smartzone.pocketclaude.ui.theme.PocketTheme
 import de.smartzone.pocketclaude.util.formatRelative
 
@@ -134,8 +140,10 @@ fun ConversationsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    PocketBackdrop(Modifier.fillMaxSize()) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         topBar = {
             if (selectionMode) {
                 // Selection-AppBar: zeigt Anzahl, "Alle auswählen", "Löschen".
@@ -175,25 +183,18 @@ fun ConversationsScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
+                        containerColor = Color.Transparent,
                     ),
                 )
             } else {
                 TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(
-                                painter = painterResource(
-                                    id = de.smartzone.pocketclaude.R.drawable.pocket_claude_icon
-                                ),
-                                contentDescription = null,
-                                modifier = Modifier.size(36.dp),
-                            )
+                            PocketBrandMark(size = 38.dp)
                             Spacer(Modifier.width(12.dp))
-                            Text(
-                                stringResource(de.smartzone.pocketclaude.R.string.all_conversations),
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.SemiBold,
+                            PocketScreenTitle(
+                                eyebrow = stringResource(de.smartzone.pocketclaude.R.string.app_name),
+                                title = stringResource(de.smartzone.pocketclaude.R.string.all_conversations),
                             )
                         }
                     },
@@ -208,18 +209,21 @@ fun ConversationsScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { searchActive = !searchActive; if (!searchActive) vm.clearSearch() }) {
-                            Icon(
-                                if (searchActive) Icons.Filled.Close else Icons.Filled.Search,
-                                contentDescription = stringResource(if (searchActive) de.smartzone.pocketclaude.R.string.action_close else de.smartzone.pocketclaude.R.string.action_search),
-                            )
-                        }
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Filled.Settings, contentDescription = stringResource(de.smartzone.pocketclaude.R.string.title_settings))
-                        }
+                        PocketIconButton(
+                            icon = if (searchActive) Icons.Filled.Close else Icons.Filled.Search,
+                            contentDescription = stringResource(if (searchActive) de.smartzone.pocketclaude.R.string.action_close else de.smartzone.pocketclaude.R.string.action_search),
+                            onClick = { searchActive = !searchActive; if (!searchActive) vm.clearSearch() },
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        PocketIconButton(
+                            icon = Icons.Filled.Settings,
+                            contentDescription = stringResource(de.smartzone.pocketclaude.R.string.title_settings),
+                            onClick = onOpenSettings,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
+                        containerColor = Color.Transparent,
                     ),
                 )
             }
@@ -232,11 +236,18 @@ fun ConversationsScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
                     text = { Text(stringResource(de.smartzone.pocketclaude.R.string.new_chat)) },
+                    shape = RoundedCornerShape(20.dp),
                 )
             }
         },
     ) { pad ->
-        Column(modifier = Modifier.fillMaxSize().padding(pad)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(pad)
+                .consumeWindowInsets(pad)
+                .imePadding(),
+        ) {
             // Suchleiste (einklappbar)
             if (searchActive) {
                 OutlinedTextField(
@@ -255,7 +266,7 @@ fun ConversationsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(22.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = MaterialTheme.colorScheme.surface,
                         unfocusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -279,9 +290,9 @@ fun ConversationsScreen(
                     } else {
                         LazyColumn(
                             contentPadding = PaddingValues(
-                                start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp,
+                                start = 16.dp, end = 16.dp, top = 12.dp, bottom = 104.dp,
                             ),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             items(s.conversations, key = { it.id }) { conv ->
                                 ConversationRow(
@@ -320,6 +331,7 @@ fun ConversationsScreen(
             }
             }
         }
+    }
     }
 
     // Rename dialog
@@ -439,11 +451,11 @@ private fun ConversationRow(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(24.dp)
     val bgColor = if (selected) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     } else {
-        MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
     }
     Surface(
         modifier = Modifier
@@ -461,20 +473,26 @@ private fun ConversationRow(
                 }
             ),
         color = bgColor,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shape = shape,
         tonalElevation = 0.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+            else PocketTheme.colors.outlineSoft,
+        ),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+                .padding(horizontal = 15.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Bubble avatar
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(
                         Brush.linearGradient(
                             listOf(
@@ -722,55 +740,53 @@ private fun CenterLoader() {
 
 @Composable
 private fun EmptyView() {
-    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(
-                painter = painterResource(
-                    id = de.smartzone.pocketclaude.R.drawable.pocket_claude_icon
-                ),
-                contentDescription = null,
-                modifier = Modifier.size(112.dp),
-            )
-            Spacer(Modifier.height(16.dp))
-            Text(stringResource(de.smartzone.pocketclaude.R.string.empty_conversations_title), style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                stringResource(de.smartzone.pocketclaude.R.string.empty_conversations_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        PocketBrandMark(size = 92.dp)
+        Spacer(Modifier.height(16.dp))
+        Text(stringResource(de.smartzone.pocketclaude.R.string.empty_conversations_title), style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            stringResource(de.smartzone.pocketclaude.R.string.empty_conversations_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
 @Composable
 private fun NeedsSetupView(onOpenSettings: () -> Unit) {
-    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(
-                painter = painterResource(
-                    id = de.smartzone.pocketclaude.R.drawable.pocket_claude_icon
-                ),
-                contentDescription = null,
-                modifier = Modifier.size(140.dp),
-            )
-            Spacer(Modifier.height(24.dp))
-            Text(stringResource(de.smartzone.pocketclaude.R.string.setup_needed_title), style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(de.smartzone.pocketclaude.R.string.setup_needed_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onOpenSettings,
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Icon(Icons.Filled.Settings, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(de.smartzone.pocketclaude.R.string.convo_open_settings))
-            }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        PocketBrandMark(size = 108.dp)
+        Spacer(Modifier.height(24.dp))
+        Text(stringResource(de.smartzone.pocketclaude.R.string.setup_needed_title), style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            stringResource(de.smartzone.pocketclaude.R.string.setup_needed_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(24.dp))
+        Button(
+            onClick = onOpenSettings,
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Icon(Icons.Filled.Settings, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(de.smartzone.pocketclaude.R.string.convo_open_settings))
         }
     }
 }

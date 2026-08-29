@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Pocket Claude</string>
+    <string name="app_name">PocketClot</string>
 
     <!-- ─── Generic actions / common ──────────────────────────────────── -->
     <string name="action_ok">确定</string>
@@ -208,12 +208,12 @@
     <string name="error_speak">朗读失败:%1$s</string>
     <string name="error_export">导出失败:%1$s</string>
     <string name="generated_chat_aborted">[已中止]</string>
-    <string name="generated_chat_default_title">Pocket Claude 聊天</string>
+    <string name="generated_chat_default_title">PocketClot 聊天</string>
 
     <!-- ─── Notifications ─────────────────────────────────────────────── -->
     <string name="notif_channel_streaming">流式传输</string>
     <string name="notif_channel_result">回复就绪</string>
-    <string name="notif_streaming_title">Pocket Claude</string>
+    <string name="notif_streaming_title">PocketClot</string>
     <string name="notif_streaming_text">回复中…</string>
     <string name="notif_result_title">回复就绪</string>
     <string name="notif_channel_streaming_name">Claude 正在回复…</string>
@@ -272,7 +272,7 @@
     <string name="long_message_collapse_subtitle">超过约 6 行后,你的输入会被截断并显示"展开"按钮。阅读长回复时减少滚动。点击气泡可展开。</string>
 
     <!-- ─── About section content ─────────────────────────────────────── -->
-    <string name="about_app_description">用于 Pocket Claude 服务器的个人聊天前端。</string>
+    <string name="about_app_description">用于 PocketClot 服务器的个人聊天前端。</string>
 
     <!-- ─── Toast / error patterns ────────────────────────────────────── -->
     <string name="toast_save_failed">保存失败:%1$s</string>
@@ -318,7 +318,7 @@
     <string name="chat_skills_save_for_chat">为本次聊天保存</string>
     <string name="chat_skills_reset_default">重置为默认</string>
     <string name="chat_auto_speak_dialog_title">本次聊天自动朗读</string>
-    <string name="chat_auto_speak_dialog_body">Pocket Claude 是否应在本次聊天中自动朗读回复?</string>
+    <string name="chat_auto_speak_dialog_body">PocketClot 是否应在本次聊天中自动朗读回复?</string>
     <string name="chat_auto_speak_default_label">默认(%1$s)</string>
     <string name="chat_auto_speak_always_on">始终开启</string>
     <string name="chat_auto_speak_always_off">始终关闭</string>
@@ -375,7 +375,7 @@
     <string name="image_share_chooser_title">分享图片</string>
     <string name="image_share_failed">分享失败:%1$s</string>
     <string name="image_save_failed">保存失败:%1$s</string>
-    <string name="image_save_success">已保存到 Gallery/Pictures/PocketClaude</string>
+    <string name="image_save_success">已保存到 Gallery/Pictures/PocketClot</string>
 
     <!-- ─── Message bubble ────────────────────────────────────────────── -->
     <string name="bubble_copied">已复制</string>
@@ -396,7 +396,7 @@
     <string name="settings_section_data">保存数据</string>
     <string name="settings_subtitle_data">导出/导入聊天 + 设置</string>
     <string name="settings_section_about">关于</string>
-    <string name="settings_subtitle_about">Pocket Claude</string>
+    <string name="settings_subtitle_about">PocketClot</string>
     <string name="settings_theme_system">主题:跟随系统</string>
     <string name="settings_theme_light">主题:浅色</string>
     <string name="settings_theme_dark">主题:深色</string>
@@ -438,7 +438,7 @@
     <string name="settings_custom_system_prompt_hint">为空 = 使用标准提示词。</string>
     <string name="settings_subsection_skills_defaults">技能 — 新聊天默认</string>
     <string name="settings_info_tts_title">语音输出 — 三种配置路径</string>
-    <string name="settings_info_tts_intro">Pocket Claude 可朗读 Claude 的回复。共有三种服务提供方 — 从&quot;零配置&quot;到&quot;高级语音质量&quot;。</string>
+    <string name="settings_info_tts_intro">PocketClot 可朗读 Claude 的回复。共有三种服务提供方 — 从&quot;零配置&quot;到&quot;高级语音质量&quot;。</string>
     <string name="settings_info_tts_edge_label">Edge(默认,无需配置):</string>
     <string name="settings_info_tts_edge_body">Microsoft Edge 朗读语音。完全免费,无需 API 密钥或服务账户。质量比 Gemini/Chirp 机械,但可立即试用 TTS。</string>
     <string name="settings_info_tts_gemini_label">Gemini API(使用 AI Studio 密钥):</string>
@@ -466,7 +466,7 @@
     <string name="settings_data_no_profiles_body">两种备份都不包含配置文件(服务器地址、用户名、令牌)— 这些数据保留在每台设备本地。</string>
     <string name="settings_data_subsection_chats">会话(ZIP)</string>
     <string name="settings_data_subsection_settings">设置 + API 密钥(JSON)</string>
-    <string name="settings_about_app_desc">用于 Pocket Claude 服务器的个人聊天前端。</string>
+    <string name="settings_about_app_desc">用于 PocketClot 服务器的个人聊天前端。</string>
     <string name="settings_password_dialog_change_title">修改密码</string>
     <string name="settings_password_dialog_force_title">立即设置密码</string>
     <string name="settings_password_mismatch">密码不一致。</string>
@@ -629,7 +629,7 @@
     <string name="settings_backup_password_show">显示密码</string>
     <string name="settings_backup_wrong_password">密码错误,请重新输入。</string>
     <string name="settings_backup_unlock_btn">解锁</string>
-    <string name="settings_backup_share_subject">Pocket Claude 备份</string>
+    <string name="settings_backup_share_subject">PocketClot 备份</string>
     <string name="settings_backup_share_chooser">分享备份</string>
     <string name="settings_backup_share_failed">分享失败:%1$s</string>
     <string name="settings_profile_default">配置</string>
@@ -820,4 +820,42 @@
     <string name="gem_add_file">添加文件</string>
     <string name="gem_builtin_readonly">内置 Gem — 只读。</string>
     <string name="gem_duplicate">复制</string>
+
+    <!-- 模型和思考深度选择器 -->
+    <string name="model_sheet_title">模型和思考深度</string>
+    <string name="model_auto">自动</string>
+    <string name="model_family_claude">Claude</string>
+    <string name="model_family_claude_hint">标准</string>
+    <string name="model_family_gemini">Gemini</string>
+    <string name="model_family_gpt">GPT</string>
+    <string name="model_family_other">更多模型</string>
+    <string name="model_gateway_unreachable">附加模型目前不可用</string>
+    <string name="model_refresh">重新加载模型列表</string>
+    <string name="effort_minimal_label">极低</string>
+    <string name="effort_ultra_label">Ultra</string>
+    <!-- 设置：模型、思考深度、图像默认值 -->
+    <string name="settings_models_section">模型和思考深度</string>
+    <string name="settings_default_model">默认模型</string>
+    <string name="settings_effort_per_family">各模型的思考深度</string>
+    <string name="settings_effort_claude">Claude</string>
+    <string name="settings_effort_gemini">Gemini</string>
+    <string name="settings_effort_gpt">GPT</string>
+    <string name="settings_image_default_size">默认分辨率</string>
+    <string name="settings_image_default_aspect">默认宽高比</string>
+    <string name="settings_image_default_model">默认图像模型</string>
+    <string name="settings_image_in_chat">在聊天中生成图像</string>
+    <string name="settings_image_in_chat_hint">所有模型都可以生成图像。无论哪个模型在回答，图像始终来自 Nano Banana。</string>
+    <string name="skill_image_generation">图像生成</string>
+
+    <string name="settings_default_model_moved">默认模型现在位于“模型与思考深度”部分，附加模型也在那里选择。</string>
+    <string name="settings_palette_label">配色方案</string>
+    <string name="settings_palette_hint">每种配色方案都有自己的浅色和深色版本，因此上面的设置仍然会生效。</string>
+    <string name="settings_default_model_per_family">每个提供商的默认模型</string>
+    <string name="settings_default_model_per_family_hint">在聊天中切换提供商时生效。</string>
+    <string name="settings_default_model_family_unavailable">没有可用模型</string>
+    <string name="model_sheet_server_outdated">此服务器版本早于应用，尚未提供模型列表。Claude 可正常使用，此处显示内置模型。</string>
+    <string name="model_sheet_load_failed">无法加载模型：%1$s</string>
+    <string name="settings_provider_defaults">每个提供商的模型与思考深度</string>
+    <string name="settings_provider_defaults_hint">仅显示所选模型真正支持的思考级别。</string>
+    <string name="effort_not_supported">此模型没有思考级别。</string>
 </resources>

@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Pocket Claude"
+rootProject.name = "PocketClot"
 include(":app")

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Pocket Claude — Linux One-Shot Installer (Ubuntu/Debian + Fedora/RHEL)
+#  PocketClot — Linux One-Shot Installer (Ubuntu/Debian + Fedora/RHEL)
 # =============================================================================
 #
 #  Usage:
@@ -24,7 +24,7 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/pocket-claude}"
 SERVICE_USER="${SERVICE_USER:-pocket-claude}"
 SERVICE_NAME="pocket-claude"
-REPO_URL="${REPO_URL:-https://github.com/joshtech90/PocketClaude.git}"
+REPO_URL="${REPO_URL:-https://github.com/joshtech90/PocketClot.git}"
 
 # Source directory: either the repo where the script lives (dev path), or
 # a fresh clone from GitHub (fresh-install path).
@@ -272,7 +272,7 @@ echo "   Alternative (power users with their own domain on Cloudflare):"
 echo "      sudo bash $INSTALL_DIR/deploy/setup-cloudflare-tunnel.sh"
 echo
 c_blue "4. Configure the app"
-echo "   Enter the server URL from step 3 into the Pocket Claude app, sign in,"
+echo "   Enter the server URL from step 3 into the PocketClot app, sign in,"
 echo "   done. The initial admin password is in:"
 echo "        $INSTALL_DIR/data/INITIAL_PASSWORD.txt"
 echo

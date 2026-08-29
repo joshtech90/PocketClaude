@@ -136,6 +136,7 @@ class ChatRepository(
         content: String,
         attachmentIds: List<String>,
         effort: String = DEFAULT_EFFORT,
+        model: String? = null,
         systemPrompt: String? = null,
         ttsVoice: String? = null,
         ttsRate: Float? = null,
@@ -144,10 +145,25 @@ class ChatRepository(
             content = content,
             attachmentIds = attachmentIds,
             effort = effort,
+            // Leerer String heisst „nimm Claude" und muss so beim Server
+            // ankommen. Nur `null` bedeutet „keine Angabe, entscheide selbst".
+            model = model,
             systemPrompt = systemPrompt,
             ttsVoice = ttsVoice,
             ttsRate = ttsRate,
         ))
+
+    suspend fun setImageDefaults(size: String?, aspectRatio: String?, model: String?): ImageConfigDto =
+        api.setImageDefaults(size, aspectRatio, model)
+
+    /** Alle wählbaren Modelle plus Gateway-Zustand. */
+    suspend fun getChatModels(refresh: Boolean = false, include: String = ""): ChatModelsDto =
+        api.getChatModels(refresh, include)
+
+    /** Merkt das gewählte Modell am Chat, damit es beim nächsten Öffnen wieder
+     *  greift. Leerer String setzt den Chat zurück auf Claude. */
+    suspend fun setChatModel(cid: String, modelKey: String): ConversationDto =
+        api.setChatModel(cid, modelKey)
 
     suspend fun uploadFromUri(uri: Uri): AttachmentDto {
         val (filename, mime, bytes) = readUpload(uri)

@@ -1,4 +1,4 @@
-# Contributing to Pocket Claude
+# Contributing to PocketClot
 
 Thanks for wanting to help. This is a small hobby project, so the process is light: open an issue, send a PR, keep diffs focused.
 

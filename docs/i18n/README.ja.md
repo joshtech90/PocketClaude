@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="../../assets/logo.png" alt="Pocket Claude" width="160" height="160">
+<img src="../../assets/logo.png" alt="PocketClot" width="160" height="160">
 
-# Pocket Claude
+# PocketClot
 
 **スマホで使えるあなた専用の Claude — ご自身の Pro/Max サブスクリプション、Anthropic API キー、または AWS Bedrock のいずれかで動作。ご自身のハードウェアでホスティングされます。**
 
@@ -19,7 +19,7 @@
 
 ## 概要
 
-**Pocket Claude** は、Anthropic の [Claude](https://claude.ai) 向けのセルフホスト型チャットフロントエンドです。小さな Python サーバーがご自身の Linux マシン（Mini-PC、Raspberry Pi、古いノート PC、NAS）で動作し、ネイティブ Android アプリと内蔵 Web UI が [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) または Cloudflare トンネル経由で、どこからでもサーバーと通信します。
+**PocketClot** は、Anthropic の [Claude](https://claude.ai) 向けのセルフホスト型チャットフロントエンドです。小さな Python サーバーがご自身の Linux マシン（Mini-PC、Raspberry Pi、古いノート PC、NAS）で動作し、ネイティブ Android アプリと内蔵 Web UI が [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) または Cloudflare トンネル経由で、どこからでもサーバーと通信します。
 
 **バックエンドはユーザーごとに選択可能**で、アプリ内でいつでも切り替えられます。
 
@@ -27,7 +27,7 @@
 - **Anthropic API キー** — [Anthropic Console](https://console.anthropic.com) から取得した `sk-ant-…` を使用し、従量課金で利用できます。
 - **AWS Bedrock** — お手持ちの AWS 認証情報を使用し、Bedrock 固有のモデル ID で Claude Opus 4.7 に対応します。
 
-**なぜこれが存在するのか。** Anthropic の公式 Claude アプリは素晴らしいものです — Pocket Claude は、それらが（まだ）対応していない部分のために存在します。
+**なぜこれが存在するのか。** Anthropic の公式 Claude アプリは素晴らしいものです — PocketClot は、それらが（まだ）対応していない部分のために存在します。
 
 - **オープンソース。** 監査することも、フォークすることも、拡張することも自由です。怪しいテレメトリも、突然の機能削除もありません。
 - **追加機能。** TTS 読み上げ（3 つのプロバイダー、ロック画面コントロール対応）、画像生成、ChatGPT スタイルの長文メッセージ折りたたみ、全チャット横断の全文検索、暗号化バックアップ、4 種類から選べるシステムプロンプトモード。
@@ -35,7 +35,7 @@
 - **クリーンなもうひとつの「Claude」。** 2 つの Anthropic アカウントを使い分けずに、プライベートと仕事を厳密に分けたいですか？ ご自身のサーバーを立ち上げて、公式クライアントと並行してログインするだけで完了です。
 - **データはあなたのものです。** 会話はご自身のハードウェア上の SQLite データベースに保存されます。移行も、バックアップも、直接クエリすることもできます — すべてあなたのものです。
 
-**追加の Anthropic API キーは不要です。** 認証には、ローカルにインストールされた Claude Code CLI が使用する OAuth セッション（`claude login`）を使います。Pocket Claude が CLI を起動し、残りの処理は CLI が担当します — すでにお支払いいただいている Pro/Max のクォータ上で動作します。
+**追加の Anthropic API キーは不要です。** 認証には、ローカルにインストールされた Claude Code CLI が使用する OAuth セッション（`claude login`）を使います。PocketClot が CLI を起動し、残りの処理は CLI が担当します — すでにお支払いいただいている Pro/Max のクォータ上で動作します。
 
 > **ご注意** — これはセルフホスト型の趣味プロジェクトであり、Anthropic 公式の製品ではありません。ご自身の Pro/Max サブスクリプションを持ち込んで使う形になります。私たちはあなたの会話を見たり、プロキシしたりすることは決してありません。
 
@@ -58,7 +58,7 @@
 
 ```
                 ┌───────────────────────────┐
-                │  Pocket Claude (Android)  │
+                │  PocketClot (Android)  │
                 │      or built-in web UI   │
                 └─────────────┬─────────────┘
                               │ HTTPS  (persistent URL)
@@ -98,7 +98,7 @@
 新しい Ubuntu / Debian / Fedora マシンで実行します。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClaude/main/server/deploy/install-linux.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/joshtech90/PocketClot/main/server/deploy/install-linux.sh | sudo bash
 ```
 
 インストーラーは `pocket-claude` システムユーザーを作成し、コードを `/opt/pocket-claude/` に配置し、Claude Code CLI をインストールし、Python の依存関係を venv にインストールし、systemd ユニットを書き込み、ポート `8787`（ループバック）で起動します。
@@ -121,7 +121,7 @@ sudo bash /opt/pocket-claude/deploy/setup-tailscale-funnel.sh
 
 ### 4 — Android アプリをインストール
 
-[最新リリース](https://github.com/joshtech90/PocketClaude/releases)から APK をダウンロードするか、自分でビルドします。
+[最新リリース](https://github.com/joshtech90/PocketClot/releases)から APK をダウンロードするか、自分でビルドします。
 
 ```bash
 cd app && ./gradlew assembleDebug
