@@ -309,6 +309,14 @@ class ApiClient(
     suspend fun setChatModel(id: String, modelKey: String): ConversationDto =
         patchJson("/conversations/$id", PatchConversationRequest(chatModel = modelKey))
 
+    /** Springt im Chat zu einer frueheren Antwort zurueck. */
+    suspend fun rewindConversation(
+        id: String, messageId: Long, chatModel: String? = null,
+    ): RewindResponse = postJson(
+        "/conversations/$id/rewind",
+        RewindRequest(messageId = messageId, chatModel = chatModel),
+    )
+
     suspend fun setLocked(id: String, locked: Boolean): ConversationDto =
         patchJson("/conversations/$id", PatchConversationRequest(locked = locked))
 

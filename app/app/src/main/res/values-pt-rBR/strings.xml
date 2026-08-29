@@ -399,6 +399,10 @@
     <string name="bubble_cancel">Cancelar</string>
     <string name="bubble_resume">Continuar</string>
     <string name="bubble_copy">Copiar</string>
+    <string name="bubble_rewind">Continuar daqui</string>
+    <string name="rewind_dialog_title">Continuar a partir daqui</string>
+    <string name="rewind_dialog_model_label">Modelo para a sequência</string>
+    <string name="rewind_dialog_confirm">Continuar daqui</string>
 
     <!-- ─── Settings screen — extra UI strings ────────────────────────── -->
     <string name="settings_title">Configurações</string>
@@ -880,4 +884,8 @@
     <string name="settings_provider_defaults">Modelo e profundidade de raciocínio por provedor</string>
     <string name="settings_provider_defaults_hint">São exibidos apenas os níveis de raciocínio que o modelo escolhido realmente suporta.</string>
     <string name="effort_not_supported">Este modelo não possui níveis de raciocínio.</string>
+  <plurals name="rewind_dialog_body">
+    <item quantity="one">A mensagem após esta resposta será descartada. Depois você continuará a partir daqui.</item>
+    <item quantity="other">As %1$d mensagens após esta resposta serão descartadas. Depois você continuará a partir daqui.</item>
+  </plurals>
 </resources>

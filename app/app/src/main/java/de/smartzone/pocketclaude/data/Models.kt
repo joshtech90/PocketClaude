@@ -569,6 +569,20 @@ data class ImageDefaultsDto(
     val model: String = "",
 )
 
+/** Zu einer frueheren Antwort zurueckspringen. Alles danach wird verworfen. */
+@Serializable
+data class RewindRequest(
+    @SerialName("message_id") val messageId: Long,
+    /** Optionaler Modellwechsel im selben Zug. Null laesst das Modell stehen. */
+    @SerialName("chat_model") val chatModel: String? = null,
+)
+
+@Serializable
+data class RewindResponse(
+    val removed: Int = 0,
+    @SerialName("chat_model") val chatModel: String? = null,
+)
+
 @Serializable
 data class ImageDefaultsRequest(
     val size: String? = null,

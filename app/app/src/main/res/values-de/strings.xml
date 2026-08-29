@@ -402,6 +402,10 @@
     <string name="bubble_cancel">Abbrechen</string>
     <string name="bubble_resume">Fortsetzen</string>
     <string name="bubble_copy">Kopieren</string>
+    <string name="bubble_rewind">Ab hier weitermachen</string>
+    <string name="rewind_dialog_title">Ab hier weitermachen</string>
+    <string name="rewind_dialog_model_label">Modell für den weiteren Verlauf</string>
+    <string name="rewind_dialog_confirm">Hier weitermachen</string>
 
     <!-- ─── Settings screen — extra UI strings ────────────────────────── -->
     <string name="settings_title">Einstellungen</string>
@@ -918,4 +922,8 @@
     <string name="settings_provider_defaults">Standardmodell und Denktiefe je Anbieter</string>
     <string name="settings_provider_defaults_hint">Angezeigt werden nur die Denkstufen, die das gewählte Modell wirklich kann.</string>
     <string name="effort_not_supported">Dieses Modell kennt keine Denkstufen.</string>
+  <plurals name="rewind_dialog_body">
+    <item quantity="one">Die Nachricht nach dieser Antwort wird verworfen. Danach geht es hier weiter.</item>
+    <item quantity="other">Die %1$d Nachrichten nach dieser Antwort werden verworfen. Danach geht es hier weiter.</item>
+  </plurals>
 </resources>

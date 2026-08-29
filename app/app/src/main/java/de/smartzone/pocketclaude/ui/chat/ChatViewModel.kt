@@ -284,6 +284,45 @@ class ChatViewModel(
         runCatching { repo.setChatModel(cid, option.key) }
     }
 
+    /**
+     * Springt zu einer frueheren Antwort zurueck und macht dort weiter.
+     *
+     * Alles nach dieser Nachricht wird verworfen, die Nachricht selbst bleibt.
+     * `modelKey` wechselt im selben Zug das Modell: meistens springt man genau
+     * deshalb zurueck, naemlich um dieselbe Stelle anders weiterzugehen. Ein
+     * `null` laesst das Modell unveraendert.
+     *
+     * Waehrend eines laufenden Streams passiert nichts: die Antwort ist noch
+     * unterwegs, und sie hinter ihrem eigenen Ruecksprung ankommen zu lassen
+     * waere ein Zustand, den niemand versteht.
+     */
+    fun rewindTo(messageId: Long, modelKey: String? = null) = viewModelScope.launch {
+        if (_state.value.isStreaming) return@launch
+        _state.update { it.copy(isLoading = true, errorMessage = null) }
+        runCatching {
+            val res = repo.rewind(cid, messageId, modelKey)
+            // Bewusst INNERHALB des runCatching: schlägt das Speichern der
+            // Modellwahl fehl, darf das nicht am Fehlerzweig vorbeilaufen und
+            // die Ansicht in „lädt" stehenlassen.
+            res.chatModel?.let { m ->
+                _state.update { st -> st.copy(modelKey = m) }
+                settingsRepo.setChatModelKey(m)
+            }
+        }
+            .onSuccess { refresh() }
+            .onFailure { e ->
+                _state.update {
+                    it.copy(isLoading = false,
+                            errorMessage = e.message ?: e::class.java.simpleName)
+                }
+                // Der Server kann den Rücksprung ausgeführt haben und erst die
+                // Antwort verloren gegangen sein. Dann zeigte die App weiter
+                // Nachrichten, die es nicht mehr gibt. Also in jedem Fall neu
+                // laden und den Serverstand übernehmen.
+                refresh()
+            }
+    }
+
     /** Denktiefe der aktuell gewählten Familie. */
     fun effortFor(family: String): String =
         cachedSettings?.effortFor(family) ?: DEFAULT_EFFORT

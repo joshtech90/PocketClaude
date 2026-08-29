@@ -399,6 +399,10 @@
     <string name="bubble_cancel">Annuler</string>
     <string name="bubble_resume">Reprendre</string>
     <string name="bubble_copy">Copier</string>
+    <string name="bubble_rewind">Continuer d\'ici</string>
+    <string name="rewind_dialog_title">Continuer à partir d\'ici</string>
+    <string name="rewind_dialog_model_label">Modèle pour la suite</string>
+    <string name="rewind_dialog_confirm">Continuer d\'ici</string>
 
     <!-- ─── Settings screen — extra UI strings ────────────────────────── -->
     <string name="settings_title">Paramètres</string>
@@ -880,4 +884,8 @@
     <string name="settings_provider_defaults">Modèle et profondeur de réflexion par fournisseur</string>
     <string name="settings_provider_defaults_hint">Seuls les niveaux de réflexion réellement pris en charge par le modèle choisi sont affichés.</string>
     <string name="effort_not_supported">Ce modèle n\'a pas de niveaux de réflexion.</string>
+  <plurals name="rewind_dialog_body">
+    <item quantity="one">Le message après cette réponse sera supprimé. Vous continuerez ensuite à partir d\'ici.</item>
+    <item quantity="other">Les %1$d messages après cette réponse seront supprimés. Vous continuerez ensuite à partir d\'ici.</item>
+  </plurals>
 </resources>

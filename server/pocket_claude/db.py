@@ -656,6 +656,45 @@ async def list_messages(cid: str) -> list[dict]:
     return out
 
 
+async def truncate_after(cid: str, message_id: int) -> int:
+    """Verwirft alle Nachrichten NACH `message_id` in diesem Chat.
+
+    Die Nachricht mit `message_id` selbst bleibt stehen: der Nutzer springt zu
+    einer Antwort zurueck, die ihm gefallen hat, und will genau die behalten.
+
+    Rueckgabe ist die Zahl der geloeschten Nachrichten.
+
+    Die Anhaenge bleiben bewusst liegen. Eine Attachment-ID kann in mehreren
+    Nachrichten stehen (etwa nachdem ein Bild als Vorlage weiterverwendet
+    wurde), und ein verwaistes Bild ist harmloser als ein fehlendes. Der Preis
+    dafuer ist, dass wiederholte Ruecksprunge Plattenplatz liegenlassen; ein
+    Aufraeumen ungenutzter Anhaenge waere eine eigene Wartungsaufgabe.
+
+    Der Volltext-Index zieht ueber den Trigger `messages_fts_delete` von selbst
+    mit; verworfene Nachrichten sind also auch aus der Suche verschwunden.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            "DELETE FROM messages WHERE conversation_id = ? AND id > ?",
+            (cid, message_id),
+        )
+        removed = cur.rowcount or 0
+        # Den Token-Stand und den Zeitstempel der letzten Nachricht mitziehen,
+        # sonst zeigt die Chatliste weiter auf etwas, das es nicht mehr gibt.
+        cur = await db.execute(
+            "SELECT COALESCE(SUM(tokens), 0) AS t, MAX(created_at) AS last "
+            "FROM messages WHERE conversation_id = ?",
+            (cid,),
+        )
+        row = await cur.fetchone()
+        await db.execute(
+            "UPDATE conversations SET total_tokens = ?, last_message_at = ? WHERE id = ?",
+            (row["t"] if row else 0, row["last"] if row else None, cid),
+        )
+        await db.commit()
+    return removed
+
+
 async def auto_rename_if_needed(
     cid: str, first_user_message: str, user_id: str | None = None,
 ) -> str | None:

@@ -43,6 +43,8 @@ from pocket_claude.auth import (
 from pocket_claude.login_throttle import client_ip, login_throttler, throttle_error
 from pocket_claude.config import settings
 from pocket_claude.models import (
+    RewindRequest,
+    RewindResponse,
     AttachmentOut,
     AttachmentRef,
     BillingStatusDto,
@@ -299,6 +301,87 @@ async def get_conversation(cid: str = PathParam(...), user=Depends(require_user)
         chat_model=conv.get("chat_model") or None,
         messages=messages,
     )
+
+
+async def _model_key_is_known(model_key: str) -> bool:
+    """Prueft einen Modell-Key, so wie es `send_message` auch tut.
+
+    Leer heisst Claude-Standard und ist immer gueltig. Zusatz-Modelle werden
+    UNGEFILTERT geprueft: ein Chat darf auf einem Modell weiterlaufen, das
+    inzwischen nicht mehr kuratiert ist, sonst wechselte er beim naechsten
+    Turn stillschweigend das Modell.
+    """
+    key = (model_key or "").strip()
+    if not key:
+        return True
+    if key.startswith("gw:"):
+        models = await gateways.list_models(curated=False)
+        return any(m.key == key for m in models)
+    return key in claude_engine.ALLOWED_MODELS
+
+
+@app.post("/conversations/{cid}/rewind", response_model=RewindResponse)
+async def rewind_conversation(
+    cid: str, body: RewindRequest, user=Depends(require_user),
+) -> RewindResponse:
+    """Springt im Chat zu einer frueheren Antwort zurueck.
+
+    Alles nach der angegebenen Nachricht wird verworfen, die Nachricht selbst
+    bleibt stehen. Optional wird im selben Zug das Modell gewechselt: genau
+    dafuer springt man meistens zurueck.
+
+    Die Claude-Session wird verworfen. Sie kennt die geloeschten Turns noch,
+    und ohne diesen Schritt wuerde Claude munter auf einer Antwort weiterreden,
+    die der Nutzer gerade weggeworfen hat. Beim naechsten Turn baut
+    `replay_history` den Verlauf aus der Datenbank neu auf.
+
+    Der ganze Vorgang laeuft unter derselben Sperre wie ein Chat-Turn. Sonst
+    koennte ein gerade laufender Stream seine Antwort hinter das Loeschen
+    schreiben, und im Chat stuende wieder etwas, das eben verworfen wurde.
+    """
+    conv = await db.get_conversation(cid, user_id=user["id"])
+    if not conv:
+        raise HTTPException(404, "Konversation nicht gefunden.")
+
+    # ERST pruefen, DANN loeschen. Ein ungueltiges Modell darf nicht dazu
+    # fuehren, dass die Nachrichten schon weg sind und der Aufruf trotzdem mit
+    # einem Fehler endet.
+    new_model = conv.get("chat_model")
+    if body.chat_model is not None:
+        candidate = body.chat_model.strip()
+        if candidate and not await _model_key_is_known(candidate):
+            raise HTTPException(400, f"Unbekanntes Modell: {candidate!r}")
+        new_model = candidate
+
+    lock = _conv_lock(cid)
+    async with lock:
+        msgs = await db.list_messages(cid)
+        target = next((m for m in msgs if m["id"] == body.message_id), None)
+        if target is None:
+            raise HTTPException(404, "Diese Nachricht gehoert nicht zu diesem Chat.")
+        # Zurueckgesprungen wird auf eine Antwort, nicht auf eine eigene Frage:
+        # sonst endet der Verlauf mit einer unbeantworteten Nachricht, und der
+        # naechste Turn faengt mit zwei Nutzer-Nachrichten hintereinander an.
+        if target["role"] != "assistant":
+            raise HTTPException(
+                400, "Es kann nur auf eine Antwort zurueckgesprungen werden.",
+            )
+
+        is_last = bool(msgs) and msgs[-1]["id"] == body.message_id
+        if is_last and body.chat_model is None:
+            # Nichts zu verwerfen und kein Modellwechsel: dann war der Aufruf
+            # gegenstandslos, und wir fassen die Session nicht ohne Not an.
+            return RewindResponse(removed=0, chat_model=conv.get("chat_model"))
+
+        removed = await db.truncate_after(cid, body.message_id)
+        if body.chat_model is not None:
+            await db.set_chat_model(cid, new_model or "", user_id=user["id"])
+        await db.set_claude_session_id(cid, None)
+
+    log.info("PC_SESSION: cid=%s Ruecksprung auf msg=%s, %d Nachrichten "
+             "verworfen, Modell=%r", cid, body.message_id, removed,
+             new_model or "claude")
+    return RewindResponse(removed=removed, chat_model=new_model)
 
 
 @app.patch("/conversations/{cid}", response_model=ConversationOut)

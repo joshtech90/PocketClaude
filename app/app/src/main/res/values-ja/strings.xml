@@ -399,6 +399,10 @@
     <string name="bubble_cancel">キャンセル</string>
     <string name="bubble_resume">再開</string>
     <string name="bubble_copy">コピー</string>
+    <string name="bubble_rewind">ここから再開</string>
+    <string name="rewind_dialog_title">ここから再開</string>
+    <string name="rewind_dialog_model_label">これ以降のモデル</string>
+    <string name="rewind_dialog_confirm">ここから再開</string>
 
     <!-- ─── Settings screen — extra UI strings ────────────────────────── -->
     <string name="settings_title">設定</string>
@@ -880,4 +884,7 @@
     <string name="settings_provider_defaults">プロバイダーごとのモデルと思考の深さ</string>
     <string name="settings_provider_defaults_hint">選択したモデルが実際に対応している思考レベルのみを表示します。</string>
     <string name="effort_not_supported">このモデルには思考レベルがありません。</string>
+  <plurals name="rewind_dialog_body">
+    <item quantity="other">この回答より後の%1$d件のメッセージは破棄されます。その後、ここから再開します。</item>
+  </plurals>
 </resources>

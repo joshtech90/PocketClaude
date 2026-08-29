@@ -360,6 +360,23 @@ class SkillsDto(BaseModel):
     image_generation: bool = True
 
 
+class RewindRequest(BaseModel):
+    """Zu einem frueheren Punkt im Chat zurueckspringen.
+
+    `message_id` ist die Nachricht, die stehen bleiben soll; alles danach wird
+    verworfen. `chat_model` erlaubt es, im selben Zug das Modell zu wechseln:
+    genau dafuer springt man meistens zurueck, naemlich um dieselbe Stelle mit
+    einem anderen Modell weiterzugehen.
+    """
+    message_id: int
+    chat_model: str | None = None
+
+
+class RewindResponse(BaseModel):
+    removed: int
+    chat_model: str | None = None
+
+
 class SkillsDefaultsRequest(BaseModel):
     """User-Settings (= Default für alle neuen Chats)."""
     skills: SkillsDto

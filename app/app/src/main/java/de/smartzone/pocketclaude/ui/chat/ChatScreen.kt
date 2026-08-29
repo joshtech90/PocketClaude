@@ -1,5 +1,8 @@
 package de.smartzone.pocketclaude.ui.chat
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.material.icons.filled.Restore
+import de.smartzone.pocketclaude.data.MessageDto
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -174,6 +177,8 @@ fun ChatScreen(
     var renameInput by remember { mutableStateOf("") }
     var confirmDeleteOpen by remember { mutableStateOf(false) }
     var skillsDialogOpen by remember { mutableStateOf(false) }
+    /** Antwort, ab der weitergemacht werden soll. Null heisst: Dialog zu. */
+    var rewindTarget by remember { mutableStateOf<MessageDto?>(null) }
     var autoSpeakDialogOpen by remember { mutableStateOf(false) }
 
     // Drawer-State + Chat-Liste fürs Drawer (wird beim Öffnen aktualisiert)
@@ -796,6 +801,16 @@ fun ChatScreen(
                                 val onSpeakClick: (() -> Unit)? = if (msg != null) {
                                     { vm.speak(msg.id) }
                                 } else null
+                                // Zurueckspringen gibt es nur bei fertigen
+                                // Antworten, und nicht bei der letzten: dort
+                                // waere nichts zu verwerfen, man tippt einfach
+                                // weiter.
+                                val onRewindClick: (() -> Unit)? =
+                                    if (msg != null && !state.isStreaming &&
+                                        msgs.any { it.id > msg.id }
+                                    ) {
+                                        { rewindTarget = msg }
+                                    } else null
                                 AssistantBubble(
                                     text = bubbleText,
                                     attachments = bubbleAttachments,
@@ -803,6 +818,7 @@ fun ChatScreen(
                                     thinkingText = bubbleThinking,
                                     ttsState = ttsState,
                                     onSpeakClick = onSpeakClick,
+                                    onRewindClick = onRewindClick,
                                     onPauseClick = { vm.pauseSpeaking() },
                                     onResumeClick = { vm.resumeSpeaking() },
                                     onStopClick = { vm.stopSpeaking() },
@@ -1014,6 +1030,20 @@ fun ChatScreen(
             dismissButton = {
                 TextButton(onClick = { confirmDeleteOpen = false }) { Text(stringResource(de.smartzone.pocketclaude.R.string.action_cancel)) }
             },
+        )
+    }
+
+    // Ruecksprung: zu welcher Antwort, und mit welchem Modell weiter.
+    rewindTarget?.let { target ->
+        RewindDialog(
+            droppedCount = state.messages.count { it.id > target.id },
+            models = state.models,
+            currentModelKey = state.modelKey,
+            onConfirm = { newModel ->
+                vm.rewindTo(target.id, newModel)
+                rewindTarget = null
+            },
+            onDismiss = { rewindTarget = null },
         )
     }
 
@@ -1740,6 +1770,82 @@ private suspend fun scrollToVeryBottom(listState: androidx.compose.foundation.la
         attempts++
     }
 }
+
+/**
+ * "Ab hier weitermachen": springt zu einer frueheren Antwort zurueck und laesst
+ * im selben Zug das Modell wechseln.
+ *
+ * Beides gehoert zusammen, weil man meistens genau deshalb zurueckspringt:
+ * die Antwort hat nicht gefallen, also nochmal, aber mit einem anderen Modell.
+ * Zwei getrennte Schritte waeren hier eine Schikane.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RewindDialog(
+    droppedCount: Int,
+    models: List<ChatModelOption>,
+    currentModelKey: String,
+    onConfirm: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var chosenKey by remember(currentModelKey) { mutableStateOf(currentModelKey) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Filled.Restore, contentDescription = null) },
+        title = { Text(stringResource(de.smartzone.pocketclaude.R.string.rewind_dialog_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    pluralStringResource(
+                        de.smartzone.pocketclaude.R.plurals.rewind_dialog_body,
+                        droppedCount, droppedCount,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (models.isNotEmpty()) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Text(
+                        stringResource(de.smartzone.pocketclaude.R.string.rewind_dialog_model_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        models.forEach { option ->
+                            FilterChip(
+                                selected = option.key == chosenKey,
+                                onClick = { chosenKey = option.key },
+                                label = {
+                                    Text(option.label,
+                                         style = MaterialTheme.typography.labelMedium)
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                // Nur mitschicken, was sich wirklich aendert: sonst wuerde ein
+                // unveraendertes Modell serverseitig als Wechsel gewertet.
+                onConfirm(chosenKey.takeIf { it != currentModelKey })
+            }) {
+                Text(stringResource(de.smartzone.pocketclaude.R.string.rewind_dialog_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(de.smartzone.pocketclaude.R.string.action_cancel))
+            }
+        },
+    )
+}
+
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable

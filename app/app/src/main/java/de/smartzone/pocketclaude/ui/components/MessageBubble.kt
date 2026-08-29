@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -221,6 +222,9 @@ fun AssistantBubble(
     onPauseClick: (() -> Unit)? = null,
     onResumeClick: (() -> Unit)? = null,
     onStopClick: (() -> Unit)? = null,
+    /** Ab hier weitermachen. Null blendet den Knopf aus, etwa waehrend eine
+     *  Antwort noch streamt: da gibt es noch nichts, wohin man zurueck koennte. */
+    onRewindClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val pocket = PocketTheme.colors
@@ -387,6 +391,22 @@ fun AssistantBubble(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp),
                         )
+                    }
+                    // Ab hier weitermachen. Bewusst in derselben Reihe wie
+                    // Vorlesen und Kopieren statt als auffaelliger Knopf: es ist
+                    // eine Nebenhandlung, keine Hauptsache.
+                    if (onRewindClick != null) {
+                        IconButton(
+                            onClick = onRewindClick,
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Restore,
+                                contentDescription = stringResource(R.string.bubble_rewind),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(17.dp),
+                            )
+                        }
                     }
                 } // Row
             } // if (onSpeakClick != null …)

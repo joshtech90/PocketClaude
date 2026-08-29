@@ -399,6 +399,10 @@
     <string name="bubble_cancel">取消</string>
     <string name="bubble_resume">继续</string>
     <string name="bubble_copy">复制</string>
+    <string name="bubble_rewind">从这里继续</string>
+    <string name="rewind_dialog_title">从这里继续</string>
+    <string name="rewind_dialog_model_label">后续使用的模型</string>
+    <string name="rewind_dialog_confirm">从这里继续</string>
 
     <!-- ─── Settings screen — extra UI strings ────────────────────────── -->
     <string name="settings_title">设置</string>
@@ -880,4 +884,7 @@
     <string name="settings_provider_defaults">每个提供商的模型与思考深度</string>
     <string name="settings_provider_defaults_hint">仅显示所选模型真正支持的思考级别。</string>
     <string name="effort_not_supported">此模型没有思考级别。</string>
+  <plurals name="rewind_dialog_body">
+    <item quantity="other">此回复之后的 %1$d 条消息将被舍弃。然后从这里继续。</item>
+  </plurals>
 </resources>

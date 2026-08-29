@@ -402,6 +402,10 @@
     <string name="bubble_cancel">Cancel</string>
     <string name="bubble_resume">Resume</string>
     <string name="bubble_copy">Copy</string>
+    <string name="bubble_rewind">Continue from here</string>
+    <string name="rewind_dialog_title">Continue from here</string>
+    <string name="rewind_dialog_model_label">Model for what comes next</string>
+    <string name="rewind_dialog_confirm">Continue from here</string>
 
     <!-- ─── Settings screen — extra UI strings ────────────────────────── -->
     <string name="settings_title">Settings</string>
@@ -918,4 +922,8 @@
     <string name="settings_provider_defaults">Default model and thinking depth per provider</string>
     <string name="settings_provider_defaults_hint">The thinking levels shown are the ones the selected model actually supports.</string>
     <string name="effort_not_supported">This model has no thinking levels.</string>
+  <plurals name="rewind_dialog_body">
+    <item quantity="one">The message after this answer gets discarded. Then you carry on from here.</item>
+    <item quantity="other">The %1$d messages after this answer get discarded. Then you carry on from here.</item>
+  </plurals>
 </resources>
