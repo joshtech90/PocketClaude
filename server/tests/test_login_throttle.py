@@ -677,8 +677,8 @@ class TestSolFindings(unittest.TestCase):
         for i in range(200):
             clock.advance(0.5)
             self.assertEqual(throttler.reserve(f"198.51.100.{i % 50}").retry_after, 1)
-        # Ein einziger ergebnisloser Durchlauf, danach gilt die Merkzeit.
-        self.assertLessEqual(throttler._scan_count - vorher, 1)
+        # Genau ein ergebnisloser Durchlauf, danach gilt die Merkzeit.
+        self.assertEqual(throttler._scan_count - vorher, 1)
 
     def test_rescan_resumes_after_the_earliest_block_expires(self) -> None:
         # Finding N5: Die Merkzeit darf nicht dauerhaft blockieren. Sobald die
@@ -754,6 +754,39 @@ class TestSolFindings(unittest.TestCase):
             throttler.reserve(f"203.0.113.{i}")
         self.assertEqual(throttler.entry_count(), 200)
         # 60 Verdraengungen aus einem Vorrat von 64: hoechstens ein Durchlauf.
+        self.assertLessEqual(throttler._scan_count - vorher, 1)
+
+    def test_single_candidate_does_not_trigger_a_scan_per_request(self) -> None:
+        # Finding N5, der Zwischenfall: Die Tabelle ist voll, es gibt jeweils
+        # nur EINEN verdraengbaren Eintrag, der sofort wieder ersetzt wird.
+        # Genau hier scannte die Vorfassung bei jeder Anfrage die ganze
+        # Tabelle. Das Vormerken beim Entstehen muss das erledigen.
+        clock = FakeClock(1000.0)
+        throttler = LoginThrottler(
+            max_entries=64,
+            free_attempts=1,
+            base_delay=600.0,
+            max_delay=600.0,
+            history_window=100000.0,
+            clock=clock,
+        )
+        # 63 Quellen mit je zwei Versuchen: 63 laufende Sperren.
+        for i in range(63):
+            throttler.reserve(f"192.0.2.{i}")
+            throttler.reserve(f"192.0.2.{i}")
+        # Ein einzelner ungesperrter Eintrag fuellt den letzten Platz.
+        throttler.reserve("198.51.100.1")
+        self.assertEqual(throttler.entry_count(), 64)
+        vorher = throttler._scan_count
+
+        # Jede neue Quelle verdraengt den jeweils einen freien Eintrag und
+        # legt selbst wieder genau einen freien an.
+        for i in range(150):
+            clock.advance(0.5)
+            ergebnis = throttler.reserve(f"203.0.113.{i % 200}")
+            self.assertEqual(ergebnis.retry_after, 0)
+        self.assertEqual(throttler.entry_count(), 64)
+        # Hoechstens ein Durchlauf fuer 150 Verdraengungen.
         self.assertLessEqual(throttler._scan_count - vorher, 1)
 
     def test_scans_stay_bounded_when_table_is_full_of_blocks(self) -> None:

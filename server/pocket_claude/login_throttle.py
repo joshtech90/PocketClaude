@@ -156,6 +156,15 @@ class LoginThrottler:
 
             self._entries[subject] = entry
             self._entries.move_to_end(subject)
+            if now >= entry.blocked_until and len(self._victims) < _VICTIM_BATCH:
+                # Ohne laufende Sperre ist dieser Eintrag ab sofort ein
+                # Verdraengungskandidat. Ihn hier vorzumerken macht den
+                # Volldurchlauf im Normalbetrieb ueberfluessig. Der Vorrat ist
+                # eine Kandidatenmenge, keine strenge LRU-Ordnung; die Reihung
+                # ist eine Heuristik, die Sicherheitszusage ist allein, dass
+                # eine laufende Sperre nie verdraengt wird.
+                self._victims.append(subject)
+                self._no_victim_until = 0.0
             if now < entry.blocked_until:
                 # Der sperrausloesende Versuch wird selbst schon abgewiesen,
                 # damit free_attempts genau die Zahl freier Passwortpruefungen
@@ -246,12 +255,16 @@ class LoginThrottler:
                 frueheste = entry.blocked_until
         self._scan_count += 1
 
-        if not self._victims:
-            # Alles gesperrt. Ein neuer Durchlauf lohnt fruehestens, wenn die
-            # naechste Sperre ablaeuft.
+        if len(self._victims) < _VICTIM_BATCH:
+            # Der Durchlauf hat die Tabelle vollstaendig gesehen, er wurde also
+            # nicht vorzeitig abgebrochen. Vor Ablauf der fruehesten Sperre
+            # kann kein weiterer Kandidat auftauchen, den nicht schon das
+            # Vormerken beim Entstehen erfasst haette. Ohne diese Merkzeit
+            # wuerde ein einziger Kandidat pro Anfrage einen Volldurchlauf
+            # ausloesen.
             self._no_victim_until = frueheste if frueheste < math.inf else now
+        if not self._victims:
             return None
-        self._no_victim_until = 0.0
         return self._victims.popleft()
 
     def entry_count(self) -> int:
