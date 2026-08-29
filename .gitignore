@@ -69,3 +69,8 @@ AGENTS.md
 
 # Entscheidungsboegen sind Wegwerf-Artefakte (globale Konvention)
 00 HTML/
+
+# Signierschluessel fuer Release-Builds: gehoert NIE in dieses oeffentliche Repo.
+*.jks
+keystore.properties
+.pocketclot-signing/

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,22 +7,49 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Signierschluessel fuer Release-Builds. Die Datei liegt bewusst AUSSERHALB
+// des Repos, weil PocketClot oeffentlich auf GitHub steht. Fehlt sie, laeuft
+// alles normal weiter und der Release-Build wird schlicht nicht signiert; nur
+// fuer den Play Store braucht es sie.
+val keystorePropsFile = file(System.getProperty("user.home") + "/.pocketclot-signing/keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+
 android {
     namespace = "de.smartzone.pocketclaude"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "de.smartzone.pocketclaude"
+        // Die Paket-Kennung ist die dauerhafte Identitaet der App gegenueber
+    // Android und Google Play und laesst sich nach der ersten
+    // Veroeffentlichung nie wieder aendern. Deshalb steht hier "pocketclot"
+    // und nicht mehr der alte Name. Das Kotlin-Paket unten heisst bewusst
+    // weiter "pocketclaude": das sieht niemand ausser dem Code selbst, und ein
+    // Umbenennen wuerde jede Datei der App anfassen.
+    applicationId = "de.smartzone.pocketclot"
         minSdk = 31
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
 
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        if (keystoreProps.isNotEmpty()) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
