@@ -242,7 +242,10 @@ fun AssistantBubble(
             // kein hartes Umschalten: das gaebe einen sichtbaren Sprung.
             PocketThinkingBlob(
                 size = 25.dp,
-                isThinking = text.isEmpty() && isStreaming,
+                // isBlank statt isEmpty: faengt der Stream mit einem Umbruch oder
+                // Leerzeichen an, ist noch kein Wort da und die Masse darf nicht
+                // vorzeitig zur Ruhe kommen.
+                isThinking = text.isBlank() && isStreaming,
             )
             Spacer(Modifier.width(8.dp))
             Text(

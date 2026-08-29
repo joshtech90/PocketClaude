@@ -160,12 +160,29 @@ def build_master() -> Image.Image:
     bad = dev > tol
     # Winkelbereich grosszuegig ausweiten, damit auch die dunkle Kantenlinie
     # neben der Stufe mit in die Reparatur faellt.
+    # Periodisch falten, das Winkelprofil ist zyklisch. Ein np.convolve auf dem
+    # nackten Array wuerde die Naht bei 0 Grad als Rand behandeln und einen
+    # Defekt, der genau dort liegt, nur einseitig ausweiten.
     span = 45
-    bad = np.convolve(bad.astype(float), np.ones(2 * span + 1), mode="same") > 0
+    tripled = np.concatenate([bad.astype(float)] * 3)
+    smeared = np.convolve(tripled, np.ones(2 * span + 1), mode="same")
+    bad = smeared[len(bad):2 * len(bad)] > 0
 
     new_mask_img = render_mask(theta, r_smooth, cx, cy, w)
     new_alpha = np.array(new_mask_img)
     new_solid = new_alpha > 127
+    # Auch die halbtransparenten Kantenpixel brauchen eine gueltige Farbe,
+    # sonst schimmert dort das schwarze RGB der urspruenglich leeren Flaeche
+    # durch und man haette den dunklen Rand ueber die Hintertuer zurueck.
+    new_any = new_alpha > 0
+
+    # Die Polarmethode setzt voraus, dass jeder Strahl vom Schwerpunkt die
+    # Silhouette genau einmal verlaesst. Trifft das nicht zu, wuerde das
+    # Polygon Einbuchtungen zuschuetten. Gegen stille Formaenderungen hilft
+    # ein Flaechenvergleich.
+    delta_area = abs(new_solid.sum() - mask.sum()) / mask.sum()
+    if delta_area > 0.02:
+        print(f"WARNUNG: Flaeche weicht um {delta_area:.1%} ab, Form pruefen.")
 
     # Reparaturzone: in den betroffenen Winkeln ein radiales Band rund um die
     # alte Kante, nach innen breit genug fuer die Schattierungs-Narbe.
@@ -184,7 +201,7 @@ def build_master() -> Image.Image:
     # Erst die Farbe bis an die neue Kante nachziehen, dann die Defektzone
     # glatt ueberbruecken. Ohne den ersten Schritt saehe der Rand schwarz aus,
     # ohne den zweiten bliebe die Schattierungs-Narbe des alten Zackens stehen.
-    rgb = grow_colors(rgb, trusted, new_solid)
+    rgb = grow_colors(rgb, trusted, new_any)
     rgb = inpaint(rgb, zone & new_solid, new_solid)
 
     out = np.dstack([np.clip(rgb, 0, 255).astype(np.uint8), new_alpha])
@@ -204,7 +221,10 @@ def place(blob: Image.Image, canvas: int, fraction: float) -> Image.Image:
     scale = target / max(w, h)
     new = blob.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
     out = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
-    out.paste(new, ((canvas - new.size[0]) // 2, (canvas - new.size[1]) // 2), new)
+    # alpha_composite statt paste(..., mask=new): paste wuerde das Quell-Alpha
+    # zusaetzlich als Maske anwenden und es damit quadrieren, was die
+    # Antialias-Kante ausduennt.
+    out.alpha_composite(new, dest=((canvas - new.size[0]) // 2, (canvas - new.size[1]) // 2))
     return out
 
 
@@ -264,10 +284,10 @@ def main():
             ("ic_launcher_round.png", circle_mask(tile_px)),
         ):
             tl = tile.copy()
-            tl.paste(art, (0, 0), art)
+            tl.alpha_composite(art)
             tl.putalpha(mask)
             out = Image.new("RGBA", (leg, leg), (0, 0, 0, 0))
-            out.paste(tl, ((leg - tile_px) // 2, (leg - tile_px) // 2), tl)
+            out.alpha_composite(tl, dest=((leg - tile_px) // 2, (leg - tile_px) // 2))
             out.save(os.path.join(RES, f"mipmap-{dens}", name))
             written += 1
 
