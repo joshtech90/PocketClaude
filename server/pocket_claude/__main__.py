@@ -11,6 +11,8 @@ def main() -> None:
         port=settings.server_port,
         log_level=settings.log_level.lower(),
         reload=settings.dev_reload,
+        proxy_headers=True,
+        forwarded_allow_ips="127.0.0.1",
     )
 
 
