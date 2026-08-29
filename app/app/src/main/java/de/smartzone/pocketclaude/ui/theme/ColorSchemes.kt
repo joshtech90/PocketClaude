@@ -16,9 +16,11 @@ enum class PocketPalette(val id: String, val displayName: String) {
     GRAPHITE_MONO("graphite_mono", "Graphite Mono");
 
     companion object {
-        /** Unbekannte oder fehlende IDs fallen auf die Standardpalette zurueck. */
-        fun fromId(value: String?): PocketPalette =
-            entries.firstOrNull { it.id == value } ?: MIDNIGHT_ATELIER
+        /** Unbekannte oder fehlende IDs fallen auf die Standardpalette zurueck.
+         *  Der Rueckfall ist angebbar, weil hell und dunkel unterschiedliche
+         *  Vorgaben haben: hell Nordic Blue, dunkel Midnight Atelier. */
+        fun fromId(value: String?, fallback: PocketPalette = MIDNIGHT_ATELIER): PocketPalette =
+            entries.firstOrNull { it.id == value } ?: fallback
     }
 }
 

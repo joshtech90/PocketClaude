@@ -294,9 +294,15 @@ data class ServerSettingsExportDto(
 @Serializable
 data class AppSettingsExportDto(
     @SerialName("theme_mode") val themeMode: String = "SYSTEM",
-    // Gewaehltes Farbschema. Der Default muss zu AppSettings.paletteId passen,
-    // sonst setzt ein Import aus einer aelteren App-Version die Farbwahl zurueck.
+    // Farbschema. Bis August 2026 gab es nur dieses eine Feld fuer hell und
+    // dunkel; es bleibt im Schema, damit ein aelterer App-Stand einen neuen
+    // Export noch lesen kann und umgekehrt.
     @SerialName("palette_id") val paletteId: String = DEFAULT_PALETTE_ID,
+    // Die Defaults muessen zu AppSettings passen, sonst setzt ein Import aus
+    // einer aelteren App-Version die Farbwahl zurueck. Leer heisst: der Export
+    // kannte die Trennung noch nicht, dann gilt `paletteId` fuer beide.
+    @SerialName("palette_id_light") val paletteIdLight: String = "",
+    @SerialName("palette_id_dark") val paletteIdDark: String = "",
     // Default muss zu AppSettings.ttsVoice passen — sonst überschreibt der
     // Import bei fehlendem Feld die User-Wahl mit einer alten Voice.
     @SerialName("tts_voice") val ttsVoice: String = "edge-de-DE-KatjaNeural",

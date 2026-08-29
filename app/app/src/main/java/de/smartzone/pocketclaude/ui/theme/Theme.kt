@@ -48,7 +48,8 @@ private val PocketShapes = Shapes(
 @Composable
 fun PocketClaudeTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
-    palette: PocketPalette = PocketPalette.MIDNIGHT_ATELIER,
+    paletteLight: PocketPalette = PocketPalette.NORDIC_BLUE,
+    paletteDark: PocketPalette = PocketPalette.MIDNIGHT_ATELIER,
     content: @Composable () -> Unit,
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -58,9 +59,11 @@ fun PocketClaudeTheme(
         ThemeMode.DARK -> true
     }
 
-    // Hell und dunkel sind zwei Saetze DERSELBEN Palette. Der Hell-Dunkel-Modus
-    // bleibt also unabhaengig von der Farbwahl bedienbar.
-    val spec = specFor(palette)
+    // Hell und dunkel sind zwei getrennte Wahlen. Jede Palette bringt zwar
+    // beide Varianten mit, aber welche Palette im hellen Modus gilt, hat mit
+    // der Wahl fuer den dunklen nichts zu tun: ein Farbschema, das hell
+    // hervorragend aussieht, muss dunkel nicht das beste sein.
+    val spec = specFor(if (dark) paletteDark else paletteLight)
     val scheme = if (dark) spec.darkScheme else spec.lightScheme
     val pocket = if (dark) spec.darkPocket else spec.lightPocket
 

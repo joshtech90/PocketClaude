@@ -400,8 +400,12 @@ class SettingsViewModel(
     }
 
     /** Farbschema der App. Rein lokal, betrifft nur die Darstellung. */
-    fun setPaletteId(value: String) = viewModelScope.launch {
-        settingsRepo.setPaletteId(value)
+    fun setPaletteIdLight(value: String) = viewModelScope.launch {
+        settingsRepo.setPaletteIdLight(value)
+    }
+
+    fun setPaletteIdDark(value: String) = viewModelScope.launch {
+        settingsRepo.setPaletteIdDark(value)
     }
 
     /** Standardwerte fuer erzeugte Bilder. Gelten fuer den Bilder-Screen UND

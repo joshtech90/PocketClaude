@@ -12,8 +12,17 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/** Vorgabe-Farbschema. Muss zur ID von `PocketPalette.MIDNIGHT_ATELIER` passen. */
-const val DEFAULT_PALETTE_ID = "midnight_atelier"
+/** Vorgabe-Farbschema fuer den hellen Modus. Muss zur ID von
+ *  `PocketPalette.NORDIC_BLUE` passen. */
+const val DEFAULT_PALETTE_ID_LIGHT = "nordic_blue"
+
+/** Vorgabe-Farbschema fuer den dunklen Modus. Muss zur ID von
+ *  `PocketPalette.MIDNIGHT_ATELIER` passen. */
+const val DEFAULT_PALETTE_ID_DARK = "midnight_atelier"
+
+/** Alter, gemeinsamer Vorgabewert. Bleibt nur, damit ein Export aus einer
+ *  aelteren App-Version noch gelesen werden kann. */
+const val DEFAULT_PALETTE_ID = DEFAULT_PALETTE_ID_DARK
 
 /** Claude-Alltagsmodell. Muss zu `DEFAULT_CLAUDE_MODEL` in claude_engine.py passen. */
 const val DEFAULT_CLAUDE_MODEL = "claude-opus-5"
@@ -60,7 +69,10 @@ data class AppSettings(
      *  String und nicht als Enum: die Datenschicht soll nichts aus der
      *  UI-Schicht importieren muessen. Unbekannte Werte fallen in der UI
      *  automatisch auf die Standardpalette zurueck. */
-    val paletteId: String = DEFAULT_PALETTE_ID,
+    val paletteIdLight: String = DEFAULT_PALETTE_ID_LIGHT,
+    /** Farbschema fuer den dunklen Modus. Hell und dunkel sind bewusst
+     *  getrennt: der helle Look darf ein anderer sein als der dunkle. */
+    val paletteIdDark: String = DEFAULT_PALETTE_ID_DARK,
     /** Default-Voice ist Edge KatjaNeural (gratis, kein Setup nötig). Passt
      *  zum Default-Provider `edge_tts`. Für User mit Cloud-TTS-/Gemini-API-
      *  Setup liefert der Server via /tts/status einen passenden Default
@@ -202,7 +214,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
      *  Wenn ein Chat KEINEN Eintrag hat → globaler ttsAutoSpeak greift. */
     private val keyTtsAutoSpeakPerChat = stringPreferencesKey("tts_auto_speak_per_chat")
     private val keyThemeMode = stringPreferencesKey("theme_mode")
+    /** Alter, gemeinsamer Schluessel. Wird nur noch gelesen, um die Wahl eines
+     *  Bestandsnutzers auf die beiden neuen Schluessel zu uebernehmen. */
     private val keyPaletteId = stringPreferencesKey("palette_id")
+    private val keyPaletteIdLight = stringPreferencesKey("palette_id_light")
+    private val keyPaletteIdDark = stringPreferencesKey("palette_id_dark")
     private val keyTtsVoice = stringPreferencesKey("tts_voice")
     private val keyTtsAutoSpeak = stringPreferencesKey("tts_auto_speak")
     private val keyTtsSpeed = floatPreferencesKey("tts_speed")
@@ -222,6 +238,22 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     /** Liest eine JSON-Map aus den Preferences. Kaputtes JSON gilt als leer,
      *  damit ein beschaedigter Eintrag nicht die ganzen Settings blockiert. */
+    /**
+     * Liest ein Farbschema und uebernimmt dabei die alte, gemeinsame Wahl.
+     *
+     * Bis August 2026 gab es nur EIN Schema fuer hell und dunkel. Wer damals
+     * eines gewaehlt hat, soll es behalten, statt beim Update ungefragt auf die
+     * neuen Vorgaben gesetzt zu werden. Wer nie etwas gewaehlt hat, hat keinen
+     * alten Eintrag und bekommt die neuen Vorgaben.
+     */
+    private fun resolvePalette(
+        prefs: Preferences,
+        key: Preferences.Key<String>,
+        fallback: String,
+    ): String = prefs[key]?.takeIf { it.isNotBlank() }
+        ?: prefs[keyPaletteId]?.takeIf { it.isNotBlank() }
+        ?: fallback
+
     private fun parseStringMap(raw: String?): Map<String, String> {
         if (raw.isNullOrBlank()) return emptyMap()
         return runCatching {
@@ -241,7 +273,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             profiles = profiles,
             activeProfileId = activeId,
             themeMode = ThemeMode.fromString(prefs[keyThemeMode]),
-            paletteId = prefs[keyPaletteId]?.takeIf { it.isNotBlank() } ?: DEFAULT_PALETTE_ID,
+            paletteIdLight = resolvePalette(prefs, keyPaletteIdLight, DEFAULT_PALETTE_ID_LIGHT),
+            paletteIdDark = resolvePalette(prefs, keyPaletteIdDark, DEFAULT_PALETTE_ID_DARK),
             ttsVoice = prefs[keyTtsVoice].orEmpty().ifBlank { "edge-de-DE-KatjaNeural" },
             ttsAutoSpeak = (prefs[keyTtsAutoSpeak] ?: "false").toBooleanStrictOrNull() ?: false,
             ttsSpeed = (prefs[keyTtsSpeed] ?: 1.0f).coerceIn(0.25f, 2.0f),
@@ -432,8 +465,12 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[keyThemeMode] = mode.name }
     }
 
-    suspend fun setPaletteId(value: String) {
-        dataStore.edit { it[keyPaletteId] = value }
+    suspend fun setPaletteIdLight(value: String) {
+        dataStore.edit { it[keyPaletteIdLight] = value }
+    }
+
+    suspend fun setPaletteIdDark(value: String) {
+        dataStore.edit { it[keyPaletteIdDark] = value }
     }
 
     suspend fun setTtsVoice(value: String) {
@@ -512,7 +549,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         val prefs = dataStore.data.first()
         return AppSettingsExportDto(
             themeMode = prefs[keyThemeMode] ?: "SYSTEM",
-            paletteId = prefs[keyPaletteId]?.takeIf { it.isNotBlank() } ?: DEFAULT_PALETTE_ID,
+            // `paletteId` ist das alte, gemeinsame Feld. Es wird weiter
+            // mitgeschrieben, damit ein aelterer App-Stand den Export lesen kann.
+            paletteId = resolvePalette(prefs, keyPaletteIdDark, DEFAULT_PALETTE_ID_DARK),
+            paletteIdLight = resolvePalette(prefs, keyPaletteIdLight, DEFAULT_PALETTE_ID_LIGHT),
+            paletteIdDark = resolvePalette(prefs, keyPaletteIdDark, DEFAULT_PALETTE_ID_DARK),
             ttsVoice = prefs[keyTtsVoice].orEmpty().ifBlank { "edge-de-DE-KatjaNeural" },
             ttsAutoSpeak = (prefs[keyTtsAutoSpeak] ?: "false").toBooleanStrictOrNull() ?: false,
             ttsSpeed = (prefs[keyTtsSpeed] ?: 1.0f).coerceIn(0.25f, 2.0f),
@@ -535,7 +576,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun applyImport(s: AppSettingsExportDto) {
         dataStore.edit { prefs ->
             prefs[keyThemeMode] = s.themeMode
-            prefs[keyPaletteId] = s.paletteId
+            // Ein Export aus einer aelteren Version kennt nur `paletteId`.
+            // Dann gilt der eine Wert fuer beide Modi.
+            prefs[keyPaletteIdLight] = s.paletteIdLight.ifBlank { s.paletteId }
+            prefs[keyPaletteIdDark] = s.paletteIdDark.ifBlank { s.paletteId }
             prefs[keyTtsVoice] = s.ttsVoice
             prefs[keyTtsAutoSpeak] = s.ttsAutoSpeak.toString()
             prefs[keyTtsSpeed] = s.ttsSpeed.coerceIn(0.25f, 2.0f)

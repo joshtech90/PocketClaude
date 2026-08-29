@@ -135,7 +135,10 @@ private fun PocketApp(initialChatCid: String?, shareNonce: Int) {
 
     PocketClaudeTheme(
         mode = settings.themeMode,
-        palette = de.smartzone.pocketclaude.ui.theme.PocketPalette.fromId(settings.paletteId),
+        paletteLight = de.smartzone.pocketclaude.ui.theme.PocketPalette
+            .fromId(settings.paletteIdLight, de.smartzone.pocketclaude.ui.theme.PocketPalette.NORDIC_BLUE),
+        paletteDark = de.smartzone.pocketclaude.ui.theme.PocketPalette
+            .fromId(settings.paletteIdDark),
     ) {
         Surface(
             modifier = Modifier
