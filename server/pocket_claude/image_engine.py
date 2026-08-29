@@ -1,50 +1,46 @@
-"""Google Gemini Image Generation (Nano Banana).
+"""Bilderzeugung ueber das Modell-Gateway.
 
-Direkter REST-Aufruf an `generativelanguage.googleapis.com`, kein extra Package
-noetig. Unterstuetzt:
+Bis August 2026 lief das ueber `generativelanguage.googleapis.com` mit einem
+AI-Studio-Schluessel, und jedes Bild kostete Geld. Seit dem 29.08.2026 laeuft es
+ueber dasselbe Gateway, an dem auch die Gemini-Chatmodelle haengen, und damit
+ueber die vorhandenen Google-Konten: kostenlos, ohne Schluessel in der App.
+
+Moeglich ist das, weil CLIProxyAPI neben dem OpenAI-Pfad auch den echten
+Gemini-Pfad `/v1beta/...:generateContent` bedient. Der nimmt exakt denselben
+Request entgegen wie die kostenpflichtige Schnittstelle, deshalb bleibt hier
+fast alles wie es war. Unterstuetzt weiterhin:
 
 - Text-to-Image  (nur `prompt`)
 - Image-to-Image (Editing: `prompt` + 1..n Referenz-Bilder als Inline-Data)
 - Aspect-Ratio   (1:1, 16:9, 9:16, 4:3, 3:4 via `imageConfig.aspectRatio`)
 - Aufloesung     (1K, 2K, 4K via `imageConfig.imageSize`)
-- Mehrere Output-Bilder pro Call (`candidateCount`)
-- Modell-Wahl   (Nano-Banana 2.5 / 3.1 preview)
+- Mehrere Bilder (jetzt als mehrere Aufrufe, siehe unten)
 
-Liefert eine Liste von `GeneratedImage`-Objekten (bytes + mime_type + index).
-Fehler werden als `ImageGenError` mit aussagekraeftiger Message geworfen.
+Ein Unterschied bleibt: `candidateCount > 1` lehnt das Gateway ab
+("Only one candidate can be specified in the current model"). Mehrere Varianten
+entstehen deshalb durch mehrere Aufrufe nacheinander.
+
+Die Modellwahl ist entfallen: welches Bildmodell es gibt, sagt das Gateway
+(`gateways.image_target()`). Fehler werden als `ImageGenError` mit
+aussagekraeftiger Message geworfen.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 from dataclasses import dataclass
 
 import httpx
 
+from pocket_claude import gateways
+
 log = logging.getLogger(__name__)
 
-# Modelle die wir anbieten. Modellnamen via ListModels-Endpoint verifiziert.
-# Nano Banana = Gemini-Image. Pro = beste Qualitaet, Flash = schneller.
-AVAILABLE_MODELS: list[dict] = [
-    {
-        "id": "gemini-3.1-flash-image-preview",
-        "label": "Nano Banana 2 (Gemini 3.1 Flash Image)",
-        "default": True,
-        "description": "Aktuellster Flash: sehr gute Qualitaet, schnell. Beste Allround-Wahl.",
-    },
-    {
-        "id": "gemini-3-pro-image-preview",
-        "label": "Nano Banana Pro (Gemini 3 Pro Image)",
-        "default": False,
-        "description": "Hoechste Qualitaet: Photo-Realismus, komplexe Komposition. Langsamer und teurer.",
-    },
-    {
-        "id": "gemini-2.5-flash-image",
-        "label": "Nano Banana (Gemini 2.5 Flash Image)",
-        "default": False,
-        "description": "Stabile Vorversion. Guenstigste Option, immer noch sehr gute Qualitaet.",
-    },
-]
+# Die Modellwahl liegt beim Gateway, nicht mehr bei uns: es bietet genau die
+# Bildmodelle an, fuer die ein Konto eingeloggt ist. Die Liste hier bliebe sonst
+# dauerhaft hinter dem zurueck, was wirklich verfuegbar ist.
+AVAILABLE_MODELS: list[dict] = []
 
 ASPECT_RATIOS: list[dict] = [
     {"id": "1:1",  "label": "Quadrat (1:1)"},
@@ -62,9 +58,29 @@ IMAGE_SIZES: list[dict] = [
 
 DEFAULT_IMAGE_SIZE = "2K"
 
-MAX_CANDIDATES = 4  # Anzahl Bilder pro Call: Gemini cappt bei 4
+# Obergrenze fuer Bilder pro Werkzeugaufruf. Weil das Gateway nur ein Bild pro
+# Anfrage liefert, sind das ebenso viele Aufrufe nacheinander.
+MAX_CANDIDATES = 4
 
-API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+# Wieviele Bild-Anfragen duerfen SERVERWEIT gleichzeitig laufen. Bewusst auf
+# Modulebene und nicht je Aufruf: sonst waere die Grenze pro Chat-Turn gemeint,
+# und zwei gleichzeitige Turns wuerden sie stillschweigend verdoppeln. Genau
+# daran haengt aber das Kontingent des Google-Kontos.
+_CONCURRENCY = 2
+_gate: asyncio.Semaphore | None = None
+
+
+def _concurrency_gate() -> asyncio.Semaphore:
+    """Der gemeinsame Semaphore, beim ersten Bedarf angelegt.
+
+    Nicht auf Modulebene erzeugt: ein Semaphore bindet sich an den Event-Loop,
+    der beim Import laeuft, und das muss nicht derselbe sein wie der spaetere
+    Betriebs-Loop.
+    """
+    global _gate
+    if _gate is None:
+        _gate = asyncio.Semaphore(_CONCURRENCY)
+    return _gate
 
 
 class ImageGenError(RuntimeError):
@@ -88,26 +104,33 @@ class ReferenceImage:
 
 async def generate(
     *,
-    api_key: str,
     prompt: str,
     model: str | None = None,
     aspect_ratio: str | None = None,
     image_size: str | None = None,
     count: int = 1,
     references: list[ReferenceImage] | None = None,
-    timeout: float = 90.0,
+    timeout: float = 120.0,
 ) -> list[GeneratedImage]:
-    """Generiert `count` Bilder aus `prompt` (optional mit `references` als
-    Edit-Input). Wirft `ImageGenError` bei Problemen."""
-    if not api_key or not api_key.strip():
-        raise ImageGenError("Kein Gemini-API-Key gesetzt: bitte in Einstellungen eintragen.")
+    """Erzeugt `count` Bilder aus `prompt`, optional mit `references` als Vorlage.
+
+    Laeuft ueber das Modell-Gateway und damit ueber die dort eingeloggten
+    Google-Konten. Wirft `ImageGenError`, wenn gar nichts zustande kommt; kommen
+    einzelne der gewuenschten Varianten nicht durch, werden die uebrigen
+    trotzdem geliefert.
+    """
     if not prompt or not prompt.strip():
         raise ImageGenError("Prompt darf nicht leer sein.")
 
-    model = (model or AVAILABLE_MODELS[0]["id"]).strip()
+    target = await gateways.image_target(preferred=(model or "").strip())
+    if target is None:
+        raise ImageGenError(
+            "Bilderzeugung ist auf diesem Server nicht eingerichtet: kein "
+            "Gateway meldet ein Bildmodell. Laeuft das Gateway?"
+        )
+    gw, model_id = target
     count = max(1, min(int(count), MAX_CANDIDATES))
 
-    # Request-Body bauen
     parts: list[dict] = [{"text": prompt.strip()}]
     for ref in references or []:
         parts.append({
@@ -119,12 +142,10 @@ async def generate(
 
     body: dict = {
         "contents": [{"role": "user", "parts": parts}],
-        "generationConfig": {
-            "responseModalities": ["IMAGE"],
-            "candidateCount": count,
-        },
+        # `candidateCount` bleibt bewusst bei 1: das Gateway lehnt alles andere
+        # ab. Mehrere Varianten entstehen unten durch mehrere Aufrufe.
+        "generationConfig": {"responseModalities": ["IMAGE"], "candidateCount": 1},
     }
-
     image_config: dict[str, str] = {}
     if aspect_ratio and aspect_ratio.strip():
         image_config["aspectRatio"] = aspect_ratio.strip()
@@ -133,62 +154,108 @@ async def generate(
     if image_config:
         body["generationConfig"]["imageConfig"] = image_config
 
-    url = f"{API_BASE}/models/{model}:generateContent"
+    url = f"{gateways.native_base_url(gw)}/models/{model_id}:generateContent"
+    headers = {"Content-Type": "application/json"}
+    if gw.api_key:
+        headers["Authorization"] = f"Bearer {gw.api_key}"
 
-    log.info(
-        "image-gen: model=%s aspect=%s size=%s count=%d refs=%d prompt=%r",
-        model, aspect_ratio, image_size, count, len(references or []), prompt[:80],
-    )
+    log.info("image-gen: gateway=%s model=%s aspect=%s size=%s count=%d refs=%d prompt=%r",
+             gw.id, model_id, aspect_ratio, image_size, count,
+             len(references or []), prompt[:80])
 
-    async def _send_request(req_body: dict) -> httpx.Response:
+    # Zwei Anfragen gleichzeitig, serverweit. Alle auf einmal provoziert bei
+    # Google gern ein Kontingent-Limit, eine nach der anderen dauert unnoetig
+    # lange.
+    gate = _concurrency_gate()
+
+    async def _one(idx: int) -> tuple[int, list[GeneratedImage] | Exception]:
+        async with gate:
+            try:
+                return idx, await _generate_one(
+                    url, headers, body, timeout, aspect_ratio, image_size,
+                )
+            except ImageGenError as exc:
+                return idx, exc
+
+    results = await asyncio.gather(*(_one(i) for i in range(count)))
+
+    images: list[GeneratedImage] = []
+    first_error: ImageGenError | None = None
+    for idx, res in sorted(results, key=lambda r: r[0]):
+        if isinstance(res, Exception):
+            if first_error is None and isinstance(res, ImageGenError):
+                first_error = res
+            continue
+        for img in res:
+            images.append(GeneratedImage(index=len(images), mime_type=img.mime_type,
+                                         data=img.data, text=img.text))
+
+    if not images:
+        raise first_error or ImageGenError("Es kam kein Bild zurueck.")
+    if first_error is not None:
+        log.info("image-gen: %d von %d Varianten erzeugt, Rest fehlgeschlagen: %s",
+                 len(images), count, first_error)
+    return images
+
+
+async def _generate_one(
+    url: str,
+    headers: dict,
+    body: dict,
+    timeout: float,
+    aspect_ratio: str | None,
+    image_size: str | None,
+) -> list[GeneratedImage]:
+    """Ein einzelner Bild-Aufruf inklusive Wiederholung ohne `imageSize`."""
+
+    async def _send(req_body: dict) -> httpx.Response:
         try:
             async with httpx.AsyncClient(timeout=timeout) as cli:
-                return await cli.post(
-                    url,
-                    params={"key": api_key},
-                    headers={"Content-Type": "application/json"},
-                    json=req_body,
-                )
+                return await cli.post(url, headers=headers, json=req_body)
         except httpx.TimeoutException as e:
-            raise ImageGenError(f"Timeout nach {timeout:.0f}s: Bild zu komplex oder API ueberlastet.") from e
+            raise ImageGenError(
+                f"Timeout nach {timeout:.0f}s: Bild zu komplex oder Gateway ueberlastet."
+            ) from e
         except httpx.RequestError as e:
             raise ImageGenError(f"Netzwerk-Fehler: {e}") from e
 
-    r = await _send_request(body)
+    r = await _send(body)
 
-    # Retry ohne imageSize bei HTTP 400 wenn das Modell imageSize nicht unterstuetzt
+    # Nicht jedes Bildmodell kennt `imageSize`. Dann einmal ohne wiederholen,
+    # damit ein Bild in Standardgroesse besser ist als gar keins.
     if r.status_code == 400 and image_size:
-        err_lower = r.text.lower()
-        if "imagesize" in err_lower or "image_config" in err_lower or "imageconfig" in err_lower:
-            log.info(
-                "image-gen: API meldet Fehler zu imageSize fuer Modell %s, wiederhole ohne imageSize",
-                model,
-            )
-            retry_body = {
+        low = r.text.lower()
+        if "imagesize" in low or "image_config" in low or "imageconfig" in low:
+            log.info("image-gen: Modell kennt imageSize nicht, wiederhole ohne")
+            retry = {
                 "contents": body["contents"],
                 "generationConfig": {
                     "responseModalities": body["generationConfig"]["responseModalities"],
-                    "candidateCount": body["generationConfig"]["candidateCount"],
+                    "candidateCount": 1,
                 },
             }
             if aspect_ratio and aspect_ratio.strip():
-                retry_body["generationConfig"]["imageConfig"] = {"aspectRatio": aspect_ratio.strip()}
-            r = await _send_request(retry_body)
+                retry["generationConfig"]["imageConfig"] = {
+                    "aspectRatio": aspect_ratio.strip()}
+            r = await _send(retry)
 
     if r.status_code >= 400:
-        # Versuche, die Google-Fehlermeldung lesbar zu machen
         msg = r.text[:400]
         try:
-            j = r.json()
-            err = j.get("error") or {}
+            err = (r.json().get("error") or {})
             msg = err.get("message") or msg
             status = err.get("status") or ""
             if status:
                 msg = f"[{status}] {msg}"
         except Exception:
             pass
-        log.warning("image-gen API %d: %s", r.status_code, msg)
-        raise ImageGenError(f"Gemini-API-Fehler (HTTP {r.status_code}): {msg}")
+        log.warning("image-gen HTTP %d: %s", r.status_code, msg)
+        if r.status_code == 429:
+            raise ImageGenError(
+                "Das Bild-Kontingent des Kontos ist gerade erschoepft. "
+                "Spaeter nochmal versuchen."
+            )
+        raise ImageGenError(f"Gateway-Fehler (HTTP {r.status_code}): {msg}")
 
     try:
         data = r.json()
@@ -197,16 +264,11 @@ async def generate(
 
     images = _extract_images(data)
     if not images:
-        # Manchmal blockt Google den Prompt (Safety): finishReason mitgeben
-        finish_reasons = []
-        for cand in data.get("candidates", []):
-            fr = cand.get("finishReason")
-            if fr:
-                finish_reasons.append(fr)
-        fr_str = ", ".join(finish_reasons) or "unbekannt"
+        reasons = [c.get("finishReason") for c in data.get("candidates", [])
+                   if c.get("finishReason")]
         raise ImageGenError(
-            f"Keine Bilder erhalten (finishReason: {fr_str}). "
-            "Haeufig: Prompt wurde blockiert (Safety) oder das Modell hat nur Text zurueckgegeben."
+            f"Kein Bild erhalten (Grund: {', '.join(reasons) or 'unbekannt'}). "
+            "Haeufig wurde der Prompt blockiert oder das Modell hat nur Text geliefert."
         )
     return images
 
@@ -238,13 +300,18 @@ def _collect_text(content: dict) -> str | None:
 
 
 def get_config() -> dict:
-    """Statische Config-Info fuers Frontend (Modelle, Aspect-Ratios, Bildgroessen, Limits)."""
+    """Config-Info fuers Frontend.
+
+    `models` ist seit dem Umstieg aufs Gateway leer und `default_model` ein
+    leerer String: welches Bildmodell laeuft, entscheidet das Gateway. Beide
+    Felder bleiben im Schema, damit aeltere App-Staende nicht stolpern.
+    """
     return {
         "models": AVAILABLE_MODELS,
         "aspect_ratios": ASPECT_RATIOS,
         "image_sizes": IMAGE_SIZES,
         "max_candidates": MAX_CANDIDATES,
-        "default_model": next(m["id"] for m in AVAILABLE_MODELS if m.get("default")),
+        "default_model": "",
         "default_aspect": "1:1",
         "default_image_size": DEFAULT_IMAGE_SIZE,
     }

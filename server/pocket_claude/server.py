@@ -20,6 +20,7 @@ from fastapi import (
     HTTPException,
     Path as PathParam,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -39,6 +40,7 @@ from pocket_claude.auth import (
     require_user,
     require_user_header_or_query,
 )
+from pocket_claude.login_throttle import client_ip, login_throttler, throttle_error
 from pocket_claude.config import settings
 from pocket_claude.models import (
     AttachmentOut,
@@ -668,6 +670,9 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
                     extra_attachment_ids=extra_attachment_ids,
                     allow_image_tool=allow_image_tool,
                     image_defaults=image_defaults,
+                    # Dieselben Schalter wie bei Claude. Was ein Zusatz-Modell
+                    # nicht kann (Bash), faellt in der Engine still weg.
+                    skills=skills_dict,
                 )
             else:
                 engine_stream = claude_engine.stream_reply(
@@ -2157,12 +2162,13 @@ async def images_set_defaults(body: dict, user=Depends(require_user)):
     cfg = image_engine.get_config()
     valid_sizes = {x["id"] for x in cfg["image_sizes"]}
     valid_aspects = {x["id"] for x in cfg["aspect_ratios"]}
-    valid_models = {x["id"] for x in cfg["models"]}
 
+    # Das Bildmodell waehlt seit dem Umstieg aufs Gateway nicht mehr der Nutzer,
+    # sondern das Gateway. Ein mitgeschicktes `model` wird deshalb ignoriert
+    # statt abgelehnt, damit aeltere App-Staende keinen Fehler bekommen.
     mapping = [
         ("size", _KV_IMAGE_DEFAULT_SIZE, valid_sizes),
         ("aspect_ratio", _KV_IMAGE_DEFAULT_ASPECT, valid_aspects),
-        ("model", _KV_IMAGE_DEFAULT_MODEL, valid_models),
     ]
     updates: dict[str, str] = {}
     for field, kv_key, allowed in mapping:
@@ -2454,16 +2460,6 @@ async def images_generate(body: dict, user=Depends(require_user)):
     if not prompt:
         raise HTTPException(400, "prompt fehlt.")
 
-    # API-Key des Users laden
-    kv = await db.kv_get_all(scope=user["id"])
-    api_key = (kv.get(_KV_IMAGE_API_KEY) or "").strip()
-    if not api_key:
-        raise HTTPException(
-            400,
-            "Kein Gemini-API-Key gesetzt. Bitte in den Einstellungen unter "
-            "'Bilder' eintragen.",
-        )
-
     # Referenz-Bilder laden (fuer Image-Editing): read_bytes in to_thread,
     # damit ein 10-MB-Bild nicht den Event-Loop blockiert.
     import asyncio as _asyncio_for_imgs
@@ -2494,7 +2490,6 @@ async def images_generate(body: dict, user=Depends(require_user)):
     image_size = body.get("image_size") or body.get("size")
     try:
         images = await image_engine.generate(
-            api_key=api_key,
             prompt=prompt,
             model=body.get("model"),
             aspect_ratio=body.get("aspect_ratio"),
@@ -2736,12 +2731,26 @@ async def get_me(user=Depends(require_user)):
 # ---------- Auth (Login/Logout/Password) ----------
 
 @app.post("/auth/login")
-async def auth_login(body: dict, user_agent: str | None = Header(default=None, alias="User-Agent")):
+async def auth_login(
+    request: Request,
+    body: dict,
+    user_agent: str | None = Header(default=None, alias="User-Agent"),
+):
     """Login mit Username + Passwort. Erstellt eine neue Session und liefert
     `{token, user}` zurück. Bei Migration aus der Token-Only-Zeit akzeptiert
     der `password`-Wert auch das alte Bearer-Token (einmalig, bis ein echtes
     Passwort gesetzt wurde — `must_change_password=true` im Response signalisiert
     das dem Client)."""
+    source_ip = client_ip(request)
+    login_attempt = login_throttler.reserve(source_ip)
+    if login_attempt.retry_after:
+        log.warning(
+            "LOGIN_THROTTLED ip=%s retry_after=%ds",
+            source_ip,
+            login_attempt.retry_after,
+        )
+        raise throttle_error(login_attempt.retry_after)
+
     if not isinstance(body, dict):
         raise HTTPException(400, "JSON-Objekt erwartet.")
     username = (body.get("username") or "").strip()
@@ -2776,6 +2785,7 @@ async def auth_login(body: dict, user_agent: str | None = Header(default=None, a
     if not pw_ok:
         raise HTTPException(401, "Username oder Passwort falsch.")
 
+    login_throttler.record_success(login_attempt)
     token = await db.create_session(target["id"], user_agent=user_agent)
     return {
         "token": token,

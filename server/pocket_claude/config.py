@@ -95,7 +95,12 @@ class Settings(BaseSettings):
     # Komma-getrennte Glob-Muster auf die BASIS-ID (ohne Denktiefe-Suffix und
     # ohne "gw:<gateway>:"-Praefix), z.B. "gemini-3.7-flash,gpt-5*".
     # Leer = keine Filterung, alles wird angeboten.
-    model_allowlist: str = "gemini-3.7-flash,gpt-*,codex*"
+    #
+    # Das Muster "gpt-*" waere zu weit: es liesse auch "gpt-oss-120b" durch, das
+    # ueber das Google-Konto laeuft und nichts mit der ChatGPT-Subscription zu
+    # tun hat. Deshalb stehen die GPT-Modelle einzeln da. Terra und Reserve
+    # bleiben bewusst draussen, die sind fuer die Worker reserviert.
+    model_allowlist: str = "gemini-3.7-flash,gpt-5.6-sol,gpt-5.6-luna"
 
     # Security: allow the per-chat "Bash" skill at all? Off by default — an
     # app user would otherwise be able to execute arbitrary commands on the

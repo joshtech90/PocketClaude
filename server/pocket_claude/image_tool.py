@@ -131,18 +131,10 @@ async def run(user_id: str, args: dict, defaults: dict | None = None) -> dict:
     except (TypeError, ValueError):
         count_val = 1
 
-    kv = await db.kv_get_all(scope=user_id)
-    api_key = (kv.get("image_api_key") or "").strip()
-    if not api_key:
-        return {
-            "ok": False,
-            "attachments": [],
-            "text": "Kein Gemini-API-Key hinterlegt. Der Nutzer muss ihn in den Einstellungen unter Bilder eintragen.",
-        }
-
+    # Kein Schluessel mehr noetig: die Bilder entstehen ueber das Gateway und
+    # damit ueber die dort eingeloggten Google-Konten.
     try:
         images = await image_engine.generate(
-            api_key=api_key,
             prompt=prompt,
             model=model,
             aspect_ratio=aspect_ratio,

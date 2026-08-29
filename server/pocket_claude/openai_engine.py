@@ -9,8 +9,10 @@ Konsequenzen daraus:
   - Der Verlauf wird bei JEDEM Turn aus unserer DB neu aufgebaut. Es gibt kein
     `--resume` wie bei Claude.
   - Das Kontextfenster muessen wir selbst im Auge behalten (siehe `_build_messages`).
-  - Werkzeuge laufen ueber das native Function-Calling der Gateways. Aktuell ist
-    das nur `generate_image` (siehe `image_tool.py`).
+  - Werkzeuge laufen ueber das native Function-Calling der Gateways:
+    `generate_image` (siehe `image_tool.py`) sowie `web_search` und `web_fetch`
+    (siehe `web_tool.py`). GPT-Modelle bei CodexLB bekommen statt unseres
+    Such-Werkzeugs die eingebaute Suche des Gateways.
 
 Die Funktion `stream_reply()` spiegelt bewusst Signatur und Event-Format von
 `claude_engine.stream_reply()`, damit `server.py` nur eine Weiche braucht.
@@ -30,14 +32,16 @@ from typing import AsyncIterator
 import httpx
 
 from pocket_claude import attachments as att_mod
-from pocket_claude import db, gateways, usage
+from pocket_claude import db, gateways, usage, web_tool
 from pocket_claude.config import settings
 
 log = logging.getLogger(__name__)
 
-# Wie oft darf das Modell hintereinander Werkzeuge aufrufen, bevor wir
-# abbrechen. Drei Runden reichen fuer "Bild erzeugen, ansehen, korrigieren".
-MAX_TOOL_ROUNDS = 3
+# Wie oft darf das Modell hintereinander Werkzeuge aufrufen. Seit es neben der
+# Bilderzeugung auch Suche und Seitenabruf gibt, sind drei Runden zu knapp:
+# "suchen, Treffer nachlesen, antworten" braucht allein schon zwei. Nach oben
+# begrenzt ohnehin `MAX_TURN_SECONDS`.
+MAX_TOOL_ROUNDS = 6
 
 # Ein Bild im Prompt kostet je nach Modell 500 bis 2000 Tokens. Wir rechnen
 # pauschal, weil wir die echte Kachelung der Gateways nicht kennen.
@@ -389,11 +393,13 @@ async def stream_reply(
     extra_attachment_ids: list[str] | None = None,
     allow_image_tool: bool = True,
     image_defaults: dict | None = None,
+    skills: dict | None = None,
 ) -> AsyncIterator[dict]:
     """Streamt eine Antwort eines Zusatz-Modells.
 
-    Yieldet dieselben Events wie `claude_engine.stream_reply` plus `image`.
-    Wirft nie eine Exception nach aussen: jeder Fehler wird ein `error`-Event.
+    Yieldet dieselben Events wie `claude_engine.stream_reply`, plus `image` und
+    `sources`. Wirft nie eine Exception nach aussen: jeder Fehler wird ein
+    `error`-Event.
     """
     log.info("PC_GW: stream_reply START cid=%s msg=%s model=%s effort=%s",
              cid, user_message_id, model_key, effort)
@@ -402,6 +408,7 @@ async def stream_reply(
     # und liegen als Attachment auf der Platte.
     full_text_parts: list[str] = []
     image_attachments: list[dict] = []
+    web_sources: list[dict] = []
     try:
         # Ungefiltert: die Kuratierung bestimmt nur, was im Picker steht.
         # Ein Chat mit einem aelteren Modell muss weiterlaufen duerfen.
@@ -430,7 +437,9 @@ async def stream_reply(
             cid, user_message_id, (system_prompt or "").strip(), model, extra_attachment_ids,
         )
 
-        # Werkzeuge. Ohne User gibt es keinen Gemini-Key, dann auch kein Bild.
+        # Werkzeuge zusammenstellen. Die Schalter sind dieselben wie bei
+        # Claude; was ein Modell nicht kann, faellt hier still weg.
+        sk = skills or {}
         tools: list[dict] = []
         image_tool = None
         if allow_image_tool and user_id is not None:
@@ -448,6 +457,38 @@ async def stream_reply(
             except ImportError as exc:
                 log.warning("PC_GW: Bild-Werkzeug nicht verfuegbar: %s", exc)
 
+        # Suche: GPT bei CodexLB bringt seine eigene mit, die ist besser
+        # eingebunden als alles, was wir vorne dranbauen koennten. Gemini
+        # bekommt unser Werkzeug, das intern den nativen Google-Pfad benutzt.
+        want_search = sk.get("web_search", True)
+        native_search = bool(want_search and model.native_web_search)
+        own_search = bool(want_search and not model.native_web_search
+                          and model.family == "gemini")
+        if native_search:
+            tools.append({"type": "web_search"})
+        if own_search:
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": web_tool.SEARCH_TOOL_NAME,
+                    "description": web_tool.SEARCH_TOOL_DESCRIPTION,
+                    "parameters": web_tool.SEARCH_PARAMETERS,
+                },
+            })
+        want_fetch = bool(sk.get("web_fetch", True))
+        if want_fetch:
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": web_tool.FETCH_TOOL_NAME,
+                    "description": web_tool.FETCH_TOOL_DESCRIPTION,
+                    "parameters": web_tool.FETCH_PARAMETERS,
+                },
+            })
+        log.info("PC_GW: Werkzeuge cid=%s bild=%s suche=%s(nativ=%s) abruf=%s",
+                 cid, image_tool is not None, bool(want_search),
+                 native_search, want_fetch)
+
         headers = {"Content-Type": "application/json"}
         if gw.api_key:
             headers["Authorization"] = f"Bearer {gw.api_key}"
@@ -457,10 +498,19 @@ async def stream_reply(
         tokens_in = tokens_out = tokens_cached = 0
         aborted_tools = False
         image_budget_hit = False
+        # Die eingebaute Websuche der Gateways ist kein Standard. Erkennt ein
+        # Gateway sie nicht, wird sie einmalig fuer diesen Turn abgeschaltet,
+        # statt jeden Anlauf an HTTP 400 scheitern zu lassen.
+        search_disabled = False
         deadline = asyncio.get_running_loop().time() + MAX_TURN_SECONDS
 
         async with httpx.AsyncClient(timeout=timeout) as client:
-            for round_idx in range(MAX_TOOL_ROUNDS + 1):
+            # Bewusst eine while-Schleife statt `for ... in range(...)`: ein
+            # Anlauf, den das Modell wegen einer nicht unterstuetzten Denktiefe
+            # abgelehnt hat, soll keine Werkzeug-Runde verbrauchen.
+            round_idx = 0
+            effort_retries = 0
+            while round_idx <= MAX_TOOL_ROUNDS:
                 if asyncio.get_running_loop().time() > deadline:
                     log.warning("PC_GW: Turn-Zeitlimit erreicht cid=%s", cid)
                     aborted_tools = True
@@ -485,6 +535,30 @@ async def stream_reply(
                 async with client.stream("POST", url, headers=headers, json=payload) as resp:
                     if resp.status_code >= 400:
                         body = (await resp.aread()).decode("utf-8", errors="replace")
+                        # Nicht jede Denktiefe kann jedes Modell. Gemini 3.7
+                        # Flash lehnt "minimal" rundheraus ab. Statt dem Nutzer
+                        # einen Fehler zu zeigen, merken wir uns die Stufe und
+                        # versuchen es eine Stufe hoeher nochmal.
+                        if (resp.status_code == 400 and native_search
+                                and not search_disabled
+                                and _tool_type_rejected(body)):
+                            log.info("PC_GW: %s kennt die eingebaute Websuche "
+                                     "nicht, weiter ohne", model.key)
+                            search_disabled = True
+                            tools = [t for t in tools if t.get("type") != "web_search"]
+                            continue
+                        if (resp.status_code == 400 and reasoning_effort
+                                and effort_retries < 2
+                                and _effort_rejected(body)):
+                            gateways.mark_effort_unsupported(
+                                model.key, reasoning_effort)
+                            higher = _effort_one_step_up(model, reasoning_effort)
+                            log.info("PC_GW: %s lehnt Denktiefe %r ab, "
+                                     "versuche %r", model.key,
+                                     reasoning_effort, higher)
+                            reasoning_effort = higher
+                            effort_retries += 1
+                            continue
                         msg = _http_error_message(resp.status_code, body, gw, model_id)
                         log.warning("PC_GW: %s", msg)
                         yield {"type": "error", "message": msg}
@@ -601,44 +675,66 @@ async def stream_reply(
                     if not isinstance(args, dict):
                         args = {}
 
-                    if image_tool is not None and name == image_tool.TOOL_NAME:
-                        if len(image_attachments) >= MAX_IMAGES_PER_TURN:
-                            image_budget_hit = True
-                            tool_text = (
-                                f"Es wurden in dieser Antwort bereits "
-                                f"{MAX_IMAGES_PER_TURN} Bilder erzeugt, das ist "
-                                f"die Obergrenze. Sag dem Nutzer, dass er fuer "
-                                f"weitere Bilder nochmal fragen soll."
-                            )
+                    # Ein Werkzeug darf den Turn nie kippen. Die Werkzeuge
+                    # fangen ihre eigenen Fehler zwar ab, aber ein unerwarteter
+                    # Fall wuerde sonst bis zum aeusseren Fehlerfaenger laufen
+                    # und die halbe Antwort mitreissen. Das Modell bekommt
+                    # stattdessen eine Meldung und kann sie erklaeren.
+                    try:
+                        if image_tool is not None and name == image_tool.TOOL_NAME:
+                            if len(image_attachments) >= MAX_IMAGES_PER_TURN:
+                                image_budget_hit = True
+                                tool_text = (
+                                    f"Es wurden in dieser Antwort bereits "
+                                    f"{MAX_IMAGES_PER_TURN} Bilder erzeugt, das ist "
+                                    f"die Obergrenze. Sag dem Nutzer, dass er fuer "
+                                    f"weitere Bilder nochmal fragen soll."
+                                )
+                            else:
+                                remaining = MAX_IMAGES_PER_TURN - len(image_attachments)
+                                capped = dict(args)
+                                try:
+                                    wanted = int(capped.get("count") or 1)
+                                except (TypeError, ValueError):
+                                    wanted = 1
+                                capped["count"] = max(1, min(wanted, remaining))
+                                result = await image_tool.run(
+                                    user_id, capped, image_defaults or {},
+                                )
+                                atts = [a for a in (result.get("attachments") or [])
+                                        if isinstance(a, dict) and a.get("id")]
+                                if result.get("ok") and atts:
+                                    image_attachments.extend(atts)
+                                    yield {"type": "image", "attachments": atts}
+                                tool_text = result.get("text") or (
+                                    "Bild erzeugt." if result.get("ok")
+                                    else "Bilderzeugung fehlgeschlagen."
+                                )
+                        elif own_search and name == web_tool.SEARCH_TOOL_NAME:
+                            res = await web_tool.search(
+                                gw, model_id, str(args.get("query") or ""))
+                            tool_text = res["text"]
+                            _collect_sources(res, web_sources)
+                        elif want_fetch and name == web_tool.FETCH_TOOL_NAME:
+                            res = await web_tool.fetch(str(args.get("url") or ""))
+                            tool_text = res["text"]
+                            _collect_sources(res, web_sources)
                         else:
-                            remaining = MAX_IMAGES_PER_TURN - len(image_attachments)
-                            capped = dict(args)
-                            try:
-                                wanted = int(capped.get("count") or 1)
-                            except (TypeError, ValueError):
-                                wanted = 1
-                            capped["count"] = max(1, min(wanted, remaining))
-                            result = await image_tool.run(
-                                user_id, capped, image_defaults or {},
-                            )
-                            atts = [a for a in (result.get("attachments") or [])
-                                    if isinstance(a, dict) and a.get("id")]
-                            if result.get("ok") and atts:
-                                image_attachments.extend(atts)
-                                yield {"type": "image", "attachments": atts}
-                            tool_text = result.get("text") or (
-                                "Bild erzeugt." if result.get("ok")
-                                else "Bilderzeugung fehlgeschlagen."
-                            )
-                    else:
-                        tool_text = f"Das Werkzeug '{name}' gibt es hier nicht."
-                        log.warning("PC_GW: unbekanntes Werkzeug angefragt: %s", name)
+                            tool_text = f"Das Werkzeug '{name}' gibt es hier nicht."
+                            log.warning("PC_GW: unbekanntes Werkzeug angefragt: %s", name)
+                    except Exception as exc:  # noqa: BLE001 - siehe Kommentar
+                        log.warning("PC_GW: Werkzeug %s fehlgeschlagen: %s: %s",
+                                    name, type(exc).__name__, exc)
+                        tool_text = (f"Das Werkzeug '{name}' ist fehlgeschlagen. "
+                                     f"Sag dem Nutzer, dass es gerade nicht ging.")
 
                     messages.append({
                         "role": "tool",
                         "tool_call_id": call["id"],
                         "content": tool_text,
                     })
+
+                round_idx += 1
 
         if aborted_tools:
             note = "\n\n_Weitere Werkzeugaufrufe wurden abgebrochen (Limit erreicht)._"
@@ -650,6 +746,15 @@ async def stream_reply(
                     f"das ist die Obergrenze pro Antwort._")
             full_text_parts.append(note)
             yield {"type": "delta", "text": note}
+
+        # Quellen als Fussnoten unter die Antwort. Bewusst als Text und nicht
+        # als eigenes Feld: so ueberleben sie Neuladen, Backup und Wiederher-
+        # stellung, und die App braucht dafuer nichts Neues zu koennen.
+        # Was das Modell schon selbst verlinkt hat, wird nicht wiederholt.
+        footnotes = _source_footnotes(web_sources, "".join(full_text_parts))
+        if footnotes:
+            full_text_parts.append(footnotes)
+            yield {"type": "delta", "text": footnotes}
 
         full_text = "".join(full_text_parts).strip()
         if not full_text and not image_attachments:
@@ -715,6 +820,76 @@ async def stream_reply(
         log.exception("PC_GW: unerwarteter Fehler cid=%s", cid)
         await _rescue_partial(cid, full_text_parts, image_attachments)
         yield {"type": "error", "message": f"{type(exc).__name__}: {exc}"}
+
+
+def _effort_rejected(body: str) -> bool:
+    """Erkennt, ob ein HTTP 400 an der gewaehlten Denktiefe lag.
+
+    Gemini antwortet zum Beispiel mit "Thinking level MINIMAL is not supported
+    for this model". Die Formulierungen unterscheiden sich je Anbieter, deshalb
+    wird auf mehrere Stichworte geprueft.
+    """
+    low = (body or "").lower()
+    if "thinking level" in low or "reasoning_effort" in low:
+        return True
+    return "reasoning" in low and ("not supported" in low or "invalid" in low)
+
+
+def _tool_type_rejected(body: str) -> bool:
+    """Erkennt, ob ein HTTP 400 an einem nicht unterstuetzten Werkzeug-Typ lag.
+
+    Die eingebaute Websuche wird als `{"type": "web_search"}` angefragt, und das
+    steht in keinem Standard. Ein Gateway, das sie nicht kennt, lehnt entweder
+    den Werkzeug-Typ ab oder die ganze Anfrage als ungueltig.
+    """
+    low = (body or "").lower()
+    if "web_search" in low:
+        return True
+    return ("tool" in low or "invalid request" in low) and (
+        "not supported" in low or "unsupported" in low
+        or "unknown" in low or "invalid" in low)
+
+
+def _effort_one_step_up(model: gateways.ChatModel, current: str) -> str | None:
+    """Naechsthoehere Stufe, die dieses Modell noch anbietet.
+
+    Gibt None zurueck, wenn es keine gibt: dann laeuft der naechste Anlauf ganz
+    ohne Angabe, also mit der Vorgabe des Gateways.
+    """
+    bad = gateways.unsupported_efforts(model.key)
+    rest = [e for e in model.efforts if e not in bad]
+    if not rest:
+        return None
+    try:
+        idx = gateways.EFFORT_ORDER.index(current)
+    except ValueError:
+        return None
+    for eff in gateways.EFFORT_ORDER[idx + 1:]:
+        if eff in rest:
+            return eff
+    return None
+
+
+def _collect_sources(result: dict, bucket: list[dict]) -> None:
+    """Sammelt neue Quellen eines Werkzeug-Ergebnisses ohne Dubletten."""
+    if not result.get("ok"):
+        return
+    known = {s["url"] for s in bucket}
+    for src in result.get("sources") or []:
+        url = src.get("url")
+        if url and url not in known:
+            known.add(url)
+            bucket.append(src)
+
+
+def _source_footnotes(sources: list[dict], answer: str) -> str:
+    """Baut den Quellen-Block. Leerer String, wenn es nichts zu ergaenzen gibt."""
+    fresh = [s for s in sources if s.get("url") and s["url"] not in answer]
+    if not fresh:
+        return ""
+    lines = "\n".join(f"{i}. [{s['title']}]({s['url']})"
+                       for i, s in enumerate(fresh, 1))
+    return f"\n\n**Quellen**\n{lines}"
 
 
 async def _rescue_partial(cid: str, text_parts: list[str],

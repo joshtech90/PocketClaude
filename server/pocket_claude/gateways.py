@@ -23,7 +23,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
 import httpx
@@ -49,6 +49,44 @@ SUFFIX_TO_EFFORT: list[tuple[str, str]] = [
     ("-max", "max"),
 ]
 
+# Gateways vom CLIProxyAPI-Typ backen die Denktiefe in den Modellnamen und
+# bieten je Stufe eine eigene Modell-ID an. Das Modell dahinter kann aber mehr,
+# als das Gateway benannt hat: ein mitgeschicktes `reasoning_effort` wird
+# durchgereicht (am 29.08.2026 an Gemini 3.7 Flash gemessen). Solche Modelle
+# bekommen deshalb zusaetzlich diese Stufen angeboten.
+#
+# Bewusst OHNE `minimal`: das koennen laengst nicht alle Modelle. Gemini 3.7
+# Flash lehnt es rundheraus ab, Gemini 3.6 Flash nimmt es an. "Aus" soll
+# deshalb nur dort auftauchen, wo das Gateway es selbst als Variante fuehrt.
+EXTRA_VARIANT_EFFORTS: list[str] = ["low", "medium", "high"]
+
+# Stufen, die ein Modell im Betrieb abgelehnt hat. Der Picker blendet sie
+# danach aus, statt den Nutzer immer wieder in denselben Fehler laufen zu
+# lassen. Ein erfolgreicher Discovery-Durchlauf raeumt die Eintraege des
+# betroffenen Gateways wieder weg, damit ein einmaliger Schluckauf nicht
+# dauerhaft eine Stufe kostet.
+#
+# Bewusst prozesslokal: PocketClot laeuft als EIN uvicorn-Prozess (siehe
+# `__main__.py`). Mit mehreren Workern kaeme diese Merkliste je Worker anders
+# heraus, und die Stufe waere je nach zustaendigem Worker mal da und mal nicht.
+# Wer den Server jemals mit mehr als einem Worker startet, muss das hier durch
+# einen gemeinsamen Speicher ersetzen.
+_unsupported_efforts: dict[str, set[str]] = {}
+
+
+def mark_effort_unsupported(model_key: str, effort: str) -> None:
+    """Merkt sich, dass ein Modell eine Denktiefe abgelehnt hat."""
+    if not model_key or not effort:
+        return
+    _unsupported_efforts.setdefault(model_key, set()).add(effort)
+    log.info("PC_GW: %s kann Denktiefe %r nicht, wird ausgeblendet",
+             model_key, effort)
+
+
+def unsupported_efforts(model_key: str) -> set[str]:
+    return _unsupported_efforts.get(model_key, set())
+
+
 # Cache-Zeiten (Sekunden). Erfolgreiche Abfragen halten laenger als Fehler,
 # damit ein kurz nicht erreichbares Gateway sich schnell wieder faengt.
 CACHE_TTL_OK = 300.0
@@ -65,6 +103,9 @@ class GatewayConfig:
     base_url: str          # ohne Slash am Ende, inklusive /v1
     api_key: str = ""
     timeout: float = 120.0
+    # Darf eine Denktiefe zusaetzlich zur Modell-Variante mitgeschickt werden?
+    # Fuer alle bekannten Gateways ja; abschaltbar, falls eines daran erstickt.
+    send_effort: bool = True
 
 
 @dataclass
@@ -84,6 +125,13 @@ class ChatModel:
     fallback_id: str = ""
     supports_vision: bool = False
     context_length: int | None = None
+    # Bringt das Gateway fuer dieses Modell eine eigene Websuche mit, die als
+    # `{"type": "web_search"}` in der Werkzeugliste angefordert wird? Das kann
+    # bisher nur CodexLB fuer die GPT-Modelle.
+    native_web_search: bool = False
+    # Kopie von `GatewayConfig.send_effort`, damit `resolve()` ohne Zugriff auf
+    # die Settings auskommt und rein funktional bleibt.
+    send_effort: bool = True
 
 
 @dataclass
@@ -92,6 +140,10 @@ class _CacheEntry:
     error: str | None
     fetched_at: float
     checked_at: str
+    # Reine Bildmodelle. Die gehoeren nicht in den Chat-Picker, sind aber der
+    # Motor der Bilderzeugung (siehe `image_engine.py`), deshalb werden sie
+    # beim selben Durchlauf mitgenommen statt weggeworfen.
+    image_models: list[str] = field(default_factory=list)
 
 
 _cache: dict[str, _CacheEntry] = {}
@@ -143,6 +195,7 @@ def gateway_configs() -> list[GatewayConfig]:
                 base_url=base,
                 api_key=str(item.get("api_key") or "").strip(),
                 timeout=timeout,
+                send_effort=bool(item.get("send_effort", True)),
             ))
         return out
 
@@ -305,6 +358,32 @@ def is_allowed(base_id: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatchcase(low, p) for p in patterns)
 
 
+def extract_image_models(payload: dict) -> list[str]:
+    """Die reinen Bildmodelle aus einer /v1/models-Antwort, roh und ungruppiert.
+
+    Erkennungsmerkmal ist `-image` im Namen bzw. eine Ausgabe-Modalitaet, die
+    Bilder enthaelt. Die Reihenfolge bleibt wie vom Gateway geliefert, damit die
+    Vorauswahl vorhersagbar ist.
+    """
+    raw_items = payload.get("data") if isinstance(payload, dict) else payload
+    if not isinstance(raw_items, list):
+        return []
+    out: list[str] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        mid = str(item.get("id") or "").strip()
+        if not mid:
+            continue
+        mods = _caps(item).get("output_modalities") or _meta(item).get("output_modalities")
+        is_image = "-image" in mid.lower()
+        if isinstance(mods, list) and "image" in mods:
+            is_image = True
+        if is_image:
+            out.append(mid)
+    return out
+
+
 def normalize(gw: GatewayConfig, payload: dict) -> list[ChatModel]:
     """Macht aus einer /v1/models-Antwort die gruppierte ChatModel-Liste."""
     raw_items = payload.get("data") if isinstance(payload, dict) else payload
@@ -385,12 +464,17 @@ def normalize(gw: GatewayConfig, payload: dict) -> list[ChatModel]:
             label=label,
             supports_vision=supports_vision,
             context_length=ctx,
+            send_effort=gw.send_effort,
         )
 
         if meta_levels:
             efforts = [e for e in EFFORT_ORDER if e in meta_levels]
             models.append(ChatModel(
                 **common,
+                # Nur CodexLB meldet seine Denkstufen als Metadaten, und nur
+                # CodexLB bringt eine eigene Websuche mit. Das eine ist also
+                # ein brauchbares Erkennungsmerkmal fuer das andere.
+                native_web_search=(family == "gpt"),
                 efforts=efforts,
                 # Produktentscheidung: "high" ist die Vorauswahl, wenn das
                 # Modell sie kann. Der Gateway-Default (bei CodexLB "medium")
@@ -403,7 +487,12 @@ def normalize(gw: GatewayConfig, payload: dict) -> list[ChatModel]:
             ))
         elif any(e["effort"] for e in entries):
             variant_ids = {e["effort"]: e["raw_id"] for e in entries if e["effort"]}
-            efforts = [e for e in EFFORT_ORDER if e in variant_ids]
+            # Die benannten Varianten sind nur das, was im Gateway eingetragen
+            # ist. Das Modell selbst versteht `reasoning_effort` und kann meist
+            # mehr, deshalb kommen die Standardstufen dazu.
+            offered = set(variant_ids) | set(
+                EXTRA_VARIANT_EFFORTS if gw.send_effort else [])
+            efforts = [e for e in EFFORT_ORDER if e in offered]
             plain = next((e["raw_id"] for e in entries if not e["effort"]), None)
             models.append(ChatModel(
                 **common,
@@ -450,27 +539,39 @@ def _error_message(exc: Exception, gw: GatewayConfig) -> str:
     return f"Gateway-Fehler: {type(exc).__name__}: {exc}"
 
 
-async def _fetch(gw: GatewayConfig) -> list[ChatModel]:
+async def _fetch(gw: GatewayConfig) -> tuple[list[ChatModel], list[str]]:
     headers = {"Authorization": f"Bearer {gw.api_key}"} if gw.api_key else {}
     timeout = httpx.Timeout(DISCOVERY_TIMEOUT, connect=5.0)
     async with httpx.AsyncClient(timeout=timeout) as cli:
         r = await cli.get(f"{gw.base_url}/models", headers=headers)
         r.raise_for_status()
-        return normalize(gw, r.json())
+        payload = r.json()
+        return normalize(gw, payload), extract_image_models(payload)
 
 
 async def _refresh_one(gw: GatewayConfig, now: float, now_iso: str) -> _CacheEntry:
     try:
-        models = await _fetch(gw)
-        log.info("PC_GW: %s liefert %d Zusatz-Modelle", gw.id, len(models))
-        return _CacheEntry(models=models, error=None, fetched_at=now, checked_at=now_iso)
+        models, images = await _fetch(gw)
+        # Ein erfolgreicher Durchlauf setzt die gemerkten Ablehnungen dieses
+        # Gateways zurueck. Ohne das bliebe eine Stufe, die wegen eines
+        # voruebergehenden Fehlers ausgeblendet wurde, bis zum Neustart des
+        # Prozesses verschwunden.
+        prefix = f"gw:{gw.id}:"
+        for key in [k for k in _unsupported_efforts if k.startswith(prefix)]:
+            del _unsupported_efforts[key]
+        log.info("PC_GW: %s liefert %d Zusatz-Modelle und %d Bildmodelle",
+                 gw.id, len(models), len(images))
+        return _CacheEntry(models=models, error=None, fetched_at=now,
+                           checked_at=now_iso, image_models=images)
     except Exception as exc:  # noqa: BLE001 - jeder Fehler wird zur UI-Meldung
         msg = _error_message(exc, gw)
         previous = _cache.get(gw.id)
         keep = previous.models if previous else []
+        keep_img = previous.image_models if previous else []
         log.warning("PC_GW: %s nicht abrufbar (%d Modelle aus dem Cache bleiben): %s",
                     gw.id, len(keep), msg)
-        return _CacheEntry(models=keep, error=msg, fetched_at=now, checked_at=now_iso)
+        return _CacheEntry(models=keep, error=msg, fetched_at=now,
+                           checked_at=now_iso, image_models=keep_img)
 
 
 async def list_models(force: bool = False, curated: bool = True) -> list[ChatModel]:
@@ -533,6 +634,7 @@ def _collect(gws: list[GatewayConfig], curated: bool = True) -> list[ChatModel]:
         entry = _cache.get(gw.id)
         if entry and entry.models:
             out.extend(entry.models)
+    out = [_without_unsupported(m) for m in out]
     if not curated:
         return out
     patterns = allowlist_patterns()
@@ -566,7 +668,11 @@ def resolve(model_key: str, effort: str,
                  effort, model.key, resolved)
 
     if model.effort_mode == "model_variant":
-        return model, model.variant_ids.get(resolved, model.fallback_id), None
+        # Die Modell-ID traegt die naechstgelegene benannte Variante, die Stufe
+        # geht zusaetzlich als `reasoning_effort` mit. Nur so sind Stufen
+        # erreichbar, fuer die es keine eigene Modell-ID gibt.
+        model_id = model.variant_ids.get(resolved, model.fallback_id)
+        return model, model_id, (resolved if model.send_effort else None)
     return model, model.fallback_id, resolved
 
 
@@ -595,6 +701,66 @@ async def status() -> list[dict]:
     return out
 
 
+def _without_unsupported(model: ChatModel) -> ChatModel:
+    """Blendet Stufen aus, die dieses Modell im Betrieb abgelehnt hat.
+
+    Es wird eine Kopie zurueckgegeben: der Cache-Eintrag bleibt unberuehrt, denn
+    beim naechsten Discovery-Durchlauf soll wieder die volle Liste gelten.
+    """
+    bad = _unsupported_efforts.get(model.key)
+    if not bad:
+        return model
+    kept = [e for e in model.efforts if e not in bad]
+    if kept == model.efforts:
+        return model
+    # Wenn ALLE Stufen abgelehnt wurden, gibt es nichts mehr zu waehlen. Die
+    # volle Liste zurueckzugeben waere das Gegenteil von dem, was gemeint ist:
+    # der Nutzer bekaeme genau die Stufen angeboten, die gerade nicht gehen.
+    return replace(
+        model,
+        efforts=kept,
+        default_effort=pick_default_effort(kept, model.default_effort) if kept else "",
+    )
+
+
+async def image_target(preferred: str = "") -> tuple[GatewayConfig, str] | None:
+    """Das Gateway und das Modell, mit dem Bilder erzeugt werden.
+
+    Es gewinnt das erste Gateway, das ueberhaupt ein Bildmodell anbietet. Ist
+    `preferred` gesetzt und dort vorhanden, wird das genommen. Gibt None
+    zurueck, wenn kein Gateway ein Bildmodell hat: dann ist Bilderzeugung auf
+    diesem Server schlicht nicht eingerichtet.
+    """
+    gws = gateway_configs()
+    if not gws:
+        return None
+    await list_models(force=False)
+    for gw in gws:
+        entry = _cache.get(gw.id)
+        if not entry or not entry.image_models:
+            continue
+        if preferred and preferred in entry.image_models:
+            return gw, preferred
+        return gw, entry.image_models[0]
+    return None
+
+
+def native_base_url(gw: GatewayConfig) -> str:
+    """Basis-URL des Gemini-nativen Zugangs desselben Gateways.
+
+    CLIProxyAPI bedient neben dem OpenAI-Pfad auch den echten Gemini-Pfad unter
+    `/v1beta`. Nur dort funktionieren die Google-Suche und die Bild-Parameter;
+    ueber den OpenAI-Pfad gehen beide verloren.
+    """
+    base = gw.base_url.rstrip("/")
+    for suffix in ("/v1beta", "/v1"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    return f"{base}/v1beta"
+
+
 def clear_cache() -> None:
     """Cache leeren (Tests, manuelles Neuladen)."""
     _cache.clear()
+    _unsupported_efforts.clear()
