@@ -50,6 +50,15 @@ PARAMETERS: dict[str, Any] = {
             "maximum": 4,
             "description": "Anzahl Varianten. Ohne Angabe eine.",
         },
+        "edit_attached_images": {
+            "type": "boolean",
+            "description": (
+                "Auf true setzen, wenn der Nutzer ein Bild mitgeschickt hat und "
+                "es GEAENDERT haben will, statt ein neues zu bekommen. Dann "
+                "dienen seine Bilder als Vorlage, und die Beschreibung sagt nur, "
+                "was sich aendern soll. Ohne Bild im Gespraech wirkungslos."
+            ),
+        },
     },
     "required": ["prompt"],
 }
@@ -88,6 +97,46 @@ async def store_images(images: list[image_engine.GeneratedImage], user_id: str) 
             "text": img.text,
         })
     return out_atts
+
+
+async def _load_references(
+    attachment_ids: list[str], user_id: str,
+) -> list[image_engine.ReferenceImage]:
+    """Laedt die Bilder einer Nachricht als Vorlagen.
+
+    Alles, was sich nicht laden laesst oder kein brauchbares Bild ist, wird
+    still uebersprungen: ein kaputter Anhang darf die Bilderzeugung nicht
+    kippen, und schon gar nicht den ganzen Chat-Turn. Deshalb faengt diese
+    Funktion JEDEN Fehler ab, auch unerwartete wie eine Datenbankzeile ohne
+    Pfad.
+
+    Die Anzahl wird erst am Ende begrenzt, nicht vorher: sonst wuerden vier
+    Textdokumente am Anfang der Nachricht die Bilder dahinter verdraengen.
+    """
+    from pathlib import Path
+
+    raw: list[tuple[str, bytes]] = []
+    for aid in attachment_ids:
+        if len(raw) >= image_engine.MAX_REFERENCE_IMAGES:
+            break
+        try:
+            att = await db.get_attachment(aid, user_id=user_id)
+            if not att:
+                continue
+            mime = str(att.get("mime_type") or "").lower()
+            if not mime.startswith("image/"):
+                continue
+            path = att.get("path")
+            if not path:
+                continue
+            data = await asyncio.to_thread(Path(str(path)).read_bytes)
+        except Exception as exc:  # noqa: BLE001 - siehe Docstring
+            log.warning("PC_IMG: Vorlage %s uebersprungen: %s: %s",
+                        aid, type(exc).__name__, exc)
+            continue
+        raw.append((mime, data))
+
+    return image_engine.usable_references(raw)
 
 
 async def run(user_id: str, args: dict, defaults: dict | None = None) -> dict:
@@ -141,6 +190,18 @@ async def run(user_id: str, args: dict, defaults: dict | None = None) -> dict:
     )
     family_hint = defaults.get("family_hint") or ""
 
+    # Bearbeiten statt neu zeichnen: das Modell entscheidet anhand der Frage,
+    # ob die mitgeschickten Bilder Vorlage sein sollen. `_load_references`
+    # faengt selbst alles ab und liefert im Zweifel eine leere Liste; dann wird
+    # eben neu gezeichnet statt bearbeitet.
+    references: list[image_engine.ReferenceImage] = []
+    if args.get("edit_attached_images"):
+        references = await _load_references(
+            defaults.get("attachment_ids") or [], user_id,
+        )
+        if not references:
+            log.info("PC_IMG: Bearbeiten gewuenscht, aber kein brauchbares Bild dabei")
+
     # Kein Schluessel mehr noetig: die Bilder entstehen ueber die Gateways und
     # damit ueber Konten, die ohnehin bezahlt sind.
     try:
@@ -152,6 +213,7 @@ async def run(user_id: str, args: dict, defaults: dict | None = None) -> dict:
             aspect_ratio=aspect_ratio,
             image_size=size,
             count=count_val,
+            references=references or None,
         )
     except image_engine.ImageGenError as e:
         return {

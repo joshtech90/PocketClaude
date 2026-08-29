@@ -592,6 +592,8 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
         "aspect_ratio": (user_kv.get(_KV_IMAGE_DEFAULT_ASPECT) or "").strip() or None,
         "model": (user_kv.get(_KV_IMAGE_DEFAULT_MODEL) or "").strip() or None,
         "provider": (user_kv.get(_KV_IMAGE_PROVIDER) or "").strip() or None,
+        # Die Bilder dieser Nachricht, falls das Modell sie bearbeiten soll.
+        "attachment_ids": list(body.attachment_ids or []),
         # Steht die Vorgabe auf "automatisch", zeichnet das Bild der Anbieter
         # des Modells, das gerade antwortet. Claude hat keinen eigenen, dort
         # bleibt es bei Gemini.
@@ -2491,20 +2493,26 @@ async def images_generate(body: dict, user=Depends(require_user)):
     # damit ein 10-MB-Bild nicht den Event-Loop blockiert.
     import asyncio as _asyncio_for_imgs
     ref_ids = body.get("reference_attachment_ids") or []
-    references: list[image_engine.ReferenceImage] = []
+    raw_refs: list[tuple[str, bytes]] = []
     for aid in ref_ids:
         att = await db.get_attachment(aid, user_id=user["id"])
         if not att:
             raise HTTPException(400, f"Referenz-Attachment {aid} nicht gefunden / nicht Deins.")
         try:
             from pathlib import Path as _P
-            raw = await _asyncio_for_imgs.to_thread(_P(att["path"]).read_bytes)
-            references.append(image_engine.ReferenceImage(
-                mime_type=att["mime_type"],
-                data=raw,
-            ))
-        except OSError:
+            raw = await _asyncio_for_imgs.to_thread(_P(str(att["path"])).read_bytes)
+        except (OSError, KeyError, TypeError):
             raise HTTPException(500, f"Referenz-Datei {aid} konnte nicht gelesen werden.")
+        raw_refs.append((str(att.get("mime_type") or ""), raw))
+    # Dieselbe Pruefung wie im Chat-Werkzeug: Groesse, echtes Format, keine
+    # Dubletten. Ein eigener API-Client verkleinert nichts von allein.
+    references = image_engine.usable_references(raw_refs)
+    if ref_ids and not references:
+        raise HTTPException(
+            400,
+            "Keines der Referenz-Bilder ist verwendbar. Erlaubt sind PNG, JPEG "
+            "und WebP bis 8 MB.",
+        )
 
     # Generieren: `count` defensiv parsen, sonst crasht der Endpoint mit
     # 500 wenn der Client versehentlich `count="2"` als String schickt.

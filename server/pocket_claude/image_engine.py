@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import logging
 from dataclasses import dataclass
 
@@ -167,6 +168,33 @@ MAX_CANDIDATES = 4
 # Modulebene und nicht je Aufruf: sonst waere die Grenze pro Chat-Turn gemeint,
 # und zwei gleichzeitige Turns wuerden sie stillschweigend verdoppeln. Genau
 # daran haengt aber das Kontingent des Google-Kontos.
+# Wieviele Vorlagenbilder hoechstens mitgehen. Der Bearbeiten-Endpunkt laesst
+# mehr zu, aber jedes Bild kostet Kontext und Wartezeit, und mehr als eine
+# Handvoll ist beim Bearbeiten selten sinnvoll.
+MAX_REFERENCE_IMAGES = 4
+
+# Grenzen fuer Vorlagenbilder. Die App verkleinert vor dem Hochladen, ein
+# eigener API-Client tut das aber nicht, und jede Vorlage liegt beim Aufruf
+# komplett im Speicher und geht bei mehreren Varianten mehrfach zum Gateway.
+MAX_REFERENCE_BYTES = 8_000_000
+MAX_REFERENCE_TOTAL_BYTES = 20_000_000
+
+# Bildformate, die beide Anbieter verstehen, erkannt an den ersten Bytes statt
+# am gemeldeten Mimetyp. Ein Anhang kann als image/png deklariert und trotzdem
+# ein abgeschnittenes HEIC sein; das wuerde den ganzen Bearbeiten-Aufruf
+# abweisen, statt nur diese eine Vorlage zu ueberspringen.
+def sniff_image(data: bytes) -> tuple[str, str] | None:
+    """Erkennt Bildformat und Endung. None heisst: nicht verwendbar."""
+    if not data or len(data) < 12:
+        return None
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png", "png"
+    if data[:2] == b"\xff\xd8":
+        return "image/jpeg", "jpg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    return None
+
 _CONCURRENCY = 2
 _gate: asyncio.Semaphore | None = None
 
@@ -242,6 +270,7 @@ async def generate(
                 return await _generate_gpt(
                     gw=gpt_gw, prompt=prompt, aspect_ratio=aspect_ratio,
                     image_size=image_size, count=count, timeout=timeout,
+                    references=references,
                 )
             return await _generate_gemini(
                 prompt=prompt, model=model, aspect_ratio=aspect_ratio,
@@ -274,11 +303,6 @@ async def _provider_order(
     gpt_gw = await gateways.gpt_image_gateway()
     gemini_ok = await gateways.image_target() is not None
     gpt_ok = gpt_gw is not None
-
-    # Vorlagenbilder kann nur Gemini: der Bearbeiten-Endpunkt von CodexLB
-    # spricht multipart und ist hier noch nicht angebunden.
-    if has_references:
-        return ([PROVIDER_GEMINI] if gemini_ok else []), gpt_gw
 
     available = [k for k, ok in
                  ((PROVIDER_GEMINI, gemini_ok), (PROVIDER_GPT, gpt_ok)) if ok]
@@ -394,8 +418,13 @@ async def _generate_gpt(
     image_size: str | None,
     count: int,
     timeout: float,
+    references: list[ReferenceImage] | None = None,
 ) -> list[GeneratedImage]:
     """Bilder ueber den OpenAI-Bildpfad von CodexLB (gpt-image-2).
+
+    Mit Vorlagen geht es an `/v1/images/edits`, das multipart spricht und die
+    Bilder als Datei-Teile erwartet; ohne Vorlagen an `/v1/images/generations`
+    mit JSON. Der Rest ist identisch.
 
     Zur Groesse: das Gateway nimmt die berechnete Pixelgroesse an und reicht sie
     weiter, das Modell dahinter behandelt sie aber als Wunsch. Das
@@ -410,11 +439,14 @@ async def _generate_gpt(
     count = max(1, min(int(count), MAX_CANDIDATES))
     size = gpt_size(aspect_ratio, image_size)
 
-    url = f"{gw.base_url.rstrip('/')}/images/generations"
-    headers = {"Content-Type": "application/json"}
+    refs = list(references or [])[:MAX_REFERENCE_IMAGES]
+    editing = bool(refs)
+    endpoint = "images/edits" if editing else "images/generations"
+    url = f"{gw.base_url.rstrip('/')}/{endpoint}"
+    headers = {}
     if gw.api_key:
         headers["Authorization"] = f"Bearer {gw.api_key}"
-    body = {
+    fields = {
         "model": GPT_IMAGE_MODEL,
         "prompt": prompt.strip(),
         "size": size,
@@ -424,15 +456,16 @@ async def _generate_gpt(
         "n": 1,
     }
 
-    log.info("image-gen: gateway=%s modell=%s groesse=%s (aus %s/%s) anzahl=%d",
-             gw.id, GPT_IMAGE_MODEL, size, aspect_ratio, image_size, count)
+    log.info("image-gen: gateway=%s modell=%s groesse=%s (aus %s/%s) anzahl=%d "
+             "vorlagen=%d", gw.id, GPT_IMAGE_MODEL, size, aspect_ratio,
+             image_size, count, len(refs))
 
     gate = _concurrency_gate()
 
     async def _one(idx: int):
         async with gate:
             try:
-                return idx, await _gpt_one(url, headers, body, timeout)
+                return idx, await _gpt_one(url, headers, fields, refs, timeout)
             except ImageGenError as exc:
                 return idx, exc
 
@@ -455,12 +488,32 @@ async def _generate_gpt(
     return images
 
 
-async def _gpt_one(url: str, headers: dict, body: dict,
+async def _gpt_one(url: str, headers: dict, fields: dict,
+                   references: list[ReferenceImage],
                    timeout: float) -> tuple[str, bytes]:
-    """Ein einzelner Bild-Aufruf gegen den OpenAI-Bildpfad."""
+    """Ein einzelner Bild-Aufruf gegen den OpenAI-Bildpfad.
+
+    Ohne Vorlagen als JSON, mit Vorlagen als multipart. Die Textfelder sind in
+    beiden Faellen dieselben, nur die Verpackung unterscheidet sich.
+    """
     try:
         async with httpx.AsyncClient(timeout=timeout) as cli:
-            r = await cli.post(url, headers=headers, json=body)
+            if references:
+                files = [
+                    ("image", (f"vorlage{i}.{_ext_for(ref.mime_type)}",
+                               ref.data, ref.mime_type))
+                    for i, ref in enumerate(references)
+                ]
+                r = await cli.post(
+                    url, headers=headers,
+                    data={k: str(v) for k, v in fields.items()},
+                    files=files,
+                )
+            else:
+                r = await cli.post(
+                    url, headers={**headers, "Content-Type": "application/json"},
+                    json=fields,
+                )
     except httpx.TimeoutException as e:
         raise ImageGenError(
             f"Timeout nach {timeout:.0f}s: Bild zu komplex oder Gateway ueberlastet."
@@ -507,8 +560,54 @@ async def _gpt_one(url: str, headers: dict, body: dict,
     except Exception as e:
         raise ImageGenError(f"Das Bild war nicht lesbar: {e}") from e
 
-    fmt = (body.get("output_format") or "png").lower()
+    fmt = (fields.get("output_format") or "png").lower()
     return f"image/{'jpeg' if fmt == 'jpeg' else fmt}", raw
+
+
+def _ext_for(mime: str) -> str:
+    """Dateiendung fuer einen Bild-Mimetyp. Der Endpunkt prueft sie mit."""
+    low = (mime or "").lower()
+    if "jpeg" in low or "jpg" in low:
+        return "jpg"
+    if "webp" in low:
+        return "webp"
+    return "png"
+
+
+def usable_references(
+    raw: list[tuple[str, bytes]],
+) -> list[ReferenceImage]:
+    """Macht aus (mimetyp, bytes)-Paaren brauchbare Vorlagen.
+
+    Aussortiert wird alles, was zu gross ist oder kein Format hat, das beide
+    Anbieter lesen koennen. Der Mimetyp wird dabei auf das gesetzt, was wirklich
+    in den Bytes steht, nicht auf das, was die Datenbank behauptet.
+    """
+    out: list[ReferenceImage] = []
+    total = 0
+    seen: set[bytes] = set()
+    for mime, data in raw:
+        if len(out) >= MAX_REFERENCE_IMAGES:
+            break
+        if not data or len(data) > MAX_REFERENCE_BYTES:
+            log.info("image-gen: Vorlage uebersprungen, %d Bytes", len(data or b""))
+            continue
+        sniffed = sniff_image(data)
+        if sniffed is None:
+            log.info("image-gen: Vorlage uebersprungen, Format nicht lesbar "
+                     "(gemeldet als %r)", mime)
+            continue
+        # Dieselbe Datei zweimal mitzuschicken bringt nichts und kostet doppelt.
+        digest = hashlib.sha256(data).digest()
+        if digest in seen:
+            continue
+        if total + len(data) > MAX_REFERENCE_TOTAL_BYTES:
+            log.info("image-gen: weitere Vorlagen uebersprungen, Gesamtgrenze erreicht")
+            break
+        seen.add(digest)
+        total += len(data)
+        out.append(ReferenceImage(mime_type=sniffed[0], data=data))
+    return out
 
 
 async def _generate_one(

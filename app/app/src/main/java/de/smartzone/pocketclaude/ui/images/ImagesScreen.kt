@@ -1,5 +1,13 @@
 package de.smartzone.pocketclaude.ui.images
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material3.FilledTonalIconButton
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -109,6 +117,15 @@ fun ImagesScreen(
     // Lösch-Bestätigung
     var entryToDelete by remember { mutableStateOf<GeneratedImageEntry?>(null) }
     var clearAllOpen by remember { mutableStateOf(false) }
+
+    // Bild vom Geraet als Vorlage. Derselbe Picker wie im Chat, damit sich das
+    // Auswaehlen an beiden Stellen gleich anfuehlt.
+    val referenceName = stringResource(R.string.image_reference_default_name)
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri: Uri? ->
+        if (uri != null) vm.addReferenceFromUri(uri, referenceName)
+    }
 
     PocketBackdrop(Modifier.fillMaxSize()) {
     Scaffold(
@@ -222,7 +239,19 @@ fun ImagesScreen(
                     contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
                     item(key = "generator") {
-                        GeneratorCard(state = state, vm = vm)
+                        GeneratorCard(
+                            state = state,
+                            vm = vm,
+                            serverBaseUrl = appSettings.serverUrl,
+                            serverToken = appSettings.serverToken,
+                            onPickImage = {
+                                photoPicker.launch(
+                                    PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                        )
                     }
                     item(key = "divider") {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -250,6 +279,8 @@ fun ImagesScreen(
                                 entry = entry,
                                 serverBaseUrl = appSettings.serverUrl,
                                 serverToken = appSettings.serverToken,
+                                canEdit = state.canEditReferences,
+                                onEditImage = { att -> vm.addReferenceFromAttachment(att) },
                                 onImageClick = { att -> fullscreenAttachment = att },
                                 onDelete = { entryToDelete = entry },
                             )
@@ -328,7 +359,13 @@ private fun SubsectionRow(label: String, content: @Composable FlowRowScope.() ->
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
+private fun GeneratorCard(
+    state: ImageGenUiState,
+    vm: ImageGenViewModel,
+    serverBaseUrl: String,
+    serverToken: String,
+    onPickImage: () -> Unit,
+) {
     val cfg = state.config ?: return
     Card(
         modifier = Modifier
@@ -342,11 +379,28 @@ private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
         border = androidx.compose.foundation.BorderStroke(1.dp, PocketTheme.colors.outlineSoft),
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Vorlagen. Sind welche da, wird bearbeitet statt neu erzeugt.
+            ReferenceStrip(
+                references = state.references,
+                isUploading = state.isUploading,
+                enabled = state.canEditReferences,
+                serverBaseUrl = serverBaseUrl,
+                serverToken = serverToken,
+                onAdd = onPickImage,
+                onRemove = vm::removeReference,
+                onClear = vm::clearReferences,
+            )
+
             // Prompt-Eingabe
             OutlinedTextField(
                 value = state.prompt,
                 onValueChange = vm::setPrompt,
-                placeholder = { Text(stringResource(R.string.image_prompt_placeholder)) },
+                placeholder = {
+                    Text(stringResource(
+                        if (state.isEditing) R.string.image_edit_prompt_placeholder
+                        else R.string.image_prompt_placeholder
+                    ))
+                },
                 maxLines = 4,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -424,10 +478,11 @@ private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
                 }
             }
 
-            // Generate-Button + Status
+            // Der Knopf sagt, was wirklich passiert: mit Vorlage wird
+            // bearbeitet, ohne wird neu erzeugt.
             FilledTonalButton(
                 onClick = { vm.generate() },
-                enabled = !state.isGenerating && state.prompt.isNotBlank(),
+                enabled = !state.isGenerating && !state.isUploading && state.prompt.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (state.isGenerating) {
@@ -436,11 +491,19 @@ private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
                         modifier = Modifier.size(16.dp),
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.image_generating))
+                    Text(stringResource(
+                        if (state.isEditing) R.string.image_editing else R.string.image_generating
+                    ))
                 } else {
-                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(
+                        if (state.isEditing) Icons.Filled.Brush else Icons.Filled.AutoAwesome,
+                        contentDescription = null, modifier = Modifier.size(16.dp),
+                    )
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.image_generate_button))
+                    Text(stringResource(
+                        if (state.isEditing) R.string.image_edit_button
+                        else R.string.image_generate_button
+                    ))
                 }
             }
 
@@ -459,11 +522,119 @@ private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
     }
 }
 
+/**
+ * Der Vorlagen-Streifen ueber dem Prompt-Feld.
+ *
+ * Er ist immer sichtbar, auch ohne Vorlage: sonst waere nicht zu erkennen,
+ * dass sich hier ueberhaupt Bilder hochladen lassen. Genau das war vorher das
+ * Problem, der Bearbeiten-Weg existierte serverseitig, aber in der App gab es
+ * keinen Knopf dafuer.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReferenceStrip(
+    references: List<ReferenceImageUi>,
+    isUploading: Boolean,
+    enabled: Boolean,
+    serverBaseUrl: String,
+    serverToken: String,
+    onAdd: () -> Unit,
+    onRemove: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(
+                    if (references.isEmpty()) R.string.image_reference_label
+                    else R.string.image_reference_label_active
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            if (references.isNotEmpty()) {
+                TextButton(onClick = onClear, enabled = enabled) {
+                    Text(stringResource(R.string.image_reference_clear))
+                }
+            }
+        }
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            references.forEach { ref ->
+                val url = remember(serverBaseUrl, serverToken, ref.id) {
+                    "$serverBaseUrl/attachments/${ref.id}?token=${android.net.Uri.encode(serverToken)}"
+                }
+                Box {
+                    AsyncImage(
+                        model = url,
+                        contentDescription = ref.label,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surface),
+                    )
+                    FilledTonalIconButton(
+                        onClick = { onRemove(ref.id) },
+                        enabled = enabled,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(22.dp),
+                    ) {
+                        Icon(Icons.Filled.Close,
+                             contentDescription = stringResource(R.string.image_reference_remove),
+                             modifier = Modifier.size(12.dp))
+                    }
+                }
+            }
+
+            // Hinzufuegen-Kachel, im selben Raster wie die Vorlagen.
+            if (references.size < ImageGenViewModel.MAX_REFERENCES) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant,
+                                RoundedCornerShape(10.dp))
+                        .clickable(enabled = enabled && !isUploading) { onAdd() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isUploading) {
+                        CircularProgressIndicator(strokeWidth = 2.dp,
+                                                  modifier = Modifier.size(18.dp))
+                    } else {
+                        Icon(Icons.Filled.AddPhotoAlternate,
+                             contentDescription = stringResource(R.string.image_reference_add),
+                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        Text(
+            stringResource(
+                if (references.isEmpty()) R.string.image_reference_hint
+                else R.string.image_reference_hint_active
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+
 @Composable
 private fun HistoryRow(
     entry: GeneratedImageEntry,
     serverBaseUrl: String,
     serverToken: String,
+    canEdit: Boolean,
+    onEditImage: (ImageGenerateAttachment) -> Unit,
     onImageClick: (ImageGenerateAttachment) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -507,16 +678,35 @@ private fun HistoryRow(
                     val url = remember(serverBaseUrl, serverToken, att.id) {
                         "$serverBaseUrl/attachments/${att.id}?token=${android.net.Uri.encode(serverToken)}"
                     }
-                    AsyncImage(
-                        model = url,
-                        contentDescription = att.filename,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(width = 140.dp, height = 140.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surface)
-                            .clickable { onImageClick(att) },
-                    )
+                    Box {
+                        AsyncImage(
+                            model = url,
+                            contentDescription = att.filename,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(width = 140.dp, height = 140.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .clickable { onImageClick(att) },
+                        )
+                        // Ohne diesen Knopf muesste man ein erzeugtes Bild erst
+                        // herunterladen und wieder hochladen, um damit
+                        // weiterzuarbeiten.
+                        FilledTonalIconButton(
+                            onClick = { onEditImage(att) },
+                            enabled = canEdit,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .size(30.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Brush,
+                                contentDescription = stringResource(R.string.image_use_as_reference),
+                                modifier = Modifier.size(15.dp),
+                            )
+                        }
+                    }
                 }
             }
         }

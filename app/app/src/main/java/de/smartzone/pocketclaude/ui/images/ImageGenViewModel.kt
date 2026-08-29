@@ -1,5 +1,6 @@
 package de.smartzone.pocketclaude.ui.images
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -31,6 +32,15 @@ data class GeneratedImageEntry(
     val attachments: List<ImageGenerateAttachment>,
 )
 
+/**
+ * Ein Vorlagenbild fuer den Bearbeiten-Modus. `id` ist die Attachment-ID auf
+ * dem Server, `label` nur fuer die Anzeige.
+ */
+data class ReferenceImageUi(
+    val id: String,
+    val label: String,
+)
+
 data class ImageGenUiState(
     val config: ImageConfigDto? = null,
     val configLoading: Boolean = true,
@@ -44,7 +54,21 @@ data class ImageGenUiState(
     val isGenerating: Boolean = false,
     val generationError: String? = null,
     val history: List<GeneratedImageEntry> = emptyList(),
-)
+    /** Vorlagen fuer den Bearbeiten-Modus. Leer heisst: neues Bild erzeugen. */
+    val references: List<ReferenceImageUi> = emptyList(),
+    /** Wieviele Uploads gerade laufen. Bewusst ein Zaehler und kein Schalter:
+     *  sonst meldet der erste fertige Upload "fertig", waehrend ein zweiter
+     *  noch laeuft, und der Knopf waere zu frueh wieder frei. */
+    val uploadsRunning: Int = 0,
+) {
+    /** Mit mindestens einer Vorlage wird bearbeitet statt neu erzeugt. */
+    val isEditing: Boolean get() = references.isNotEmpty()
+    val isUploading: Boolean get() = uploadsRunning > 0
+    /** Waehrend einer laufenden Erzeugung duerfen die Vorlagen nicht wandern:
+     *  der Auftrag ist raus, und die Oberflaeche wuerde etwas anderes zeigen
+     *  als das, was gerade wirklich gerechnet wird. */
+    val canEditReferences: Boolean get() = !isGenerating
+}
 
 /**
  * Standalone-ViewModel für die Bild-Generierung. Bewusst losgelöst vom
@@ -103,6 +127,63 @@ class ImageGenViewModel(
 
     fun clearError() = _state.update { it.copy(generationError = null) }
 
+    // ---------- Vorlagen fuer den Bearbeiten-Modus ----------
+
+    /**
+     * Laedt ein Bild vom Geraet hoch und nimmt es als Vorlage.
+     *
+     * Der Upload laeuft ueber denselben Weg wie Chat-Anhaenge, inklusive der
+     * dortigen Bild-Verkleinerung: ein 12-MP-Handyfoto unveraendert an das
+     * Gateway zu schicken waere Verschwendung.
+     */
+    fun addReferenceFromUri(uri: Uri, label: String) = viewModelScope.launch {
+        val s = _state.value
+        if (!s.canEditReferences) return@launch
+        if (s.references.size + s.uploadsRunning >= MAX_REFERENCES) {
+            _state.update { it.copy(generationError = tooManyReferences) }
+            return@launch
+        }
+        _state.update {
+            it.copy(uploadsRunning = it.uploadsRunning + 1, generationError = null)
+        }
+        runCatching { repo.uploadFromUri(uri) }
+            .onSuccess { att ->
+                _state.update {
+                    val done = it.copy(uploadsRunning = (it.uploadsRunning - 1).coerceAtLeast(0))
+                    // Erneut pruefen: zwischen Start und Ende des Uploads kann
+                    // ein zweiter fertig geworden sein, oder der Nutzer hat
+                    // inzwischen alles geleert.
+                    if (done.references.size >= MAX_REFERENCES ||
+                        done.references.any { r -> r.id == att.id }
+                    ) done
+                    else done.copy(references = done.references + ReferenceImageUi(att.id, label))
+                }
+            }
+            .onFailure { e ->
+                _state.update {
+                    it.copy(uploadsRunning = (it.uploadsRunning - 1).coerceAtLeast(0),
+                            generationError = e.message ?: uploadFailed)
+                }
+            }
+    }
+
+    /** Nimmt ein bereits erzeugtes Bild als Vorlage, ohne es neu hochzuladen. */
+    fun addReferenceFromAttachment(att: ImageGenerateAttachment) = _state.update {
+        if (!it.canEditReferences) it
+        else if (it.references.any { r -> r.id == att.id } ||
+                 it.references.size >= MAX_REFERENCES) it
+        else it.copy(references = it.references + ReferenceImageUi(att.id, att.filename))
+    }
+
+    fun removeReference(id: String) = _state.update {
+        if (!it.canEditReferences) it
+        else it.copy(references = it.references.filterNot { r -> r.id == id })
+    }
+
+    fun clearReferences() = _state.update {
+        if (!it.canEditReferences) it else it.copy(references = emptyList())
+    }
+
     fun generate() = viewModelScope.launch {
         val s = _state.value
         val cfg = s.config
@@ -127,7 +208,7 @@ class ImageGenViewModel(
                     aspectRatio = s.selectedAspect,
                     imageSize = s.selectedSize,
                     count = s.count,
-                    referenceAttachmentIds = emptyList(),
+                    referenceAttachmentIds = s.references.map { it.id },
                 )
             )
             val entry = GeneratedImageEntry(
@@ -187,6 +268,18 @@ class ImageGenViewModel(
 
     companion object {
         const val HISTORY_MAX_ENTRIES = 50
+
+        /** Muss zu `MAX_REFERENCE_IMAGES` in image_engine.py passen. */
+        const val MAX_REFERENCES = 4
+
+        // Diese beiden Meldungen stehen wie die uebrigen Fehlertexte dieses
+        // ViewModels direkt hier statt in den Ressourcen: ein ViewModel hat
+        // keinen Context, und der Bestand macht es an dieser Stelle genauso.
+        private const val tooManyReferences =
+            "Mehr als $MAX_REFERENCES Vorlagen gehen nicht."
+        private const val uploadFailed =
+            "Das Bild konnte nicht hochgeladen werden."
+
 
         fun factory(container: AppContainer): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
