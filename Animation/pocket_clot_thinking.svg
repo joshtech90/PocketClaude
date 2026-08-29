@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <!-- PocketClot Thinking Blob (Settings: speed 0.8x, morph 20%, 6 lobes, shine 55%) -->
+  <defs>
+    <radialGradient id="clotGrad" cx="38%" cy="36%" r="62%" fx="32%" fy="30%">
+      <stop offset="0%" stop-color="#FDD043" />
+      <stop offset="35%" stop-color="#FFB300" />
+      <stop offset="70%" stop-color="#FF6D00" />
+      <stop offset="92%" stop-color="#D84315" />
+      <stop offset="100%" stop-color="#BF360C" />
+    </radialGradient>
+    
+    <filter id="ambientGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <radialGradient id="specularGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.55" />
+      <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <style>
+    .wobble-container {
+      transform-origin: 100px 100px;
+      animation: pulseBreath 3.5s ease-in-out infinite alternate, gentleTilt 4.2s ease-in-out infinite alternate;
+    }
+    @keyframes pulseBreath {
+      0% { transform: scale(0.95); }
+      100% { transform: scale(1.05); }
+    }
+    @keyframes gentleTilt {
+      0% { rotate: -4deg; }
+      100% { rotate: 4deg; }
+    }
+  </style>
+
+  <g class="wobble-container">
+    <circle cx="100" cy="100" r="72" fill="#FF9800" opacity="0.22" filter="url(#ambientGlow)">
+      <animate attributeName="r" values="68;76;68" dur="3.0s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.18;0.35;0.18" dur="3.0s" repeatCount="indefinite" />
+    </circle>
+
+    <path id="clotPath" fill="url(#clotGrad)" d="M 161.44,100.00 C 161.61,116.90 144.95,143.11 129.80,151.61 C 114.65,160.12 85.25,159.65 70.53,151.05 C 55.80,142.45 41.86,117.74 41.44,100.00 C 41.02,82.26 53.48,52.93 68.03,44.63 C 82.59,36.33 113.19,40.96 128.76,50.19 C 144.33,59.41 161.27,83.10 161.44,100.00 Z">
+      <animate attributeName="d" 
+               dur="3.8s" 
+               repeatCount="indefinite" 
+               values="M 161.44,100.00 C 161.61,116.90 144.95,143.11 129.80,151.61 C 114.65,160.12 85.25,159.65 70.53,151.05 C 55.80,142.45 41.86,117.74 41.44,100.00 C 41.02,82.26 53.48,52.93 68.03,44.63 C 82.59,36.33 113.19,40.96 128.76,50.19 C 144.33,59.41 161.27,83.10 161.44,100.00 Z;M 157.55,100.00 C 157.31,117.59 144.46,142.62 129.74,151.51 C 115.01,160.40 84.35,161.93 69.20,153.35 C 54.04,144.76 38.50,117.23 38.81,100.00 C 39.13,82.77 55.71,58.96 71.10,49.95 C 86.50,40.95 116.79,37.63 131.19,45.97 C 145.60,54.31 157.80,82.41 157.55,100.00 Z;M 161.69,100.00 C 162.03,117.22 145.97,144.99 130.83,153.40 C 115.69,161.82 86.10,159.40 70.84,150.50 C 55.59,141.60 39.43,117.08 39.29,100.00 C 39.15,82.92 55.08,56.36 70.00,48.04 C 84.92,39.73 113.53,41.43 128.81,50.09 C 144.10,58.75 161.36,82.78 161.69,100.00 Z;M 159.86,100.00 C 159.59,117.34 144.36,141.64 129.21,150.60 C 114.07,159.55 83.32,162.17 68.98,153.73 C 54.63,145.30 43.09,117.78 43.16,100.00 C 43.24,82.22 54.81,55.95 69.43,47.05 C 84.04,38.14 115.77,37.76 130.84,46.58 C 145.91,55.41 160.13,82.66 159.86,100.00 Z;M 159.70,100.00 C 159.75,117.34 144.91,144.04 130.20,152.30 C 115.48,160.56 87.12,158.27 71.39,149.55 C 55.66,140.84 35.95,116.74 35.82,100.00 C 35.69,83.26 54.94,57.74 70.62,49.11 C 86.30,40.49 115.03,39.77 129.87,48.26 C 144.72,56.74 159.65,82.66 159.70,100.00 Z" />
+    </path>
+
+    <ellipse cx="82" cy="78" rx="20" ry="14" fill="url(#specularGlow)" transform="rotate(-20 82 78)">
+      <animate attributeName="cx" values="82;85;81;82" dur="3.8s" repeatCount="indefinite" />
+      <animate attributeName="cy" values="78;81;77;78" dur="3.8s" repeatCount="indefinite" />
+    </ellipse>
+  </g>
+</svg>

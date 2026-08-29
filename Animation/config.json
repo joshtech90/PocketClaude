@@ -1,0 +1,31 @@
+{
+  "project": "PocketClot",
+  "component": "PocketThinkingBlob",
+  "verified_date": "2026-08-24",
+  "settings": {
+    "speedMultiplier": 0.8,
+    "speedMultiplier_label": "Wobble-Geschwindigkeit 0.8x",
+    "morphIntensity": 0.20,
+    "morphIntensity_label": "Morph-Intensitaet 20%",
+    "numLobes": 6,
+    "numLobes_label": "Anzahl Lobes / Zacken 6",
+    "specularShine": 0.55,
+    "specularShine_label": "3D Glanzpunkt 55%",
+    "glowEnabled": true,
+    "glowEnabled_label": "Ambient Aura aktiviert"
+  },
+  "color_palette": {
+    "highlight": "#FDD043",
+    "amber": "#FFB300",
+    "brand_orange": "#FF6D00",
+    "shadow_terracotta": "#D84315",
+    "dark_edge": "#BF360C",
+    "glow": "#FF9800"
+  },
+  "integration_target": {
+    "kotlin_file": "app/app/src/main/java/de/smartzone/pocketclaude/ui/components/PocketThinkingBlob.kt",
+    "hook_file": "app/app/src/main/java/de/smartzone/pocketclaude/ui/components/MessageBubble.kt",
+    "hook_condition": "text.isEmpty() && isStreaming",
+    "default_size_dp": 25
+  }
+}

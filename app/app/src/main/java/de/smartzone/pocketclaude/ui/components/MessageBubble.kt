@@ -236,7 +236,14 @@ fun AssistantBubble(
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PocketBrandMark(size = 25.dp)
+            // Das Markenzeichen wabert, solange auf das erste Wort gewartet wird,
+            // und fliesst danach von selbst in die ruhige Silhouette zurueck.
+            // Die Komponente rendert im Ruhezustand PocketBrandMark, deshalb hier
+            // kein hartes Umschalten: das gaebe einen sichtbaren Sprung.
+            PocketThinkingBlob(
+                size = 25.dp,
+                isThinking = text.isEmpty() && isStreaming,
+            )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = stringResource(R.string.app_name).uppercase(Locale.ROOT),
