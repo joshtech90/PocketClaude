@@ -10,7 +10,7 @@ from typing import List
 from fastapi import HTTPException, status
 
 from pocket_claude.login_throttle import (
-    OVERFLOW_SUBJECT,
+    OVERFLOW_DELAY_SECONDS,
     Attempt,
     LoginThrottler,
     _valid_ip,
@@ -477,17 +477,17 @@ class TestSolFindings(unittest.TestCase):
             clock.advance(1.0)
             throttler.reserve(f"198.51.100.{i}")
 
-        # max_entries plus genau ein Platz fuer den Ueberlauf-Eimer.
-        self.assertLessEqual(throttler.entry_count(), 4)
+        # Harte Grenze, kein Zusatzplatz.
+        self.assertLessEqual(throttler.entry_count(), 3)
         erneut = throttler.reserve("192.0.2.1")
         self.assertEqual(erneut.reservation_id, gesperrt.reservation_id)
         self.assertLess(erneut.retry_after, 600)
         self.assertGreater(erneut.retry_after, 0)
 
-    def test_full_table_routes_newcomers_to_the_overflow_bucket(self) -> None:
-        # Finding N1: Ist jeder Platz gesperrt, wird weder eine Sperre geopfert
-        # noch der neue Absender pauschal abgewiesen. Er landet im gemeinsamen,
-        # begrenzten Ueberlauf-Eimer und behaelt dessen freie Versuche.
+    def test_full_table_brakes_newcomers_without_an_entry(self) -> None:
+        # Finding N3: Ist jeder Platz gesperrt, gibt es keinen gemeinsamen
+        # Eimer mehr. Der unbekannte Absender wird kurz gebremst, bekommt aber
+        # keinen Eintrag und teilt sich keinen Zaehler.
         clock = FakeClock(1000.0)
         throttler = LoginThrottler(
             max_entries=2, free_attempts=0, base_delay=100.0, clock=clock
@@ -497,7 +497,11 @@ class TestSolFindings(unittest.TestCase):
         alt2 = throttler.reserve("192.0.2.2")
 
         neu = throttler.reserve("192.0.2.3")
-        self.assertEqual(neu.subject, OVERFLOW_SUBJECT)
+        self.assertEqual(neu.subject, "192.0.2.3")
+        self.assertEqual(neu.reservation_id, 0)
+        self.assertEqual(neu.retry_after, int(OVERFLOW_DELAY_SECONDS))
+        # Kein zusaetzlicher Eintrag, die Grenze ist hart max_entries.
+        self.assertEqual(throttler.entry_count(), 2)
 
         # Beide bestehenden Sperren leben unveraendert weiter.
         self.assertEqual(
@@ -507,21 +511,66 @@ class TestSolFindings(unittest.TestCase):
             throttler.reserve("192.0.2.2").reservation_id, alt2.reservation_id
         )
 
-    def test_overflow_bucket_grants_its_free_attempts(self) -> None:
-        # Finding N1: Der Ueberlauf-Eimer sperrt unbekannte Absender nicht
-        # sofort aus, sie bekommen die konfigurierten Freiversuche.
+    def test_full_table_brake_never_escalates(self) -> None:
+        # Finding N3: Die Bremse laesst sich nicht hochschaukeln. Egal wie oft
+        # und von wie vielen Quellen geklopft wird, sie bleibt konstant.
         clock = FakeClock(1000.0)
         throttler = LoginThrottler(
-            max_entries=2, free_attempts=2, base_delay=100.0, clock=clock
+            max_entries=2, free_attempts=0, base_delay=100.0, clock=clock
         )
-        for _ in range(3):
-            throttler.reserve("192.0.2.1")
-        for _ in range(3):
-            throttler.reserve("192.0.2.2")
+        throttler.reserve("192.0.2.1")
+        throttler.reserve("192.0.2.2")
 
-        erster = throttler.reserve("192.0.2.50")
-        self.assertEqual(erster.subject, OVERFLOW_SUBJECT)
-        self.assertEqual(erster.retry_after, 0)
+        for i in range(50):
+            clock.advance(1.0)
+            ergebnis = throttler.reserve(f"198.51.100.{i % 10}")
+            self.assertEqual(ergebnis.retry_after, int(OVERFLOW_DELAY_SECONDS))
+        self.assertEqual(throttler.entry_count(), 2)
+
+    def test_full_table_brake_ends_as_soon_as_a_slot_frees(self) -> None:
+        # Finding N3: Sobald eine Sperre ablaeuft, kommt der unbekannte
+        # Absender sofort wieder durch. Kein Nachwirken.
+        clock = FakeClock(1000.0)
+        throttler = LoginThrottler(
+            max_entries=2, free_attempts=0, base_delay=100.0, clock=clock
+        )
+        throttler.reserve("192.0.2.1")
+        throttler.reserve("192.0.2.2")
+        self.assertEqual(throttler.reserve("192.0.2.3").reservation_id, 0)
+
+        clock.advance(101.0)
+        durch = throttler.reserve("192.0.2.3")
+        self.assertGreater(durch.reservation_id, 0)
+        self.assertEqual(durch.subject, "192.0.2.3")
+
+    def test_victim_beyond_any_fixed_window_is_found(self) -> None:
+        # Finding N4: Der einzige verdraengbare Eintrag liegt ganz hinten in
+        # der Ordnung. Ein festes Suchfenster von vorn haette ihn uebersehen
+        # und faelschlich alles als gesperrt gemeldet.
+        clock = FakeClock(1000.0)
+        throttler = LoginThrottler(
+            max_entries=50,
+            free_attempts=1,
+            base_delay=600.0,
+            max_delay=600.0,
+            history_window=100000.0,
+            clock=clock,
+        )
+        # 49 Quellen mit je zwei Versuchen, also 49 laufende Sperren.
+        for i in range(49):
+            throttler.reserve(f"192.0.2.{i}")
+            throttler.reserve(f"192.0.2.{i}")
+        # Eine Quelle mit nur einem Versuch bleibt ungesperrt und steht als
+        # juengster Eintrag am Ende der Ordnung.
+        offen = throttler.reserve("198.51.100.1")
+        self.assertEqual(offen.retry_after, 0)
+        self.assertEqual(throttler.entry_count(), 50)
+
+        neu = throttler.reserve("203.0.113.9")
+        # Der ungesperrte Eintrag wurde geopfert, nicht pauschal gebremst.
+        self.assertEqual(neu.subject, "203.0.113.9")
+        self.assertGreater(neu.reservation_id, 0)
+        self.assertEqual(neu.retry_after, 0)
 
     def test_unblocked_entry_is_evicted_before_any_block(self) -> None:
         # Finding 1, Mischfall: Bei vollem Speicher wird der ungesperrte
@@ -610,6 +659,103 @@ class TestSolFindings(unittest.TestCase):
             gesperrt.reservation_id,
         )
 
+    def test_full_table_does_not_rescan_on_every_request(self) -> None:
+        # Finding N5: Findet ein Durchlauf kein Opfer, darf nicht jede weitere
+        # Anfrage erneut die ganze Tabelle unter dem Lock durchlaufen.
+        clock = FakeClock(1000.0)
+        throttler = LoginThrottler(
+            max_entries=32,
+            free_attempts=0,
+            base_delay=600.0,
+            max_delay=600.0,
+            clock=clock,
+        )
+        for i in range(32):
+            throttler.reserve(f"192.0.2.{i}")
+        vorher = throttler._scan_count
+
+        for i in range(200):
+            clock.advance(0.5)
+            self.assertEqual(throttler.reserve(f"198.51.100.{i % 50}").retry_after, 1)
+        # Ein einziger ergebnisloser Durchlauf, danach gilt die Merkzeit.
+        self.assertLessEqual(throttler._scan_count - vorher, 1)
+
+    def test_rescan_resumes_after_the_earliest_block_expires(self) -> None:
+        # Finding N5: Die Merkzeit darf nicht dauerhaft blockieren. Sobald die
+        # frueheste Sperre ablaeuft, wird wieder gesucht und verdraengt.
+        clock = FakeClock(1000.0)
+        throttler = LoginThrottler(
+            max_entries=2,
+            free_attempts=0,
+            base_delay=100.0,
+            max_delay=100.0,
+            history_window=100000.0,
+            clock=clock,
+        )
+        throttler.reserve("192.0.2.1")
+        clock.advance(20.0)
+        throttler.reserve("192.0.2.2")
+        self.assertEqual(throttler.reserve("192.0.2.3").reservation_id, 0)
+
+        clock.advance(81.0)
+        durch = throttler.reserve("192.0.2.3")
+        self.assertGreater(durch.reservation_id, 0)
+        self.assertEqual(throttler.entry_count(), 2)
+
+    def test_reserved_candidate_that_blocks_again_is_not_evicted(self) -> None:
+        # Sol-Hinweis: Ein bereits vorgemerkter Kandidat, der vor seiner
+        # Entnahme wieder gesperrt wird, muss unantastbar bleiben.
+        clock = FakeClock(1000.0)
+        throttler = LoginThrottler(
+            max_entries=3,
+            free_attempts=1,
+            base_delay=300.0,
+            max_delay=300.0,
+            history_window=100000.0,
+            clock=clock,
+        )
+        a = throttler.reserve("192.0.2.41")
+        b = throttler.reserve("192.0.2.42")
+        c = throttler.reserve("192.0.2.43")
+        self.assertEqual(throttler.entry_count(), 3)
+        self.assertEqual((a.retry_after, b.retry_after, c.retry_after), (0, 0, 0))
+
+        # Vorrat fuellen, ohne ihn abzutragen.
+        throttler._pick_victim(clock())
+        self.assertTrue(throttler._victims)
+        vorgemerkt = throttler._victims[0]
+
+        # Der vorgemerkte Eintrag wird jetzt gesperrt.
+        gesperrt = throttler.reserve(vorgemerkt)
+        self.assertGreater(gesperrt.retry_after, 0)
+
+        # Verdraengung darf ihn nicht mehr treffen.
+        throttler.reserve("203.0.113.77")
+        weiter = throttler.reserve(vorgemerkt)
+        self.assertEqual(weiter.reservation_id, gesperrt.reservation_id)
+
+    def test_victim_batch_is_reused_across_several_evictions(self) -> None:
+        # Sol-Hinweis: Der Vorrat soll ueber mehrere Verdraengungen halten,
+        # nicht bei jeder Verdraengung neu gesammelt werden.
+        clock = FakeClock(1000.0)
+        throttler = LoginThrottler(
+            max_entries=200,
+            free_attempts=5,
+            base_delay=300.0,
+            history_window=100000.0,
+            clock=clock,
+        )
+        for i in range(200):
+            throttler.reserve(f"10.0.{i // 256}.{i % 256}")
+        self.assertEqual(throttler.entry_count(), 200)
+        vorher = throttler._scan_count
+
+        for i in range(60):
+            throttler.reserve(f"203.0.113.{i}")
+        self.assertEqual(throttler.entry_count(), 200)
+        # 60 Verdraengungen aus einem Vorrat von 64: hoechstens ein Durchlauf.
+        self.assertLessEqual(throttler._scan_count - vorher, 1)
+
     def test_scans_stay_bounded_when_table_is_full_of_blocks(self) -> None:
         # Finding N2: Der Verfalls- und der Verdraengungslauf sind begrenzt.
         clock = FakeClock(1000.0)
@@ -627,8 +773,8 @@ class TestSolFindings(unittest.TestCase):
         for i in range(200):
             ergebnis = throttler.reserve(f"198.51.100.{i % 200}")
             self.assertGreater(ergebnis.retry_after, 0)
-        # Der Speicher bleibt hart begrenzt: max_entries plus Ueberlauf-Eimer.
-        self.assertLessEqual(throttler.entry_count(), 65)
+        # Der Speicher bleibt hart auf max_entries begrenzt.
+        self.assertLessEqual(throttler.entry_count(), 64)
 
 
 if __name__ == "__main__":

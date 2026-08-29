@@ -5,7 +5,7 @@ import ipaddress
 import math
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
@@ -31,9 +31,15 @@ def client_ip(request: Request) -> str:
     return _valid_ip(peer) or "unknown"
 
 
-# Gemeinsamer Eimer fuer unbekannte Absender, wenn jeder Platz von einer
-# laufenden Sperre belegt ist. Kein gueltiges Ergebnis von _subject.
-OVERFLOW_SUBJECT = "__overflow__"
+# Feste, bewusst NICHT eskalierende Bremse fuer unbekannte Absender, wenn
+# jeder Platz von einer laufenden Sperre belegt ist. Absichtlich ohne
+# gemeinsamen Zaehler und ohne eigenen Eintrag: Ein gemeinsamer Eimer liesse
+# sich vergiften und vom Angreifer auf Minuten hochschaukeln, diese Bremse
+# bleibt konstant kurz und faellt weg, sobald ein Platz frei wird.
+OVERFLOW_DELAY_SECONDS = 1.0
+
+# Wie viele Verdraengungskandidaten ein Durchlauf auf Vorrat sammelt.
+_VICTIM_BATCH = 64
 
 
 @dataclass
@@ -54,17 +60,21 @@ class Attempt:
 class LoginThrottler:
     """IP-Backoff mit begrenztem Speicher und ohne dauerhafte Kontosperre.
 
-    Der Speicher ist auf max_entries plus genau einen Platz fuer den
-    gemeinsamen Ueberlauf-Eimer begrenzt. free_attempts ist die exakte Zahl
+    Der Speicher ist hart auf max_entries begrenzt. free_attempts ist die exakte Zahl
     freier Passwortpruefungen, der sperrausloesende Versuch wird selbst schon
     abgewiesen. Eine laufende Sperre wird niemals durch Verdraengung oder
     Verfall entfernt und auch nicht durch einen erfolgreichen Login aufgehoben.
+
+    Sind alle Plaetze gesperrt, bekommt ein unbekannter Absender eine feste
+    kurze Bremse ohne eigenen Eintrag. Das bleibt eine Beeintraechtigung unter
+    einem verteilten Angriff, ist aber nicht eskalierbar und endet sofort,
+    sobald ein Platz frei wird.
     """
 
     def __init__(
         self,
         *,
-        max_entries: int = 2_048,
+        max_entries: int = 8_192,
         free_attempts: int = 4,
         base_delay: float = 5.0,
         max_delay: float = 300.0,
@@ -81,6 +91,10 @@ class LoginThrottler:
         self._clock = clock
         self._entries: OrderedDict[str, _Entry] = OrderedDict()
         self._next_reservation_id = 0
+        self._victims: deque[str] = deque()
+        self._no_victim_until = 0.0
+        # Nur fuer Tests und Diagnose: Zahl der Volldurchlaeufe.
+        self._scan_count = 0
         self._lock = threading.Lock()
 
     def reserve(self, source_ip: str) -> Attempt:
@@ -91,18 +105,24 @@ class LoginThrottler:
             subject = self._subject(source_ip)
 
             if subject not in self._entries and len(self._entries) >= self.max_entries:
-                victim = self._evictable(now)
+                victim = self._pick_victim(now)
                 if victim is not None:
                     # Verdraengt wird ausschliesslich ein Eintrag OHNE laufende
                     # Sperre. Eine aktive Sperre ist unantastbar, sonst koennte
                     # ein verteilter Flood den Angreifer selbst entsperren.
                     self._entries.pop(victim, None)
                 else:
-                    # Alles gesperrt: Der unbekannte Absender teilt sich den
-                    # begrenzten Ueberlauf-Eimer. Das opfert keine Sperre und
-                    # weist ihn auch nicht pauschal ab, er bekommt die freien
-                    # Versuche des gemeinsamen Eimers.
-                    subject = OVERFLOW_SUBJECT
+                    # Wirklich jeder Platz ist gesperrt. Der unbekannte
+                    # Absender wird kurz gebremst, bekommt aber KEINEN Eintrag
+                    # und teilt sich keinen Zaehler. Damit laesst sich diese
+                    # Bremse weder vergiften noch hochschaukeln, sie bleibt bei
+                    # OVERFLOW_DELAY_SECONDS und endet, sobald ein Platz frei
+                    # wird.
+                    return Attempt(
+                        subject,
+                        0,
+                        max(1, math.ceil(OVERFLOW_DELAY_SECONDS)),
+                    )
 
             entry = self._entries.get(subject)
             if entry is not None and now < entry.blocked_until:
@@ -196,20 +216,43 @@ class LoginThrottler:
                 continue
             self._entries.pop(bucket, None)
 
-    def _evictable(self, now: float, limit: int = 32) -> str | None:
-        """Aeltester Eintrag OHNE laufende Sperre im begrenzten Suchfenster.
+    def _pick_victim(self, now: float) -> str | None:
+        """Naechster verdraengbarer Eintrag, amortisiert konstant.
 
-        Das Fenster ist bewusst gedeckelt, damit ein voller Speicher pro
-        Anfrage keinen Volldurchlauf unter dem gemeinsamen Lock ausloest.
+        Ein Durchlauf sammelt bis zu _VICTIM_BATCH Kandidaten auf Vorrat, die
+        danach einzeln abgetragen werden. Findet ein Durchlauf gar kein Opfer,
+        wird das bis zum Ablauf der fruehesten Sperre gemerkt. Ohne diese
+        Sperre wuerde bei voller Tabelle JEDE Anfrage einen Volldurchlauf
+        unter dem gemeinsamen Lock ausloesen.
         """
-        for index, (bucket, entry) in enumerate(self._entries.items()):
-            if index >= limit:
-                return None
-            if bucket == OVERFLOW_SUBJECT:
-                continue
-            if now >= entry.blocked_until:
+        while self._victims:
+            bucket = self._victims.popleft()
+            entry = self._entries.get(bucket)
+            # Ein vorgemerkter Kandidat kann inzwischen entfernt oder erneut
+            # gesperrt worden sein. Beides macht ihn unantastbar.
+            if entry is not None and now >= entry.blocked_until:
                 return bucket
-        return None
+
+        if now < self._no_victim_until:
+            return None
+
+        frueheste = math.inf
+        for bucket, entry in self._entries.items():
+            if now >= entry.blocked_until:
+                self._victims.append(bucket)
+                if len(self._victims) >= _VICTIM_BATCH:
+                    break
+            elif entry.blocked_until < frueheste:
+                frueheste = entry.blocked_until
+        self._scan_count += 1
+
+        if not self._victims:
+            # Alles gesperrt. Ein neuer Durchlauf lohnt fruehestens, wenn die
+            # naechste Sperre ablaeuft.
+            self._no_victim_until = frueheste if frueheste < math.inf else now
+            return None
+        self._no_victim_until = 0.0
+        return self._victims.popleft()
 
     def entry_count(self) -> int:
         with self._lock:
