@@ -8,23 +8,49 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 /**
- * Komprimiert Bilder vor dem Upload — analog zu dem, was ChatGPT, Claude
- * und Gemini auf ihrer Client-Seite machen.
+ * Komprimiert Bilder vor dem Upload, analog zu dem, was ChatGPT, Claude und
+ * Gemini auf ihrer Client-Seite machen.
  *
- * Strategie:
- *  - Max. längste Kante 1568 px (Anthropic-Empfehlung für Vision-Eingabe).
- *  - JPEG mit Quality 85 (visuell verlustfrei für Fotos, drastisch kleiner).
- *  - Skipped wenn Datei bereits unter dem Schwellwert ist UND klein genug.
- *  - EXIF-Orientation wird vor dem Encode angewandt — sonst landet das Bild
- *    seitlich, wenn das Telefon im Portrait-Modus geschossen hat.
+ * Es gibt zwei Stufen, weil ein Bild zum ANSEHEN und ein Bild zum BEARBEITEN
+ * unterschiedlich viel Auflösung brauchen:
  *
+ *  - [Purpose.VISION] für Anhänge, die ein Modell nur lesen soll. 1568 px
+ *    ist die Empfehlung für Vision-Eingaben; mehr Pixel liefern dort messbar
+ *    keine besseren Antworten, kosten aber Tokens und Wartezeit.
+ *  - [Purpose.EDIT] für Bilder, die als Vorlage bearbeitet werden. Hier ist
+ *    die Vorlage die Obergrenze für das Ergebnis: was hier wegkomprimiert
+ *    wird, kann kein Modell zurückholen.
+ *
+ * An einem 34-Megapixel-Foto (4912x6879, 3,9 MB) gemessen:
+ * VISION ergibt 0,45 MB (89 Prozent kleiner), EDIT ergibt 1,14 MB
+ * (71 Prozent kleiner) bei 2,6-mal so vielen Bildpunkten. Der Sprung von
+ * Qualität 85 auf 92 kostet dabei nur rund 60 KB, ist also fast geschenkt.
+ *
+ * Weiterhin gilt: EXIF-Orientierung wird vor dem Encode angewandt, sonst
+ * landet das Bild seitlich, wenn das Telefon im Hochformat geschossen hat.
  * Nicht-Bilder (PDF, txt, …) werden unverändert durchgereicht.
  */
 object ImageCompressor {
 
-    private const val MAX_EDGE_PX = 1568
-    private const val JPEG_QUALITY = 85
-    private const val SKIP_IF_BELOW_BYTES = 200 * 1024  // unter 200 KB lohnt nichts
+    /**
+     * Obergrenze für die Fläche, die beim Decodieren im Speicher landet.
+     * 16 Megapixel entsprechen als ARGB-Bitmap rund 64 MB; darüber wird das
+     * Zwischenbild auf schwachen Geräten zum Problem.
+     */
+    private const val MAX_DECODED_PIXELS = 16_000_000L
+
+    /** Wofür das Bild gedacht ist. Bestimmt Kantenlänge und Qualität. */
+    enum class Purpose(
+        val maxEdgePx: Int,
+        val jpegQuality: Int,
+        /** Unterhalb dieser Größe lohnt das Neucodieren nicht. */
+        val skipBelowBytes: Int,
+        /** Bis zu dieser Größe bleibt ein ohnehin kleines Bild im Original. */
+        val keepOriginalBelowBytes: Int,
+    ) {
+        VISION(1568, 85, 200 * 1024, 1_500_000),
+        EDIT(2560, 92, 400 * 1024, 2_500_000),
+    }
 
     data class Result(val filename: String, val mime: String, val bytes: ByteArray)
 
@@ -33,22 +59,27 @@ object ImageCompressor {
     operator fun Result.component3() = bytes
 
     /** Hauptaufruf. Bei Nicht-Bild oder schon-klein-genug: 1:1 zurück. */
-    fun maybeCompress(filename: String, mime: String, bytes: ByteArray): Result {
+    fun maybeCompress(
+        filename: String,
+        mime: String,
+        bytes: ByteArray,
+        purpose: Purpose = Purpose.VISION,
+    ): Result {
         val isImage = mime.startsWith("image/")
         if (!isImage) return Result(filename, mime, bytes)
         // Animated GIFs/WebP würden durch das Recodieren ihre Animation verlieren.
         if (mime == "image/gif") return Result(filename, mime, bytes)
-        if (bytes.size <= SKIP_IF_BELOW_BYTES) return Result(filename, mime, bytes)
+        if (bytes.size <= purpose.skipBelowBytes) return Result(filename, mime, bytes)
 
         return try {
-            compress(filename, bytes) ?: Result(filename, mime, bytes)
+            compress(filename, bytes, purpose) ?: Result(filename, mime, bytes)
         } catch (_: Throwable) {
             // Bei jedem Fehler: Original durchreichen, lieber großer Upload als gar keiner.
             Result(filename, mime, bytes)
         }
     }
 
-    private fun compress(filename: String, bytes: ByteArray): Result? {
+    private fun compress(filename: String, bytes: ByteArray, purpose: Purpose): Result? {
         // 1) Größen rausfinden ohne den ganzen Bitmap zu laden.
         val sizeOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, sizeOpts)
@@ -57,7 +88,7 @@ object ImageCompressor {
         if (srcW <= 0 || srcH <= 0) return null
 
         val longest = maxOf(srcW, srcH)
-        if (longest <= MAX_EDGE_PX && bytes.size <= 1_500_000) {
+        if (longest <= purpose.maxEdgePx && bytes.size <= purpose.keepOriginalBelowBytes) {
             // Schon klein genug — Original (mit originalem MIME) behalten.
             return Result(filename, sizeOpts.outMimeType ?: "image/jpeg", bytes)
         }
@@ -65,7 +96,19 @@ object ImageCompressor {
         // 2) inSampleSize berechnen (Power of 2). Beispiel: 4032 → 1568 → factor ~2.57,
         //    wir nehmen 2 (= 2016px Edge), und resizen danach präzise mit Matrix.
         var inSample = 1
-        while (longest / (inSample * 2) >= MAX_EDGE_PX) inSample *= 2
+        while (longest / (inSample * 2) >= purpose.maxEdgePx) inSample *= 2
+
+        // Der Schritt oben decodiert bewusst großzügig, damit beim präzisen
+        // Skalieren danach noch Reserve da ist. Bei EDIT mit 2560 px kann das
+        // aber bis zu 5120 px bedeuten, und ein quadratisches Bild dieser Größe
+        // belegt als ARGB-Bitmap rund 100 MB. Das kippt ein Gerät mit kleinem
+        // Heap, bevor überhaupt komprimiert wird. Deshalb hier eine Obergrenze
+        // für die decodierte Fläche: Wo sie greift, wird exakt auf Zielgröße
+        // decodiert, was praktisch keine Qualität kostet.
+        while (
+            inSample < 16 &&
+            (srcW.toLong() / inSample) * (srcH.toLong() / inSample) > MAX_DECODED_PIXELS
+        ) inSample *= 2
 
         val opts = BitmapFactory.Options().apply { inSampleSize = inSample }
         val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
@@ -81,7 +124,7 @@ object ImageCompressor {
 
         val w = rotatedFirst.width
         val h = rotatedFirst.height
-        val scale = MAX_EDGE_PX.toFloat() / maxOf(w, h).toFloat()
+        val scale = purpose.maxEdgePx.toFloat() / maxOf(w, h).toFloat()
         val scaled = if (scale < 1.0f) {
             Bitmap.createScaledBitmap(
                 rotatedFirst,
@@ -95,7 +138,7 @@ object ImageCompressor {
 
         // 4) JPEG encoden
         val out = ByteArrayOutputStream(64 * 1024)
-        scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+        scaled.compress(Bitmap.CompressFormat.JPEG, purpose.jpegQuality, out)
         scaled.recycle()
 
         val newName = renameToJpg(filename)

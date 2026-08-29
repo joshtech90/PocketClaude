@@ -8,6 +8,7 @@ import de.smartzone.pocketclaude.data.AppContainer
 import de.smartzone.pocketclaude.data.ChatRepository
 import de.smartzone.pocketclaude.data.ImageConfigDto
 import de.smartzone.pocketclaude.data.ImageGenerateRequest
+import de.smartzone.pocketclaude.data.ImageCompressor
 import de.smartzone.pocketclaude.data.ImageGenerateAttachment
 import de.smartzone.pocketclaude.data.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -146,7 +147,9 @@ class ImageGenViewModel(
         _state.update {
             it.copy(uploadsRunning = it.uploadsRunning + 1, generationError = null)
         }
-        runCatching { repo.uploadFromUri(uri) }
+        // Vorlagen bekommen mehr Auflösung als ein reiner Ansehen-Anhang: was
+        // hier wegkomprimiert wird, kann die Bearbeitung nicht zurückholen.
+        runCatching { repo.uploadFromUri(uri, ImageCompressor.Purpose.EDIT) }
             .onSuccess { att ->
                 _state.update {
                     val done = it.copy(uploadsRunning = (it.uploadsRunning - 1).coerceAtLeast(0))

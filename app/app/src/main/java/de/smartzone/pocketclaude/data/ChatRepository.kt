@@ -166,14 +166,24 @@ class ChatRepository(
     suspend fun setChatModel(cid: String, modelKey: String): ConversationDto =
         api.setChatModel(cid, modelKey)
 
-    suspend fun uploadFromUri(uri: Uri): AttachmentDto {
-        val (filename, mime, bytes) = readUpload(uri)
+    /** Springt zu einer frueheren Antwort zurueck, optional mit Modellwechsel. */
+    suspend fun rewind(cid: String, messageId: Long, chatModel: String? = null): RewindResponse =
+        api.rewindConversation(cid, messageId, chatModel)
+
+    suspend fun uploadFromUri(
+        uri: Uri,
+        purpose: ImageCompressor.Purpose = ImageCompressor.Purpose.VISION,
+    ): AttachmentDto {
+        val (filename, mime, bytes) = readUpload(uri, purpose)
         return api.uploadAttachment(filename, mime, bytes)
     }
 
     /** Liest einen content-URI in (filename, mime, bytes) — inkl. Bild-Kompression.
      *  Geteilt von Chat-Anhängen und Gem-Wissensdateien. */
-    private suspend fun readUpload(uri: Uri): ImageCompressor.Result =
+    private suspend fun readUpload(
+        uri: Uri,
+        purpose: ImageCompressor.Purpose = ImageCompressor.Purpose.VISION,
+    ): ImageCompressor.Result =
         withContext(Dispatchers.IO) {
             val resolver = context.contentResolver
             val rawMime = resolver.getType(uri)
@@ -186,7 +196,7 @@ class ChatRepository(
             // Bei Bildern clientseitig runterskalieren + JPEG-recodieren — spart
             // 80–95% Speicher gegenüber Handy-Originalen, und Claude/Gemini-Vision
             // resizen eh auf ~1568px-Kante.
-            ImageCompressor.maybeCompress(rawName, rawMime, rawBytes)
+            ImageCompressor.maybeCompress(rawName, rawMime, rawBytes, purpose)
         }
 
     private fun queryDisplayName(uri: Uri): String? {
