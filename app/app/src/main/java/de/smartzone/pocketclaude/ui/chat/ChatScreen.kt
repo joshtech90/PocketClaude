@@ -1022,6 +1022,7 @@ fun ChatScreen(
         ChatSkillsDialog(
             currentSkills = state.skills,
             isOverride = state.skillsIsOverride,
+            modelFamily = familyForKey(state.modelKey),
             onSave = { newSkills ->
                 vm.setChatSkills(newSkills)
                 skillsDialogOpen = false
@@ -1049,14 +1050,19 @@ fun ChatScreen(
 }
 
 /**
- * Per-Chat-Skills-Override-Dialog. Zeigt die drei Toggle-Switches; "Speichern"
- * setzt einen Override für DIESEN Chat, "Auf Standard zurücksetzen" löscht
- * den Override und der User-Default greift wieder.
+ * Per-Chat-Skills-Override-Dialog. "Speichern" setzt einen Override für DIESEN
+ * Chat, "Auf Standard zurücksetzen" löscht den Override und der User-Default
+ * greift wieder.
+ *
+ * Suche und Seitenabruf koennen alle Modelle. Code-Ausfuehrung kann nur Claude,
+ * deshalb wird der Schalter bei den Zusatz-Modellen ausgegraut und erklaert,
+ * statt so zu tun, als haette er dort eine Wirkung.
  */
 @Composable
 private fun ChatSkillsDialog(
     currentSkills: de.smartzone.pocketclaude.data.SkillsDto?,
     isOverride: Boolean,
+    modelFamily: String,
     onSave: (de.smartzone.pocketclaude.data.SkillsDto) -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit,
@@ -1065,6 +1071,7 @@ private fun ChatSkillsDialog(
     var webSearch by remember(initial) { mutableStateOf(initial.webSearch) }
     var webFetch by remember(initial) { mutableStateOf(initial.webFetch) }
     var codeExecution by remember(initial) { mutableStateOf(initial.codeExecution) }
+    val codeAvailable = modelFamily == de.smartzone.pocketclaude.data.ChatModelFamilies.CLAUDE
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1094,16 +1101,23 @@ private fun ChatSkillsDialog(
                 )
                 de.smartzone.pocketclaude.ui.settings.SkillToggleRow(
                     label = stringResource(de.smartzone.pocketclaude.R.string.chat_skill_code_label),
-                    description = stringResource(de.smartzone.pocketclaude.R.string.chat_skill_code_desc),
-                    checked = codeExecution,
+                    description = stringResource(
+                        if (codeAvailable) de.smartzone.pocketclaude.R.string.chat_skill_code_desc
+                        else de.smartzone.pocketclaude.R.string.chat_skill_claude_only
+                    ),
+                    enabled = codeAvailable,
+                    checked = codeExecution && codeAvailable,
                     onCheckedChange = { codeExecution = it },
                 )
             }
         },
         confirmButton = {
             TextButton(onClick = {
+                // `copy` statt einer neuen Instanz: sonst faellt die
+                // Bild-Einstellung dieses Chats bei jedem Speichern auf den
+                // Standardwert zurueck, obwohl der Dialog sie gar nicht zeigt.
                 onSave(
-                    de.smartzone.pocketclaude.data.SkillsDto(
+                    initial.copy(
                         webSearch = webSearch,
                         webFetch = webFetch,
                         codeExecution = codeExecution,

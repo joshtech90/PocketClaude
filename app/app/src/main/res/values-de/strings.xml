@@ -118,7 +118,7 @@
 
     <!-- ─── Settings screen — sections ────────────────────────────────── -->
     <string name="section_profiles_and_connection">Profile &amp; Verbindung</string>
-    <string name="section_claude_behavior">Claude-Verhalten</string>
+    <string name="section_claude_behavior">Modelle &amp; Verhalten</string>
     <string name="section_skills">Skills</string>
     <string name="section_read_aloud">Vorlesen</string>
     <string name="section_images">Bilder</string>
@@ -228,7 +228,7 @@
     <string name="notif_result_text">Antwort bereit — tippe zum Lesen</string>
 
     <!-- ─── Settings — Claude connection (auth-mode picker) ───────────── -->
-    <string name="section_claude_connection">Claude-Verbindung</string>
+    <string name="section_claude_connection">Anbieter &amp; Zugänge</string>
     <string name="claude_mode_pro_max">Pro/Max</string>
     <string name="claude_mode_api_key">Anthropic API</string>
     <string name="claude_mode_bedrock">AWS Bedrock</string>
@@ -317,7 +317,8 @@
     <string name="chat_skill_web_fetch_label">WebFetch</string>
     <string name="chat_skill_web_fetch_desc">Bestimmte URLs abrufen und zusammenfassen.</string>
     <string name="chat_skill_code_label">Code-Ausführung</string>
-    <string name="chat_skill_code_desc">Bash/Python in der Server-Sandbox.</string>
+    <string name="chat_skill_code_desc">Bash und Python in der Server-Sandbox. Nur bei Claude.</string>
+    <string name="chat_skill_claude_only">Das kann nur Claude. Gemini und GPT können hier keinen Code ausführen.</string>
     <string name="chat_skills_save_for_chat">Für diesen Chat speichern</string>
     <string name="chat_skills_reset_default">Auf Standard zurücksetzen</string>
     <string name="chat_auto_speak_dialog_title">Auto-Vorlesen für diesen Chat</string>
@@ -395,7 +396,7 @@
     <string name="settings_section_vorlesen">Vorlesen</string>
     <string name="settings_subtitle_vorlesen">Provider, Stimme, Auto-Vorlesen</string>
     <string name="settings_section_images_title">Bilder erzeugen</string>
-    <string name="settings_subtitle_images">Gemini Nano Banana — Text-zu-Bild + Bearbeitung</string>
+    <string name="settings_subtitle_images">Auflösung und Seitenverhältnis</string>
     <string name="settings_section_data">Daten speichern</string>
     <string name="settings_subtitle_data">Chats + Einstellungen exportieren/importieren</string>
     <string name="settings_section_about">Über</string>
@@ -426,16 +427,17 @@
     <string name="settings_info_profile_server_url_body">Wenn der Server auf deinem Mac läuft, startet er üblicherweise einen Cloudflare Quick Tunnel mit einer URL wie https://abc-xyz-123.trycloudflare.com. Im Heim-WLAN funktioniert auch http://&lt;Mac-IP&gt;:8787.</string>
     <string name="settings_info_profile_server_login_label">Anmeldung:</string>
     <string name="settings_info_profile_server_login_body">Bei der ersten Anmeldung wird das initiale Passwort des Server-Admins verwendet. Der Server zwingt dich dann, ein eigenes festzulegen. Kein API-Key auf dem Telefon.</string>
-    <string name="settings_section_claude">Claude</string>
+    <string name="settings_section_claude">Anbieter</string>
     <string name="settings_info_claude_title">Reasoning-Aufwand, Persona, Skills</string>
     <string name="settings_info_claude_effort_label">Reasoning-Aufwand:</string>
     <string name="settings_info_claude_effort_body">Wie intensiv Claude vor der Antwort intern nachdenkt. Höher = bessere Qualität bei schweren Fragen, längere Wartezeit. `xhigh` gibt es nur bei Opus 4.7 und liegt zwischen `high` und `max`.</string>
     <string name="settings_info_claude_prompt_label">System-Prompt:</string>
-    <string name="settings_info_claude_prompt_body">Standard = Anthropic-Default wie auf claude.ai. Permissiv = neutrale Erwachsene-zu-Erwachsene-Variante mit weniger Absicherungen. Ultra-Liberal = minimale Refusal-Schicht, nur harte Grenzen (Kinderschutz, illegale Synthese/Malware). Eigener = komplett dein eigener.</string>
+    <string name="settings_info_claude_prompt_body">Standard = Anthropic-Default wie auf claude.ai. Permissiv = neutrale Erwachsene-zu-Erwachsene-Variante mit weniger Absicherungen. Ultra-Liberal = minimale Refusal-Schicht, nur harte Grenzen (Kinderschutz, illegale Synthese/Malware). Eigener = komplett dein eigener. Der Modus gilt für jedes Modell: bei Gemini und GPT wird er automatisch angepasst, damit das Modell unter seinem eigenen Namen antwortet.</string>
     <string name="settings_info_claude_skills_label">Skills:</string>
-    <string name="settings_info_claude_skills_body">Welche Tools darf Claude nutzen — WebSearch, WebFetch, Code-Ausführung. Das sind die Defaults für neue Chats. Pro Chat über das ⋮-Menü oben rechts im Chat überschreibbar.</string>
+    <string name="settings_info_claude_skills_body">Welche Werkzeuge ein Modell nutzen darf: Web-Suche, Seiten-Abruf, Code-Ausführung, Bilder. Das sind die Vorgaben für neue Chats, pro Chat änderbar über das ⋮-Menü oben rechts. Suche und Seiten-Abruf können alle Modelle, Code-Ausführung nur Claude.</string>
     <string name="settings_subsection_effort">Reasoning-Aufwand</string>
     <string name="settings_subsection_system_prompt">System-Prompt</string>
+    <string name="settings_prompt_all_models_hint">Der gewählte Modus gilt für jedes Modell. Bei Gemini und GPT wird er automatisch angepasst: der Anthropic-Produktteil fällt weg und das Modell antwortet unter seinem eigenen Namen.</string>
     <string name="settings_custom_system_prompt_label">Eigener System-Prompt</string>
     <string name="settings_custom_system_prompt_placeholder">Vollständigen System-Prompt hier einfügen…</string>
     <string name="settings_custom_system_prompt_hint">Leer = es gilt der Standard-Prompt.</string>
@@ -448,18 +450,18 @@
     <string name="settings_info_tts_gemini_body">Free Tier: 10 Aufrufe/Tag pro Key — knapp mit 1 Key, gut mit Multi-Key-Pool. Paid: $0.50/M Input + $10/M Audio-Output. Beste Modell-Inferenz.</string>
     <string name="settings_info_tts_cloud_label">Cloud TTS (mit Service-Account):</string>
     <string name="settings_info_tts_cloud_body">1 Mio Zeichen/Monat KOSTENLOS bei Chirp 3 HD (≈ 20 h Audio). Beste Sprachqualität. Setup aufwendiger (Cloud-Projekt + Service-Account-JSON).</string>
-    <string name="settings_info_images_title">Bilderzeugung einrichten</string>
-    <string name="settings_info_images_intro">Für die Bilderzeugung brauchst du einen API-Key von Google AI Studio. Er wird serverseitig pro Profil gespeichert und kann optional auch für die Gemini-Sprachausgabe weiterverwendet werden.</string>
-    <string name="settings_info_images_step1">1.</string>
-    <string name="settings_info_images_step1_body">https://aistudio.google.com → mit deinem Google-Konto anmelden.</string>
-    <string name="settings_info_images_step2">2.</string>
-    <string name="settings_info_images_step2_body">Links &quot;API keys&quot; → &quot;Create API key&quot;. Keys beginnen mit &quot;AIza…&quot;.</string>
-    <string name="settings_info_images_step3">3.</string>
-    <string name="settings_info_images_step3_body">Den Key unten ins Feld einfügen.</string>
-    <string name="settings_info_images_free_label">Free Tier:</string>
-    <string name="settings_info_images_free_body">Auch ohne Kreditkarte möglich (beim Key-Generieren &quot;Create in new project&quot; wählen). 15 Aufrufe/Min, 1.500 Aufrufe/Tag.</string>
-    <string name="settings_info_images_paid_label">Paid Tier:</string>
-    <string name="settings_info_images_paid_body">Höhere Rate-Limits, kein Training. Nano-Banana ≈ $0.04/Bild.</string>
+    <string name="settings_info_images_title">Bilder im Chat</string>
+    <string name="settings_info_images_intro">Hier ist nichts einzurichten: Bilder laufen über dasselbe Gateway wie die Gemini-Chatmodelle und damit über Konten, die ohnehin bezahlt sind.</string>
+    <string name="settings_info_images_step1">Auflösung</string>
+    <string name="settings_info_images_step1_body">Gilt für jedes Bild, auch für die, die ein Modell von sich aus erzeugt. 2K passt zu Handy-Displays.</string>
+    <string name="settings_info_images_step2">Seitenverhältnis</string>
+    <string name="settings_info_images_step2_body">Deine Vorgabe. Ein Modell darf davon abweichen, wenn das Motiv es verlangt.</string>
+    <string name="settings_info_images_step3">Mehrere Varianten</string>
+    <string name="settings_info_images_step3_body">Bis zu vier pro Antwort. Das Gateway liefert ein Bild pro Aufruf, vier Varianten dauern also viermal so lange.</string>
+    <string name="settings_info_images_free_label">Schalter:</string>
+    <string name="settings_info_images_free_body">Ob ein Modell überhaupt Bilder erzeugen darf, steht unter Modelle &amp; Verhalten und pro Chat im ⋮-Menü.</string>
+    <string name="settings_info_images_paid_label">Kosten:</string>
+    <string name="settings_info_images_paid_body">Keine. Ältere Versionen rechneten pro Bild über einen Google-Schlüssel ab, dieser Weg ist entfallen.</string>
     <string name="settings_images_shared_key_hint">💡 Derselbe Key funktioniert auch für die Gemini-TTS-Sprachausgabe (Bereich &quot;Vorlesen&quot;). Wenn dort kein separater Key konfiguriert ist, nutzt der Server diesen automatisch.</string>
     <string name="settings_data_info_title">Zwei verschiedene Backup-Typen</string>
     <string name="settings_data_chat_backup_label">Chat-Backup:</string>
@@ -479,7 +481,7 @@
     <string name="settings_add_profile">Profil hinzufügen</string>
     <string name="settings_delete_profile_title">Profil löschen?</string>
     <string name="settings_skill_code_execution_label">Code-Ausführung</string>
-    <string name="settings_skill_code_execution_desc">Bash/Python in der Server-Sandbox für Berechnungen.</string>
+    <string name="settings_skill_code_execution_desc">Bash und Python in der Server-Sandbox. Nur bei Claude.</string>
     <string name="settings_pool_section_title">Gemini API-Keys (Pool für TTS)</string>
     <string name="settings_pool_info_paragraph1">Ein Pool aus mehreren AI-Studio-Keys vervielfacht das tägliche TTS-Limit. Der Server verteilt TTS-Aufrufe round-robin mit Rate-Limiting über alle Keys — kein einzelner Key wird überlastet, der Free Tier hält länger.</string>
     <string name="settings_pool_info_paragraph2">Free Tier pro Key: 10 RPD bei TTS-Preview-Modellen (3 RPM rolling). Für eine Chat-App mit Chunking ist das sehr großzügig.</string>
@@ -494,7 +496,7 @@
     <string name="settings_billing_unavailable">Cloud-Billing-Status nicht verfügbar.</string>
     <string name="settings_billing_this_month">Diesen Monat: %1$s (brutto, geschätzt)</string>
     <string name="settings_section_profile_card_title">Profil &amp; Server</string>
-    <string name="settings_section_claude_card_title">Claude</string>
+    <string name="settings_section_claude_card_title">Modelle &amp; Verhalten</string>
     <string name="settings_tts_section_edge_body">Vorlese-Stimmen von Microsoft Edge, komplett kostenlos — kein API-Key, kein Service-Account. Qualität schwächer als Gemini/Chirp, aber gut zum schnellen Vorlesen.</string>
     <string name="settings_tts_section_cloud_body">Schonend fürs monatliche Freikontingent. Chunking unten aktivieren, um lange Passagen zu parallelisieren und die Latenz im Rahmen zu halten.</string>
     <string name="settings_tts_section_paragraph_chunking_help">Wenn eine lange Antwort langsam vorgelesen wird: probier Chunking zu aktivieren (unten) — bei Cloud TTS senkt das die &quot;Time to first audio&quot; deutlich.</string>
@@ -687,14 +689,14 @@
     <string name="settings_pool_new_key_label">Neuen Key hinzufügen (AIza…)</string>
     <string name="settings_pool_label_label">Label (optional, z. B. &quot;Konto 2&quot;)</string>
     <string name="settings_pool_add_btn">Key zum Pool hinzufügen</string>
-    <string name="settings_image_intro">Dein eigener Google AI Studio API-Key. Nur für dich gespeichert.</string>
+    <string name="settings_image_intro">Bilder entstehen über das Modell-Gateway und damit über die dort eingeloggten Google-Konten. Kein Schlüssel nötig, keine Kosten pro Bild.</string>
     <string name="settings_image_configured">Key gesetzt: %1$s</string>
     <string name="settings_image_no_key">Kein API-Key — Bildmodus ist deaktiviert.</string>
     <string name="settings_image_loading_status">Status wird geladen…</string>
     <string name="settings_image_new_api_key">Neuer API-Key</string>
     <string name="settings_image_save_btn">Speichern</string>
     <string name="settings_image_remove_btn">Entfernen</string>
-    <string name="settings_image_help_text">Key bei aistudio.google.com/apikey holen. Für die Bilderzeugung braucht das Cloud-Projekt ein Billing-Konto (Free Tier deckt nur Text ab).</string>
+    <string name="settings_image_help_text">Welches Bildmodell läuft, entscheidet das Gateway. Mehrere Varianten bedeuten je einen Aufruf und dauern entsprechend länger.</string>
 
     <!-- Voice input (Groq Whisper) -->
     <string name="settings_section_voice_title">Spracheingabe</string>
@@ -774,8 +776,8 @@
     <string name="settings_billing_project_label">Projekt: %1$s</string>
     <string name="settings_billing_updated_label">Aktualisiert: %1$s UTC</string>
     <string name="settings_skills_loading">Skill-Einstellungen werden geladen…</string>
-    <string name="settings_skill_websearch_desc">Im Web nach aktuellen Infos suchen.</string>
-    <string name="settings_skill_webfetch_desc">Bestimmte URLs abrufen und zusammenfassen.</string>
+    <string name="settings_skill_websearch_desc">Im Web nach aktuellen Infos suchen. Gilt für jedes Modell.</string>
+    <string name="settings_skill_webfetch_desc">Eine bestimmte Adresse öffnen und lesen. Gilt für jedes Modell.</string>
     <string name="settings_save_btn_label">Speichern</string>
     <string name="settings_tts_image_shared_key_tip">💡 Tipp: Der TTS-Key kann derselbe AI-Studio-Key wie der für Bilder sein. Wenn du hier keinen einträgst, nutzt der Server automatisch den Bild-Key (siehe Bereich &quot;Bilder&quot; unten).</string>
     <string name="settings_pool_err_duplicate">Dieser Key ist bereits im Pool.</string>
@@ -882,12 +884,14 @@
     <string name="settings_image_default_aspect">Standard-Seitenverhältnis</string>
     <string name="settings_image_default_model">Standard-Bildmodell</string>
     <string name="settings_image_in_chat">Bilder im Chat erstellen</string>
-    <string name="settings_image_in_chat_hint">Jedes Modell kann Bilder generieren. Sie stammen immer von Nano Banana, egal welches Modell antwortet.</string>
+    <string name="settings_image_in_chat_hint">Jedes Modell kann ein Bild anfordern. Gezeichnet wird es immer vom Bildmodell des Gateways, egal welches Modell antwortet.</string>
     <string name="skill_image_generation">Bildgenerierung</string>
 
     <string name="settings_default_model_moved">Das Standard-Modell steht jetzt im Abschnitt „Modelle und Denktiefe", dort sind auch die Zusatz-Modelle wählbar.</string>
     <string name="settings_palette_label">Farbschema</string>
-    <string name="settings_palette_hint">Jedes Schema bringt eine eigene helle und dunkle Variante mit, die Einstellung darüber bleibt also wirksam.</string>
+    <string name="settings_palette_hint">Hell und dunkel werden getrennt gewählt, ein Schema das tagsüber gefällt muss also nicht das sein, was nachts erscheint.</string>
+    <string name="settings_palette_label_dark">Farbschema dunkel</string>
+    <string name="settings_palette_label_light">Farbschema hell</string>
     <string name="settings_default_model_per_family">Standardmodell je Anbieter</string>
     <string name="settings_default_model_per_family_hint">Greift, wenn du im Chat den Anbieter wechselst.</string>
     <string name="settings_default_model_family_unavailable">Keine Modelle verfügbar</string>

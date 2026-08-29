@@ -115,7 +115,7 @@
 
     <!-- ─── Settings screen — sections ────────────────────────────────── -->
     <string name="section_profiles_and_connection">プロファイル &amp; 接続</string>
-    <string name="section_claude_behavior">Claudeの動作</string>
+    <string name="section_claude_behavior">モデル &amp; 動作</string>
     <string name="section_skills">スキル</string>
     <string name="section_read_aloud">読み上げ</string>
     <string name="section_images">画像</string>
@@ -225,7 +225,7 @@
     <string name="notif_result_text">返信の準備完了 — タップして読む</string>
 
     <!-- ─── Settings — Claude connection (auth-mode picker) ───────────── -->
-    <string name="section_claude_connection">Claude接続</string>
+    <string name="section_claude_connection">プロバイダー &amp; アクセス</string>
     <string name="claude_mode_pro_max">Pro/Max</string>
     <string name="claude_mode_api_key">Anthropic API</string>
     <string name="claude_mode_bedrock">AWS Bedrock</string>
@@ -314,7 +314,8 @@
     <string name="chat_skill_web_fetch_label">WebFetch</string>
     <string name="chat_skill_web_fetch_desc">特定のURLを取得して要約します。</string>
     <string name="chat_skill_code_label">コード実行</string>
-    <string name="chat_skill_code_desc">サーバーサンドボックス内でBash/Pythonを実行。</string>
+    <string name="chat_skill_code_desc">サーバーサンドボックスでの Bash と Python。Claude のみ。</string>
+    <string name="chat_skill_claude_only">これを行えるのは Claude のみです。Gemini と GPT はここではコードを実行できません。</string>
     <string name="chat_skills_save_for_chat">このチャットに保存</string>
     <string name="chat_skills_reset_default">デフォルトにリセット</string>
     <string name="chat_auto_speak_dialog_title">このチャットの自動読み上げ</string>
@@ -392,7 +393,7 @@
     <string name="settings_section_vorlesen">読み上げ</string>
     <string name="settings_subtitle_vorlesen">プロバイダー、音声、自動読み上げ</string>
     <string name="settings_section_images_title">画像を生成</string>
-    <string name="settings_subtitle_images">Gemini Nano Banana — テキストから画像 + 編集</string>
+    <string name="settings_subtitle_images">解像度とアスペクト比</string>
     <string name="settings_section_data">データを保存</string>
     <string name="settings_subtitle_data">チャット + 設定のエクスポート/インポート</string>
     <string name="settings_section_about">情報</string>
@@ -423,16 +424,17 @@
     <string name="settings_info_profile_server_url_body">サーバーをMacで実行する場合、通常はhttps://abc-xyz-123.trycloudflare.comのようなURLでCloudflare Quick Tunnelが起動します。自宅のWi-Fi内ではhttp://&lt;Mac-IP&gt;:8787でも動作します。</string>
     <string name="settings_info_profile_server_login_label">サインイン:</string>
     <string name="settings_info_profile_server_login_body">初回サインインではサーバー管理者の初期パスワードを使用します。その後、サーバーは独自のパスワードの設定を強制します。スマートフォン側にAPIキーは不要です。</string>
-    <string name="settings_section_claude">Claude</string>
+    <string name="settings_section_claude">プロバイダー</string>
     <string name="settings_info_claude_title">思考量、ペルソナ、スキル</string>
     <string name="settings_info_claude_effort_label">思考量:</string>
     <string name="settings_info_claude_effort_body">Claudeが回答前に内部でどれだけ思考するか。高 = 難しい質問に対して品質が向上、待ち時間が長くなります。`xhigh`はOpus 4.7専用で、`high`と`max`の間に位置します。</string>
     <string name="settings_info_claude_prompt_label">システムプロンプト:</string>
-    <string name="settings_info_claude_prompt_body">標準 = claude.aiと同じAnthropicのデフォルト。寛容 = 大人同士の中立的なバリエーションで、回避表現が少ない。超リベラル = 最小限の拒否層のみ、ハードリミットのみ適用（未成年者の安全、違法な合成/マルウェア）。カスタム = 完全に独自のもの。</string>
+    <string name="settings_info_claude_prompt_body">標準 = claude.ai と同様の Anthropic デフォルト。寛容 = 過度な自己防衛を減らした大人同士のニュートラルなバリエーション。超リベラル = 最小限の拒絶レイヤー、厳格な制限のみ（未成年者の保護、違法な合成/マルウェア）。カスタム = 完全に独自の設定。このモードはすべてのモデルに適用されます。Gemini と GPT の場合は自動的に調整され、モデル自身の名前で回答します。</string>
     <string name="settings_info_claude_skills_label">スキル:</string>
-    <string name="settings_info_claude_skills_body">Claudeが使用できるツール — WebSearch、WebFetch、コード実行。これらは新規チャットのデフォルトです。チャット右上の⋮メニューからチャットごとに上書きできます。</string>
+    <string name="settings_info_claude_skills_body">モデルが使用できるツール：ウェブ検索、ページ取得、コード実行、画像生成。これらは新しいチャットのデフォルト設定です。右上の ⋮ メニューからチャットごとに変更できます。検索とページ取得はすべてのモデルで利用でき、コード実行は Claude のみ対応しています。</string>
     <string name="settings_subsection_effort">思考量</string>
     <string name="settings_subsection_system_prompt">システムプロンプト</string>
+    <string name="settings_prompt_all_models_hint">選択したモードはすべてのモデルに適用されます。Gemini と GPT では自動的に調整され、Anthropic の製品説明部分が除外され、モデル自身の名前で回答します。</string>
     <string name="settings_custom_system_prompt_label">カスタムシステムプロンプト</string>
     <string name="settings_custom_system_prompt_placeholder">ここに完全なシステムプロンプトを貼り付け…</string>
     <string name="settings_custom_system_prompt_hint">空 = 標準プロンプトが適用されます。</string>
@@ -445,18 +447,18 @@
     <string name="settings_info_tts_gemini_body">無料枠: キーごとに1日10コール — 1キーでは厳しく、マルチキープールなら良好。有料: 入力 $0.50/M + 音声出力 $10/M。最良のモデル推論。</string>
     <string name="settings_info_tts_cloud_label">Cloud TTS（サービスアカウント使用）:</string>
     <string name="settings_info_tts_cloud_body">Chirp 3 HDで月100万文字無料（約20時間の音声）。最良の音声品質。設定はより複雑（Cloudプロジェクト + サービスアカウントJSON）。</string>
-    <string name="settings_info_images_title">画像生成のセットアップ</string>
-    <string name="settings_info_images_intro">画像生成にはGoogle AI StudioのAPIキーが必要です。プロファイルごとにサーバー側に保存され、オプションでGemini音声出力に再利用できます。</string>
-    <string name="settings_info_images_step1">1.</string>
-    <string name="settings_info_images_step1_body">https://aistudio.google.com → Googleアカウントでサインインします。</string>
-    <string name="settings_info_images_step2">2.</string>
-    <string name="settings_info_images_step2_body">左側の「APIキー」→「APIキーを作成」。キーは「AIza…」で始まります。</string>
-    <string name="settings_info_images_step3">3.</string>
-    <string name="settings_info_images_step3_body">下のフィールドにキーを貼り付けます。</string>
-    <string name="settings_info_images_free_label">無料枠:</string>
-    <string name="settings_info_images_free_body">クレジットカードなしで利用可能（キー生成時に「新しいプロジェクトで作成」を選択）。1分あたり15コール、1日あたり1,500コール。</string>
-    <string name="settings_info_images_paid_label">有料枠:</string>
-    <string name="settings_info_images_paid_body">より高いレート制限、トレーニングなし。Nano-Banana 約 $0.04/画像。</string>
+    <string name="settings_info_images_title">チャット内の画像</string>
+    <string name="settings_info_images_intro">設定は不要です。画像は Gemini チャットモデルと同じゲートウェイ経由で動作するため、すでに支払い済みのアカウントが使用されます。</string>
+    <string name="settings_info_images_step1">解像度</string>
+    <string name="settings_info_images_step1_body">モデルが自発的に作成した画像を含む、すべての画像に適用されます。2K はスマホの画面に適しています。</string>
+    <string name="settings_info_images_step2">アスペクト比</string>
+    <string name="settings_info_images_step2_body">デフォルト設定です。被写体やテーマに応じて、モデルが別の比率を選択する場合があります。</string>
+    <string name="settings_info_images_step3">複数のバリエーション</string>
+    <string name="settings_info_images_step3_body">1回の回答につき最大4枚まで。ゲートウェイは1回の呼び出しにつき1枚の画像を配信するため、4つのバリエーションには4倍の時間がかかります。</string>
+    <string name="settings_info_images_free_label">スイッチ:</string>
+    <string name="settings_info_images_free_body">モデルが画像を生成できるかどうかは「モデル &amp; 動作」で設定でき、チャットごとに ⋮ メニューからも変更できます。</string>
+    <string name="settings_info_images_paid_label">費用:</string>
+    <string name="settings_info_images_paid_body">なし。以前のバージョンでは Google API キーを通じて画像ごとに課金されていましたが、その方法は廃止されました。</string>
     <string name="settings_images_shared_key_hint">💡 同じキーはGemini TTS音声出力にも使用できます（「読み上げ」セクション）。そこに別途キーが設定されていない場合、サーバーは自動的にこのキーを使用します。</string>
     <string name="settings_data_info_title">2種類の異なるバックアップタイプ</string>
     <string name="settings_data_chat_backup_label">チャットのバックアップ:</string>
@@ -476,7 +478,7 @@
     <string name="settings_add_profile">プロファイルを追加</string>
     <string name="settings_delete_profile_title">プロファイルを削除しますか？</string>
     <string name="settings_skill_code_execution_label">コード実行</string>
-    <string name="settings_skill_code_execution_desc">計算のためにサーバーサンドボックスでBash/Pythonを実行します。</string>
+    <string name="settings_skill_code_execution_desc">サーバーサンドボックスでの Bash と Python。Claude のみ。</string>
     <string name="settings_pool_section_title">Gemini APIキー（TTS用プール）</string>
     <string name="settings_pool_info_paragraph1">複数のAI Studioキーのプールにより、1日あたりのTTS制限が倍増します。サーバーはすべてのキーに対してラウンドロビン方式でレート制限付きでTTSコールを分配します — 単一のキーが酷使されることなく、無料枠が長く持ちます。</string>
     <string name="settings_pool_info_paragraph2">キーごとの無料枠: TTSプレビューモデルで1日10リクエスト（ローリング3 RPM）。チャンク化を使用するチャットアプリには非常に寛大です。</string>
@@ -491,7 +493,7 @@
     <string name="settings_billing_unavailable">Cloud Billingの状況を取得できません。</string>
     <string name="settings_billing_this_month">今月: %1$s（税込、見積もり）</string>
     <string name="settings_section_profile_card_title">プロファイル &amp; サーバー</string>
-    <string name="settings_section_claude_card_title">Claude</string>
+    <string name="settings_section_claude_card_title">モデル &amp; 動作</string>
     <string name="settings_tts_section_edge_body">Microsoft Edgeの読み上げ音声、完全無料 — APIキーもサービスアカウントも不要。品質はGemini/Chirpより劣りますが、簡単な読み上げには十分です。</string>
     <string name="settings_tts_section_cloud_body">毎月の無料枠にやさしいプロバイダーです。下でチャンク化を有効にすると、長い文章を並列処理してレイテンシを抑えられます。</string>
     <string name="settings_tts_section_paragraph_chunking_help">長い回答の応答が遅い場合: チャンク化（下記）を有効にしてみてください — Cloud TTSでは「最初の音声までの時間」が大幅に短縮されます。</string>
@@ -684,14 +686,14 @@
     <string name="settings_pool_new_key_label">新しいキーを追加（AIza…）</string>
     <string name="settings_pool_label_label">ラベル（任意、例: &quot;Account 2&quot;）</string>
     <string name="settings_pool_add_btn">プールにキーを追加</string>
-    <string name="settings_image_intro">独自のGoogle AI Studio APIキー。あなた専用に保存されます。</string>
+    <string name="settings_image_intro">画像はモデルゲートウェイを通じて、そこにログインしている Google アカウントを使用して生成されます。API キーは不要で、画像ごとの費用もかかりません。</string>
     <string name="settings_image_configured">キーを設定済み: %1$s</string>
     <string name="settings_image_no_key">APIキーなし — 画像モードは無効です。</string>
     <string name="settings_image_loading_status">ステータスを読み込み中…</string>
     <string name="settings_image_new_api_key">新しいAPIキー</string>
     <string name="settings_image_save_btn">保存</string>
     <string name="settings_image_remove_btn">削除</string>
-    <string name="settings_image_help_text">aistudio.google.com/apikeyでキーを取得します。画像生成にはCloudプロジェクトに請求アカウントが必要です（無料枠ではテキストのみ）。</string>
+    <string name="settings_image_help_text">どの画像モデルを使用するかはゲートウェイによって決定されます。複数のバリエーションをリクエストすると都度呼び出しが発生するため、その分時間がかかります。</string>
 
     <!-- Voice input (Groq Whisper) -->
     <string name="settings_section_voice_title">音声入力</string>
@@ -771,8 +773,8 @@
     <string name="settings_billing_project_label">プロジェクト: %1$s</string>
     <string name="settings_billing_updated_label">更新: %1$s UTC</string>
     <string name="settings_skills_loading">スキル設定を読み込み中…</string>
-    <string name="settings_skill_websearch_desc">最新情報を求めてWebを検索します。</string>
-    <string name="settings_skill_webfetch_desc">特定のURLを取得して要約します。</string>
+    <string name="settings_skill_websearch_desc">ウェブで最新情報を検索します。すべてのモデルで利用可能です。</string>
+    <string name="settings_skill_webfetch_desc">指定したアドレスを開いて読み取ります。すべてのモデルで利用可能です。</string>
     <string name="settings_save_btn_label">保存</string>
     <string name="settings_tts_image_shared_key_tip">💡 ヒント: TTSキーは画像用のAI Studioキーと同じものでも構いません。ここに入力しなければ、サーバーは自動的に画像のキーを使用します（下の「画像」セクション参照）。</string>
     <string name="settings_pool_err_duplicate">このキーは既にプールにあります。</string>
@@ -844,12 +846,14 @@
     <string name="settings_image_default_aspect">デフォルトのアスペクト比</string>
     <string name="settings_image_default_model">デフォルトの画像モデル</string>
     <string name="settings_image_in_chat">チャットで画像を生成</string>
-    <string name="settings_image_in_chat_hint">どのモデルでも画像を生成できます。回答するモデルに関係なく、常に Nano Banana から提供されます。</string>
+    <string name="settings_image_in_chat_hint">どのモデルでも画像をリクエストできます。応答しているモデルに関係なく、常にゲートウェイの画像モデルによって生成されます。</string>
     <string name="skill_image_generation">画像生成</string>
 
     <string name="settings_default_model_moved">既定のモデルは「モデルと思考の深さ」セクションに移動しました。追加モデルもそこで選べます。</string>
     <string name="settings_palette_label">配色</string>
-    <string name="settings_palette_hint">各配色にはそれぞれライトモードとダークモードがあるため、上の設定は引き続き機能します。</string>
+    <string name="settings_palette_hint">ライトモードとダークモードは個別に選択できるため、昼間に気に入った配色を夜間にそのまま使う必要はありません。</string>
+    <string name="settings_palette_label_dark">カラースキーム、ダーク</string>
+    <string name="settings_palette_label_light">カラースキーム、ライト</string>
     <string name="settings_default_model_per_family">プロバイダーごとのデフォルトモデル</string>
     <string name="settings_default_model_per_family_hint">チャット内でプロバイダーを切り替えたときに適用されます。</string>
     <string name="settings_default_model_family_unavailable">利用可能なモデルはありません</string>

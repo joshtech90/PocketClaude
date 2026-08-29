@@ -115,7 +115,7 @@
 
     <!-- ─── Settings screen — sections ────────────────────────────────── -->
     <string name="section_profiles_and_connection">配置 &amp; 连接</string>
-    <string name="section_claude_behavior">Claude 行为</string>
+    <string name="section_claude_behavior">模型 &amp; 行为</string>
     <string name="section_skills">技能</string>
     <string name="section_read_aloud">朗读</string>
     <string name="section_images">图片</string>
@@ -225,7 +225,7 @@
     <string name="notif_result_text">回复就绪 — 点击查看</string>
 
     <!-- ─── Settings — Claude connection (auth-mode picker) ───────────── -->
-    <string name="section_claude_connection">Claude 连接</string>
+    <string name="section_claude_connection">提供商 &amp; 访问</string>
     <string name="claude_mode_pro_max">Pro/Max</string>
     <string name="claude_mode_api_key">Anthropic API</string>
     <string name="claude_mode_bedrock">AWS Bedrock</string>
@@ -314,7 +314,8 @@
     <string name="chat_skill_web_fetch_label">WebFetch</string>
     <string name="chat_skill_web_fetch_desc">抓取指定 URL 并总结。</string>
     <string name="chat_skill_code_label">代码执行</string>
-    <string name="chat_skill_code_desc">在服务器沙箱中运行 Bash/Python。</string>
+    <string name="chat_skill_code_desc">在服务器沙盒中运行 Bash 和 Python。仅限 Claude。</string>
+    <string name="chat_skill_claude_only">仅 Claude 支持此功能。Gemini 和 GPT 无法在此运行代码。</string>
     <string name="chat_skills_save_for_chat">为本次聊天保存</string>
     <string name="chat_skills_reset_default">重置为默认</string>
     <string name="chat_auto_speak_dialog_title">本次聊天自动朗读</string>
@@ -392,7 +393,7 @@
     <string name="settings_section_vorlesen">朗读</string>
     <string name="settings_subtitle_vorlesen">服务提供方、语音、自动朗读</string>
     <string name="settings_section_images_title">生成图片</string>
-    <string name="settings_subtitle_images">Gemini Nano Banana — 文本生成图片 + 编辑</string>
+    <string name="settings_subtitle_images">分辨率与宽高比</string>
     <string name="settings_section_data">保存数据</string>
     <string name="settings_subtitle_data">导出/导入聊天 + 设置</string>
     <string name="settings_section_about">关于</string>
@@ -423,16 +424,17 @@
     <string name="settings_info_profile_server_url_body">当服务器在你的 Mac 上运行时,通常会启动 Cloudflare Quick Tunnel,地址类似 https://abc-xyz-123.trycloudflare.com。在家中 Wi-Fi 下,http://&lt;Mac-IP&gt;:8787 也可用。</string>
     <string name="settings_info_profile_server_login_label">登录:</string>
     <string name="settings_info_profile_server_login_body">首次登录使用服务器管理员的初始密码。然后服务器会强制你设置自己的密码。手机端无 API 密钥。</string>
-    <string name="settings_section_claude">Claude</string>
+    <string name="settings_section_claude">提供商</string>
     <string name="settings_info_claude_title">推理强度、角色、技能</string>
     <string name="settings_info_claude_effort_label">推理强度:</string>
     <string name="settings_info_claude_effort_body">Claude 在回答前进行多少内部推理。越高 = 困难问题质量越好,等待时间越长。`xhigh` 仅 Opus 4.7 可用,介于 `high` 和 `max` 之间。</string>
     <string name="settings_info_claude_prompt_label">系统提示词:</string>
-    <string name="settings_info_claude_prompt_body">标准 = Anthropic 默认设置,与 claude.ai 一致。宽松 = 中性的成人对成人变体,较少回避。超自由 = 最小限制层,仅硬性底线(未成年人安全、非法合成/恶意软件)。自定义 = 完全使用你自己的提示词。</string>
+    <string name="settings_info_claude_prompt_body">标准 = 类似 claude.ai 的 Anthropic 默认预设。宽松 = 中立的成年人对话模式，减少说教和免责声明。超宽松 = 极低拒绝率，仅保留硬性底线（未成年人保护、非法合成/恶意软件）。自定义 = 完全由您自行定义。该模式适用于所有模型：对于 Gemini 和 GPT 会自动调整，以便模型以自己的名称回答。</string>
     <string name="settings_info_claude_skills_label">技能:</string>
-    <string name="settings_info_claude_skills_body">Claude 可使用哪些工具 — WebSearch、WebFetch、代码执行。这些是新聊天的默认值。可通过聊天右上角的 ⋮ 菜单为单个聊天覆盖。</string>
+    <string name="settings_info_claude_skills_body">模型可以使用的工具：网络搜索、网页读取、代码执行、图像生成。这些是新对话的默认设置；您可以在右上角的 ⋮ 菜单中为每个对话单独修改。搜索和网页读取适用于所有模型，代码执行仅限 Claude。</string>
     <string name="settings_subsection_effort">推理强度</string>
     <string name="settings_subsection_system_prompt">系统提示词</string>
+    <string name="settings_prompt_all_models_hint">所选模式适用于所有模型。对于 Gemini 和 GPT，该模式会自动调整：移除 Anthropic 相关产品描述部分，且模型会以自己的名称进行回答。</string>
     <string name="settings_custom_system_prompt_label">自定义系统提示词</string>
     <string name="settings_custom_system_prompt_placeholder">在此粘贴完整的系统提示词…</string>
     <string name="settings_custom_system_prompt_hint">为空 = 使用标准提示词。</string>
@@ -445,18 +447,18 @@
     <string name="settings_info_tts_gemini_body">免费档:每个密钥每天 10 次调用 — 单密钥紧张,多密钥池较好。付费:输入 $0.50/M + 音频输出 $10/M。最佳模型推理。</string>
     <string name="settings_info_tts_cloud_label">Cloud TTS(使用服务账户):</string>
     <string name="settings_info_tts_cloud_body">Chirp 3 HD 每月免费 100 万字符(约 20 小时音频)。最佳语音质量。配置较复杂(Cloud 项目 + 服务账户 JSON)。</string>
-    <string name="settings_info_images_title">配置图片生成</string>
-    <string name="settings_info_images_intro">图片生成需要 Google AI Studio 的 API 密钥。它按配置存储在服务器端,可选择与 Gemini 语音输出共用。</string>
-    <string name="settings_info_images_step1">1.</string>
-    <string name="settings_info_images_step1_body">https://aistudio.google.com → 使用你的 Google 账户登录。</string>
-    <string name="settings_info_images_step2">2.</string>
-    <string name="settings_info_images_step2_body">左侧 &quot;API keys&quot; → &quot;Create API key&quot;。密钥以 &quot;AIza…&quot; 开头。</string>
-    <string name="settings_info_images_step3">3.</string>
-    <string name="settings_info_images_step3_body">将密钥粘贴到下方字段。</string>
-    <string name="settings_info_images_free_label">免费档:</string>
-    <string name="settings_info_images_free_body">无需信用卡即可使用(生成密钥时选择 &quot;Create in new project&quot;)。每分钟 15 次,每天 1,500 次。</string>
-    <string name="settings_info_images_paid_label">付费档:</string>
-    <string name="settings_info_images_paid_body">更高的速率限制,不用于训练。Nano-Banana 约 $0.04/张。</string>
+    <string name="settings_info_images_title">对话中的图像</string>
+    <string name="settings_info_images_intro">无需任何设置：图像与 Gemini 对话模型共用同一个网关，因此直接使用已付费的账号。</string>
+    <string name="settings_info_images_step1">分辨率</string>
+    <string name="settings_info_images_step1_body">适用于所有图像，包括模型自行生成的图像。2K 分辨率适合手机屏幕。</string>
+    <string name="settings_info_images_step2">宽高比</string>
+    <string name="settings_info_images_step2_body">您的默认设置。如果画面主题需要，模型可能会选择其他比例。</string>
+    <string name="settings_info_images_step3">多个变体</string>
+    <string name="settings_info_images_step3_body">每次回答最多 4 张。网关每次调用返回 1 张图像，因此 4 个变体需要 4 倍的时间。</string>
+    <string name="settings_info_images_free_label">开关:</string>
+    <string name="settings_info_images_free_body">模型是否可以生成图像可在“模型 &amp; 行为”中设置，也可在每个对话中通过 ⋮ 菜单进行设置。</string>
+    <string name="settings_info_images_paid_label">费用:</string>
+    <string name="settings_info_images_paid_body">无。旧版本通过 Google API 密钥按图像计费；该方式已被移除。</string>
     <string name="settings_images_shared_key_hint">💡 同一密钥也适用于 Gemini TTS 语音输出(&quot;朗读&quot;部分)。如果那里未单独配置密钥,服务器会自动使用此密钥。</string>
     <string name="settings_data_info_title">两种不同的备份类型</string>
     <string name="settings_data_chat_backup_label">聊天备份:</string>
@@ -476,7 +478,7 @@
     <string name="settings_add_profile">添加配置</string>
     <string name="settings_delete_profile_title">删除配置?</string>
     <string name="settings_skill_code_execution_label">代码执行</string>
-    <string name="settings_skill_code_execution_desc">在服务器沙箱中运行 Bash/Python 进行计算。</string>
+    <string name="settings_skill_code_execution_desc">在服务器沙盒中运行 Bash 和 Python。仅限 Claude。</string>
     <string name="settings_pool_section_title">Gemini API 密钥(TTS 密钥池)</string>
     <string name="settings_pool_info_paragraph1">由多个 AI Studio 密钥组成的密钥池可成倍提升每日 TTS 限额。服务器以轮询方式分发 TTS 调用,并对所有密钥进行限速 — 单个密钥不会被压垮,免费档可用更久。</string>
     <string name="settings_pool_info_paragraph2">每个密钥的免费档:TTS 预览模型 10 RPD(3 RPM 滚动窗口)。对于带分块的聊天应用来说相当宽裕。</string>
@@ -491,7 +493,7 @@
     <string name="settings_billing_unavailable">Cloud 账单状态不可用。</string>
     <string name="settings_billing_this_month">本月:%1$s(税前,估算)</string>
     <string name="settings_section_profile_card_title">配置 &amp; 服务器</string>
-    <string name="settings_section_claude_card_title">Claude</string>
+    <string name="settings_section_claude_card_title">模型 &amp; 行为</string>
     <string name="settings_tts_section_edge_body">Microsoft Edge 朗读语音,完全免费 — 无需 API 密钥,无需服务账户。质量比 Gemini/Chirp 弱,但满足快速阅读需求。</string>
     <string name="settings_tts_section_cloud_body">节省每月免费额度。在下方开启分块以并行处理长段落,保持合理延迟。</string>
     <string name="settings_tts_section_paragraph_chunking_help">如果长回复响应较慢:尝试启用分块(下方)— 在 Cloud TTS 上可大幅降低&quot;首段音频时间&quot;。</string>
@@ -684,14 +686,14 @@
     <string name="settings_pool_new_key_label">添加新密钥(AIza…)</string>
     <string name="settings_pool_label_label">标签(可选,例如 &quot;账户 2&quot;)</string>
     <string name="settings_pool_add_btn">添加密钥到密钥池</string>
-    <string name="settings_image_intro">你自己的 Google AI Studio API 密钥。仅为你存储。</string>
+    <string name="settings_image_intro">图像通过模型网关生成，使用其中登录的 Google 账号。无需 API 密钥，每张图像均无额外费用。</string>
     <string name="settings_image_configured">已设置密钥:%1$s</string>
     <string name="settings_image_no_key">未设置 API 密钥 — 图片模式已禁用。</string>
     <string name="settings_image_loading_status">加载状态中…</string>
     <string name="settings_image_new_api_key">新 API 密钥</string>
     <string name="settings_image_save_btn">保存</string>
     <string name="settings_image_remove_btn">移除</string>
-    <string name="settings_image_help_text">在 aistudio.google.com/apikey 获取密钥。生成图片要求 Cloud 项目带有结算账户(免费档仅涵盖文本)。</string>
+    <string name="settings_image_help_text">具体使用哪个图像模型由网关决定。请求多个变体意味着每次需要单独调用，因此耗时也会相应增加。</string>
 
     <!-- Voice input (Groq Whisper) -->
     <string name="settings_section_voice_title">语音输入</string>
@@ -771,8 +773,8 @@
     <string name="settings_billing_project_label">项目:%1$s</string>
     <string name="settings_billing_updated_label">更新时间:%1$s UTC</string>
     <string name="settings_skills_loading">加载技能设置中…</string>
-    <string name="settings_skill_websearch_desc">在网上搜索最新信息。</string>
-    <string name="settings_skill_webfetch_desc">抓取指定 URL 并总结。</string>
+    <string name="settings_skill_websearch_desc">在网络上搜索最新信息。适用于所有模型。</string>
+    <string name="settings_skill_webfetch_desc">打开指定网址并读取内容。适用于所有模型。</string>
     <string name="settings_save_btn_label">保存</string>
     <string name="settings_tts_image_shared_key_tip">💡 提示:TTS 密钥可与图片所用的 AI Studio 密钥相同。如果此处不填写,服务器会自动使用图片密钥(参见下方&quot;图片&quot;部分)。</string>
     <string name="settings_pool_err_duplicate">此密钥已在密钥池中。</string>
@@ -844,12 +846,14 @@
     <string name="settings_image_default_aspect">默认宽高比</string>
     <string name="settings_image_default_model">默认图像模型</string>
     <string name="settings_image_in_chat">在聊天中生成图像</string>
-    <string name="settings_image_in_chat_hint">所有模型都可以生成图像。无论哪个模型在回答，图像始终来自 Nano Banana。</string>
+    <string name="settings_image_in_chat_hint">任何模型都可以请求生成图像。无论当前是哪个模型在回复，图像始终由网关的图像模型绘制。</string>
     <string name="skill_image_generation">图像生成</string>
 
     <string name="settings_default_model_moved">默认模型现在位于“模型与思考深度”部分，附加模型也在那里选择。</string>
     <string name="settings_palette_label">配色方案</string>
-    <string name="settings_palette_hint">每种配色方案都有自己的浅色和深色版本，因此上面的设置仍然会生效。</string>
+    <string name="settings_palette_hint">浅色和深色模式可分开选择，因此白天好看的配色不一定非要在夜间使用。</string>
+    <string name="settings_palette_label_dark">配色方案，深色</string>
+    <string name="settings_palette_label_light">配色方案，浅色</string>
     <string name="settings_default_model_per_family">每个提供商的默认模型</string>
     <string name="settings_default_model_per_family_hint">在聊天中切换提供商时生效。</string>
     <string name="settings_default_model_family_unavailable">没有可用模型</string>

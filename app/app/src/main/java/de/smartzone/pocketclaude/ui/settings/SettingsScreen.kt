@@ -96,7 +96,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.graphics.luminance
 import de.smartzone.pocketclaude.ui.theme.PocketPalette
 import de.smartzone.pocketclaude.ui.theme.specFor
 import androidx.compose.ui.graphics.Brush
@@ -335,20 +334,11 @@ fun SettingsScreen(
                     )
                 },
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
-                    ) {
-                        Text(
-                            stringResource(de.smartzone.pocketclaude.R.string.settings_images_shared_key_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp),
-                        )
-                    }
-                    ImageGenSection(vm = vm)
-                }
+                // Der frueher hier stehende Hinweis auf den gemeinsamen
+                // Google-Schluessel ist entfallen: fuer Bilder braucht es keinen
+                // mehr. Fuer die Gemini-Sprachausgabe steht er im Abschnitt
+                // Vorlesen.
+                ImageGenSection(vm = vm)
             }
 
             ExpandableSection(
@@ -666,6 +656,13 @@ private fun ClaudeBehaviorCard(
                 selected = settings.systemPromptMode,
                 onSelect = vm::setSystemPromptMode,
             )
+            // Ohne diesen Satz ist nicht erkennbar, dass der Modus auch bei
+            // Gemini und GPT wirkt. Er tut es, nur eben in angepasster Fassung.
+            Text(
+                stringResource(de.smartzone.pocketclaude.R.string.settings_prompt_all_models_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (settings.systemPromptMode == SystemPromptMode.CUSTOM) {
                 OutlinedTextField(
                     value = settings.customSystemPrompt,
@@ -731,12 +728,25 @@ private fun ThemeCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            // Farbschema. Hell/Dunkel oben bleibt davon unabhaengig: jede
-            // Palette bringt beide Varianten mit.
-            SubsectionLabel(stringResource(de.smartzone.pocketclaude.R.string.settings_palette_label))
+            // Farbschema, getrennt fuer hell und dunkel. Jede Palette hat beide
+            // Varianten, aber welche hell gefaellt, muss dunkel nicht gefallen.
+            // Die Proben zeigen jeweils die Variante, um die es gerade geht.
+            SubsectionLabel(stringResource(de.smartzone.pocketclaude.R.string.settings_palette_label_light))
             PalettePicker(
-                selectedId = settings.paletteId,
-                onSelect = vm::setPaletteId,
+                selectedId = settings.paletteIdLight,
+                dark = false,
+                fallback = PocketPalette.NORDIC_BLUE,
+                onSelect = vm::setPaletteIdLight,
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            SubsectionLabel(stringResource(de.smartzone.pocketclaude.R.string.settings_palette_label_dark))
+            PalettePicker(
+                selectedId = settings.paletteIdDark,
+                dark = true,
+                fallback = PocketPalette.MIDNIGHT_ATELIER,
+                onSelect = vm::setPaletteIdDark,
             )
             Text(
                 stringResource(de.smartzone.pocketclaude.R.string.settings_palette_hint),
@@ -3664,15 +3674,16 @@ private fun TtsGeminiApiKeyField(
 
 
 // =====================================================================
-// Image-Generation Settings (API-Key + Status)
+// Bilder: nur noch Aufloesung und Seitenverhaeltnis.
+//
+// Bis August 2026 stand hier zusaetzlich ein Feld fuer den Google-API-Key und
+// eine Modellwahl. Beides ist entfallen: die Bilder entstehen jetzt ueber das
+// Modell-Gateway und damit ueber die dort eingeloggten Konten. Das kostet
+// nichts pro Bild, und welches Bildmodell es gibt, sagt das Gateway.
 // =====================================================================
 @Composable
 private fun ImageGenSection(vm: SettingsViewModel) {
     val cfg by vm.imageConfig.collectAsState()
-    val busy by vm.imageKeyBusy.collectAsState()
-    val msg by vm.imageKeyMessage.collectAsState()
-    var apiKey by remember { mutableStateOf("") }
-    var showKey by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -3691,63 +3702,16 @@ private fun ImageGenSection(vm: SettingsViewModel) {
                 cfg = cfg,
                 onSetSize = { vm.setImageDefaults(size = it) },
                 onSetAspect = { vm.setImageDefaults(aspectRatio = it) },
-                onSetModel = { vm.setImageDefaults(model = it) },
             )
 
-            // Status
-            cfg?.let { c ->
-                if (c.configured) {
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Filled.CheckCircle, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                        Text(stringResource(de.smartzone.pocketclaude.R.string.settings_image_configured, c.apiKeyMasked ?: ""),
-                             style = MaterialTheme.typography.bodySmall)
-                    }
-                } else {
-                    Text(stringResource(de.smartzone.pocketclaude.R.string.settings_image_no_key),
-                         style = MaterialTheme.typography.bodySmall,
-                         color = MaterialTheme.colorScheme.error)
-                }
-            } ?: Text(stringResource(de.smartzone.pocketclaude.R.string.settings_image_loading_status), style = MaterialTheme.typography.bodySmall,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (cfg == null) {
+                Text(
+                    stringResource(de.smartzone.pocketclaude.R.string.settings_image_loading_status),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(de.smartzone.pocketclaude.R.string.settings_image_new_api_key)) },
-                placeholder = { Text("AIzaSy…") },
-                singleLine = true,
-                visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(onClick = { showKey = !showKey }) {
-                        Icon(if (showKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                             contentDescription = null)
-                    }
-                },
-                shape = RoundedCornerShape(14.dp),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(
-                    onClick = { vm.setImageApiKey(apiKey); apiKey = "" },
-                    enabled = !busy && apiKey.isNotBlank(),
-                    shape = RoundedCornerShape(12.dp),
-                ) { Text(stringResource(de.smartzone.pocketclaude.R.string.settings_image_save_btn)) }
-                TextButton(
-                    onClick = { vm.deleteImageApiKey() },
-                    enabled = !busy && cfg?.configured == true,
-                ) { Text(stringResource(de.smartzone.pocketclaude.R.string.settings_image_remove_btn), color = MaterialTheme.colorScheme.error) }
-                if (busy) {
-                    Spacer(Modifier.width(8.dp))
-                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                }
-            }
-            msg?.let { m ->
-                Text(m, style = MaterialTheme.typography.bodySmall,
-                     color = if (m.startsWith("Fehler") || m.startsWith("Error")) MaterialTheme.colorScheme.error
-                             else MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             Text(
                 stringResource(de.smartzone.pocketclaude.R.string.settings_image_help_text),
                 style = MaterialTheme.typography.bodySmall,
@@ -4366,7 +4330,6 @@ private fun ImageDefaultsRow(
     cfg: ImageConfigDto?,
     onSetSize: (String) -> Unit,
     onSetAspect: (String) -> Unit,
-    onSetModel: (String) -> Unit,
 ) {
     if (cfg == null) return
 
@@ -4416,43 +4379,30 @@ private fun ImageDefaultsRow(
             }
         }
 
-        // 3. Standard-Modell
-        SubsectionLabel(stringResource(R.string.settings_image_default_model))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            cfg.models.forEach { item ->
-                FilterChip(
-                    selected = cfg.defaults.model == item.id,
-                    onClick = { onSetModel(item.id) },
-                    label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
-                    shape = RoundedCornerShape(10.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                )
-            }
-        }
+        // Ein Modell zur Auswahl gibt es nicht mehr: welches Bildmodell laeuft,
+        // sagt das Gateway. Frueher stand hier eine Liste, aus der man auch das
+        // teure Pro-Modell waehlen konnte.
     }
 }
 
 /**
  * Farbschema-Auswahl. Jede Palette wird als Farbprobe gezeigt statt nur als
  * Name: welche Farbe ein Schema hat, laesst sich nicht sinnvoll lesen, nur
- * ansehen. Die Proben zeigen die Variante, die gerade aktiv ist, damit die
- * Vorschau zum tatsaechlichen Ergebnis passt.
+ * ansehen.
+ *
+ * `dark` sagt, um welche der beiden Varianten es geht. Die Proben zeigen genau
+ * diese, auch wenn die App gerade in der anderen laeuft: sonst waehlt man den
+ * hellen Look blind, weil man nachts die dunklen Proben sieht.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PalettePicker(
     selectedId: String,
+    dark: Boolean,
+    fallback: PocketPalette,
     onSelect: (String) -> Unit,
 ) {
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val selected = PocketPalette.fromId(selectedId)
+    val selected = PocketPalette.fromId(selectedId, fallback)
 
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
