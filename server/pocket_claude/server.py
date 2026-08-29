@@ -591,6 +591,11 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
         "size": (user_kv.get(_KV_IMAGE_DEFAULT_SIZE) or "").strip() or None,
         "aspect_ratio": (user_kv.get(_KV_IMAGE_DEFAULT_ASPECT) or "").strip() or None,
         "model": (user_kv.get(_KV_IMAGE_DEFAULT_MODEL) or "").strip() or None,
+        "provider": (user_kv.get(_KV_IMAGE_PROVIDER) or "").strip() or None,
+        # Steht die Vorgabe auf "automatisch", zeichnet das Bild der Anbieter
+        # des Modells, das gerade antwortet. Claude hat keinen eigenen, dort
+        # bleibt es bei Gemini.
+        "family_hint": (gw_model.family if gw_model is not None else ""),
     }
 
     # Zusatz-Modelle bekommen den Prompt in einer angepassten Fassung: ohne den
@@ -2121,6 +2126,7 @@ _KV_IMAGE_API_KEY = "image_api_key"
 _KV_IMAGE_DEFAULT_SIZE = "image_default_size"
 _KV_IMAGE_DEFAULT_ASPECT = "image_default_aspect"
 _KV_IMAGE_DEFAULT_MODEL = "image_default_model"
+_KV_IMAGE_PROVIDER = "image_provider"
 
 
 def _mask_key(k: str) -> str:
@@ -2134,18 +2140,33 @@ def _mask_key(k: str) -> str:
 
 @app.get("/images/config")
 async def images_config(user=Depends(require_user)):
-    """Statische Config + ob der aktuelle User einen API-Key hinterlegt hat."""
+    """Statische Config plus die Standardwerte des Users.
+
+    `configured` sagt seit dem Umstieg aufs Gateway nicht mehr, ob ein
+    API-Schluessel hinterlegt ist, sondern ob ueberhaupt ein Anbieter
+    bereitsteht. Sonst wuerde der Bilder-Screen alles verweigern, obwohl
+    ueber die Gateways laengst Bilder moeglich sind.
+    """
     cfg = image_engine.get_config()
     kv = await db.kv_get_all(scope=user["id"])
-    api_key = (kv.get(_KV_IMAGE_API_KEY) or "").strip()
-    cfg["configured"] = bool(api_key)
-    cfg["api_key_masked"] = _mask_key(api_key) if api_key else None
+    gemini_ok = await gateways.image_target() is not None
+    gpt_ok = await gateways.gpt_image_gateway() is not None
+    cfg["configured"] = bool(gemini_ok or gpt_ok)
+    # Nur die Anbieter anbieten, die es hier auch wirklich gibt.
+    available = {image_engine.PROVIDER_AUTO}
+    if gemini_ok:
+        available.add(image_engine.PROVIDER_GEMINI)
+    if gpt_ok:
+        available.add(image_engine.PROVIDER_GPT)
+    cfg["providers"] = [p for p in cfg["providers"] if p["id"] in available]
+    cfg["api_key_masked"] = None
     # Die vom User gesetzten Standardwerte. Nicht gesetzt = der Wert aus
     # image_engine, damit der Client immer etwas Sinnvolles vorbelegen kann.
     cfg["defaults"] = {
         "size": (kv.get(_KV_IMAGE_DEFAULT_SIZE) or "").strip() or cfg["default_image_size"],
         "aspect_ratio": (kv.get(_KV_IMAGE_DEFAULT_ASPECT) or "").strip() or cfg["default_aspect"],
         "model": (kv.get(_KV_IMAGE_DEFAULT_MODEL) or "").strip() or cfg["default_model"],
+        "provider": (kv.get(_KV_IMAGE_PROVIDER) or "").strip() or cfg["default_provider"],
     }
     return cfg
 
@@ -2166,9 +2187,12 @@ async def images_set_defaults(body: dict, user=Depends(require_user)):
     # Das Bildmodell waehlt seit dem Umstieg aufs Gateway nicht mehr der Nutzer,
     # sondern das Gateway. Ein mitgeschicktes `model` wird deshalb ignoriert
     # statt abgelehnt, damit aeltere App-Staende keinen Fehler bekommen.
+    valid_providers = {x["id"] for x in cfg["providers"]}
+
     mapping = [
         ("size", _KV_IMAGE_DEFAULT_SIZE, valid_sizes),
         ("aspect_ratio", _KV_IMAGE_DEFAULT_ASPECT, valid_aspects),
+        ("provider", _KV_IMAGE_PROVIDER, valid_providers),
     ]
     updates: dict[str, str] = {}
     for field, kv_key, allowed in mapping:
@@ -2460,6 +2484,9 @@ async def images_generate(body: dict, user=Depends(require_user)):
     if not prompt:
         raise HTTPException(400, "prompt fehlt.")
 
+    # Anbieter-Vorgabe des Nutzers, falls der Request selbst keine mitschickt.
+    kv_img = await db.kv_get_all(scope=user["id"])
+
     # Referenz-Bilder laden (fuer Image-Editing): read_bytes in to_thread,
     # damit ein 10-MB-Bild nicht den Event-Loop blockiert.
     import asyncio as _asyncio_for_imgs
@@ -2487,10 +2514,16 @@ async def images_generate(body: dict, user=Depends(require_user)):
     except (TypeError, ValueError):
         raise HTTPException(400, f"Invalid count value: {raw_count!r}")
 
-    image_size = body.get("image_size") or body.get("size")
+    image_size = (
+        body.get("image_size") or body.get("size")
+        or (kv_img.get(_KV_IMAGE_DEFAULT_SIZE) or "").strip() or None
+    )
     try:
         images = await image_engine.generate(
             prompt=prompt,
+            provider=(body.get("provider") or "").strip()
+                     or (kv_img.get(_KV_IMAGE_PROVIDER) or "").strip()
+                     or image_engine.PROVIDER_AUTO,
             model=body.get("model"),
             aspect_ratio=body.get("aspect_ratio"),
             image_size=image_size,

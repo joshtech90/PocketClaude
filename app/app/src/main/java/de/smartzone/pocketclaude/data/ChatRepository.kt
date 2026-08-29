@@ -153,8 +153,9 @@ class ChatRepository(
             ttsRate = ttsRate,
         ))
 
-    suspend fun setImageDefaults(size: String?, aspectRatio: String?, model: String?): ImageConfigDto =
-        api.setImageDefaults(size, aspectRatio, model)
+    suspend fun setImageDefaults(
+        size: String?, aspectRatio: String?, model: String?, provider: String? = null,
+    ): ImageConfigDto = api.setImageDefaults(size, aspectRatio, model, provider)
 
     /** Alle wählbaren Modelle plus Gateway-Zustand. */
     suspend fun getChatModels(refresh: Boolean = false, include: String = ""): ChatModelsDto =

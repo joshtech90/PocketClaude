@@ -843,6 +843,12 @@
     <string name="settings_effort_gemini">Gemini</string>
     <string name="settings_effort_gpt">GPT</string>
     <string name="settings_image_default_size">デフォルトの解像度</string>
+    <string name="image_provider_label">プロバイダー</string>
+    <string name="image_size_label">解像度</string>
+    <string name="image_aspect_label">アスペクト比</string>
+    <string name="image_gpt_size_hint">GPTはアスペクト比を維持しますが、解像度は自身で決定し、通常は1から2メガピクセル程度になります。Geminiは両方を正確に維持します。</string>
+    <string name="settings_image_provider_label">画像を生成するプロバイダー</string>
+    <string name="settings_image_provider_auto_hint">自動の場合、チャットで回答しているモデルのプロバイダーが画像を生成します。Claudeには独自のプロバイダーがないため、Geminiが引き継ぎます。</string>
     <string name="settings_image_default_aspect">デフォルトのアスペクト比</string>
     <string name="settings_image_default_model">デフォルトの画像モデル</string>
     <string name="settings_image_in_chat">チャットで画像を生成</string>

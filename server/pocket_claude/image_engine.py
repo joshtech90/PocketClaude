@@ -42,6 +42,107 @@ log = logging.getLogger(__name__)
 # dauerhaft hinter dem zurueck, was wirklich verfuegbar ist.
 AVAILABLE_MODELS: list[dict] = []
 
+# ---------------------------------------------------------------------------
+# Zwei Anbieter, zwei Bildsprachen
+# ---------------------------------------------------------------------------
+# Gemini nimmt Seitenverhaeltnis und Aufloesung als eigene Felder entgegen und
+# haelt sich exakt daran. GPT (gpt-image-2 ueber CodexLB) will stattdessen eine
+# konkrete Pixelgroesse und behandelt sie als Wunsch: das Seitenverhaeltnis
+# kommt ungefaehr an, die genaue Kantenlaenge nicht. Am 29.08.2026 gemessen,
+# zum Beispiel 3840x2160 angefordert und 1536x1024 zurueckbekommen.
+PROVIDER_AUTO = "auto"
+PROVIDER_GEMINI = "gemini"
+PROVIDER_GPT = "gpt"
+
+IMAGE_PROVIDERS: list[dict] = [
+    {"id": PROVIDER_AUTO, "label": "Automatisch"},
+    {"id": PROVIDER_GEMINI, "label": "Gemini"},
+    {"id": PROVIDER_GPT, "label": "GPT"},
+]
+
+# Das Bildmodell von CodexLB steht in keiner Modell-Liste, es gibt dort nur den
+# Endpunkt /v1/images/generations. Deshalb fest verdrahtet.
+GPT_IMAGE_MODEL = "gpt-image-2"
+
+# Grenzen von gpt-image-2, aus der Validierung von CodexLB uebernommen: beide
+# Kanten Vielfache von 16, laengste Kante hoechstens 3840, Seitenverhaeltnis
+# hoechstens 3:1 und die Pixelzahl innerhalb dieser Schranken.
+_GPT_MIN_PIXELS = 655_360
+_GPT_MAX_PIXELS = 8_294_400
+_GPT_MAX_EDGE = 3840
+_GPT_STEP = 16
+
+# Zielgroesse in Pixeln je Aufloesungsstufe. Die Stufen heissen wie bei Gemini,
+# damit der Nutzer nicht zwei Skalen lernen muss.
+_TARGET_PIXELS = {"1K": 1_048_576, "2K": 2_359_296, "4K": 8_294_400}
+
+
+def gpt_size(aspect_ratio: str | None, image_size: str | None) -> str:
+    """Rechnet Seitenverhaeltnis und Aufloesungsstufe in eine Pixelgroesse um.
+
+    Rueckgabe ist die Form ``BREITExHOEHE``, die gpt-image-2 erwartet, immer
+    innerhalb der oben genannten Grenzen. Bei unbekannten Eingaben wird auf
+    ein Quadrat in 2K zurueckgefallen, statt eine Ausnahme zu werfen: eine
+    ungueltige Groesse soll die Bilderzeugung nicht verhindern.
+    """
+    target = _TARGET_PIXELS.get((image_size or "").strip().upper(), _TARGET_PIXELS["2K"])
+    try:
+        w_part, h_part = (aspect_ratio or "1:1").split(":")
+        w_ratio, h_ratio = float(w_part), float(h_part)
+        if w_ratio <= 0 or h_ratio <= 0:
+            raise ValueError
+    except (ValueError, AttributeError):
+        w_ratio = h_ratio = 1.0
+
+    # Ein Verhaeltnis jenseits von 3:1 lehnt das Gateway ab, also vorher kappen.
+    ratio = w_ratio / h_ratio
+    ratio = max(1 / 3, min(3.0, ratio))
+
+    # Aus Zielflaeche und Verhaeltnis die Kanten ableiten, dann auf ein
+    # Vielfaches von 16 runden und in die Schranken zwingen.
+    height = (target / ratio) ** 0.5
+    width = height * ratio
+
+    def _snap(value: float) -> int:
+        stepped = int(round(value / _GPT_STEP)) * _GPT_STEP
+        return max(_GPT_STEP, min(_GPT_MAX_EDGE, stepped))
+
+    w, h = _snap(width), _snap(height)
+
+    # Nach dem Runden kann die Flaeche aus den Schranken gefallen sein. Beide
+    # Kanten gemeinsam skalieren, damit das Verhaeltnis erhalten bleibt.
+    for _ in range(8):
+        pixels = w * h
+        if pixels < _GPT_MIN_PIXELS:
+            factor = (_GPT_MIN_PIXELS / pixels) ** 0.5 * 1.02
+        elif pixels > _GPT_MAX_PIXELS:
+            factor = (_GPT_MAX_PIXELS / pixels) ** 0.5 * 0.98
+        else:
+            break
+        w, h = _snap(w * factor), _snap(h * factor)
+
+    # Das Runden auf Vielfache von 16 kann das Verhaeltnis knapp ueber 3:1
+    # heben, und genau das lehnt das Gateway ab. Bei 3:1 in 2K kam so
+    # 2656x880 heraus, also 3,018:1. Deshalb die KURZE Kante anheben statt die
+    # lange zu kuerzen: das haelt die Flaeche, statt sie unter das Minimum zu
+    # druecken.
+    for _ in range(4):
+        if max(w, h) <= min(w, h) * 3:
+            break
+        needed = -(-max(w, h) // 3)  # aufrunden
+        stepped = -(-needed // _GPT_STEP) * _GPT_STEP
+        if w > h:
+            h = min(_GPT_MAX_EDGE, stepped)
+        else:
+            w = min(_GPT_MAX_EDGE, stepped)
+        # Falls das die Flaeche ueber die Obergrenze hebt, beide Kanten
+        # gemeinsam wieder herunterskalieren.
+        if w * h > _GPT_MAX_PIXELS:
+            factor = (_GPT_MAX_PIXELS / (w * h)) ** 0.5 * 0.98
+            w, h = _snap(w * factor), _snap(h * factor)
+    return f"{w}x{h}"
+
+
 ASPECT_RATIOS: list[dict] = [
     {"id": "1:1",  "label": "Quadrat (1:1)"},
     {"id": "16:9", "label": "Querformat (16:9)"},
@@ -105,6 +206,8 @@ class ReferenceImage:
 async def generate(
     *,
     prompt: str,
+    provider: str = PROVIDER_AUTO,
+    family_hint: str = "",
     model: str | None = None,
     aspect_ratio: str | None = None,
     image_size: str | None = None,
@@ -114,14 +217,99 @@ async def generate(
 ) -> list[GeneratedImage]:
     """Erzeugt `count` Bilder aus `prompt`, optional mit `references` als Vorlage.
 
-    Laeuft ueber das Modell-Gateway und damit ueber die dort eingeloggten
-    Google-Konten. Wirft `ImageGenError`, wenn gar nichts zustande kommt; kommen
-    einzelne der gewuenschten Varianten nicht durch, werden die uebrigen
-    trotzdem geliefert.
+    Beide Wege laufen ueber Konten, die ohnehin bezahlt sind, und kosten nichts
+    pro Bild. `provider` waehlt zwischen Gemini und GPT; bei "auto" entscheidet
+    `family_hint`, also die Familie des Modells, das gerade antwortet, damit ein
+    GPT-Chat seine eigenen Bilder zeichnet.
+
+    Wirft `ImageGenError`, wenn gar nichts zustande kommt; kommen einzelne der
+    gewuenschten Varianten nicht durch, werden die uebrigen trotzdem geliefert.
     """
     if not prompt or not prompt.strip():
         raise ImageGenError("Prompt darf nicht leer sein.")
 
+    order, gpt_gw = await _provider_order(provider, family_hint, bool(references))
+    if not order:
+        raise ImageGenError(
+            "Bilderzeugung ist auf diesem Server nicht eingerichtet: kein "
+            "Gateway meldet ein Bildmodell. Laeuft das Gateway?"
+        )
+
+    last_error: ImageGenError | None = None
+    for pos, kind in enumerate(order):
+        try:
+            if kind == PROVIDER_GPT:
+                return await _generate_gpt(
+                    gw=gpt_gw, prompt=prompt, aspect_ratio=aspect_ratio,
+                    image_size=image_size, count=count, timeout=timeout,
+                )
+            return await _generate_gemini(
+                prompt=prompt, model=model, aspect_ratio=aspect_ratio,
+                image_size=image_size, count=count, references=references,
+                timeout=timeout,
+            )
+        except ImageGenError as exc:
+            last_error = exc
+            if pos + 1 < len(order):
+                log.warning("image-gen: %s ist ausgefallen (%s), versuche %s",
+                            kind, exc, order[pos + 1])
+    raise last_error or ImageGenError("Es kam kein Bild zurueck.")
+
+
+async def _provider_order(
+    provider: str, family_hint: str, has_references: bool,
+) -> tuple[list[str], "gateways.GatewayConfig | None"]:
+    """Welche Anbieter in welcher Reihenfolge versucht werden.
+
+    Zurueck kommt nur, was auch wirklich eingerichtet ist, dazu das
+    GPT-Gateway, damit es nicht ein zweites Mal gesucht werden muss: zwischen
+    zwei Abfragen koennte der Cache ablaufen und die zweite None liefern.
+
+    Bei "auto" darf gewechselt werden, wenn ein Anbieter ausfaellt. Bei einer
+    ausdruecklichen Wahl nicht: wer GPT anklickt und stillschweigend ein
+    Gemini-Bild bekaeme, wuerde den Unterschied nie bemerken. Nur wenn der
+    gewaehlte Anbieter ueberhaupt nicht eingerichtet ist, springt der andere
+    ein, denn gar kein Bild ist die schlechtere Antwort.
+    """
+    gpt_gw = await gateways.gpt_image_gateway()
+    gemini_ok = await gateways.image_target() is not None
+    gpt_ok = gpt_gw is not None
+
+    # Vorlagenbilder kann nur Gemini: der Bearbeiten-Endpunkt von CodexLB
+    # spricht multipart und ist hier noch nicht angebunden.
+    if has_references:
+        return ([PROVIDER_GEMINI] if gemini_ok else []), gpt_gw
+
+    available = [k for k, ok in
+                 ((PROVIDER_GEMINI, gemini_ok), (PROVIDER_GPT, gpt_ok)) if ok]
+    if not available:
+        return [], gpt_gw
+
+    wanted = (provider or PROVIDER_AUTO).strip().lower()
+    if wanted == PROVIDER_AUTO:
+        first = PROVIDER_GPT if (family_hint or "").lower() == "gpt" else PROVIDER_GEMINI
+        if first not in available:
+            first = available[0]
+        return [first] + [k for k in available if k != first], gpt_gw
+
+    if wanted in available:
+        return [wanted], gpt_gw
+    log.info("image-gen: %s gewuenscht, aber nicht eingerichtet, nehme %s",
+             wanted, available[0])
+    return [available[0]], gpt_gw
+
+
+async def _generate_gemini(
+    *,
+    prompt: str,
+    model: str | None,
+    aspect_ratio: str | None,
+    image_size: str | None,
+    count: int,
+    references: list[ReferenceImage] | None,
+    timeout: float,
+) -> list[GeneratedImage]:
+    """Bilder ueber den nativen Gemini-Pfad des Gateways."""
     target = await gateways.image_target(preferred=(model or "").strip())
     if target is None:
         raise ImageGenError(
@@ -196,6 +384,131 @@ async def generate(
         log.info("image-gen: %d von %d Varianten erzeugt, Rest fehlgeschlagen: %s",
                  len(images), count, first_error)
     return images
+
+
+async def _generate_gpt(
+    *,
+    gw: "gateways.GatewayConfig | None",
+    prompt: str,
+    aspect_ratio: str | None,
+    image_size: str | None,
+    count: int,
+    timeout: float,
+) -> list[GeneratedImage]:
+    """Bilder ueber den OpenAI-Bildpfad von CodexLB (gpt-image-2).
+
+    Zur Groesse: das Gateway nimmt die berechnete Pixelgroesse an und reicht sie
+    weiter, das Modell dahinter behandelt sie aber als Wunsch. Das
+    Seitenverhaeltnis kommt ungefaehr an, die genaue Kantenlaenge nicht.
+    Nachtraeglich hochzurechnen waere unehrlich, deshalb bleibt es beim
+    gelieferten Bild.
+    """
+    if gw is None:
+        raise ImageGenError(
+            "Fuer GPT-Bilder ist auf diesem Server kein Gateway eingerichtet."
+        )
+    count = max(1, min(int(count), MAX_CANDIDATES))
+    size = gpt_size(aspect_ratio, image_size)
+
+    url = f"{gw.base_url.rstrip('/')}/images/generations"
+    headers = {"Content-Type": "application/json"}
+    if gw.api_key:
+        headers["Authorization"] = f"Bearer {gw.api_key}"
+    body = {
+        "model": GPT_IMAGE_MODEL,
+        "prompt": prompt.strip(),
+        "size": size,
+        "quality": "high",
+        # Das Gateway lehnt n groesser eins ab, mehrere Varianten entstehen
+        # deshalb wie bei Gemini durch mehrere Aufrufe.
+        "n": 1,
+    }
+
+    log.info("image-gen: gateway=%s modell=%s groesse=%s (aus %s/%s) anzahl=%d",
+             gw.id, GPT_IMAGE_MODEL, size, aspect_ratio, image_size, count)
+
+    gate = _concurrency_gate()
+
+    async def _one(idx: int):
+        async with gate:
+            try:
+                return idx, await _gpt_one(url, headers, body, timeout)
+            except ImageGenError as exc:
+                return idx, exc
+
+    results = await asyncio.gather(*(_one(i) for i in range(count)))
+
+    images: list[GeneratedImage] = []
+    first_error: ImageGenError | None = None
+    for _idx, res in sorted(results, key=lambda r: r[0]):
+        if isinstance(res, Exception):
+            if first_error is None and isinstance(res, ImageGenError):
+                first_error = res
+            continue
+        images.append(GeneratedImage(index=len(images), mime_type=res[0], data=res[1]))
+
+    if not images:
+        raise first_error or ImageGenError("Es kam kein Bild zurueck.")
+    if first_error is not None:
+        log.info("image-gen: %d von %d Varianten erzeugt, Rest fehlgeschlagen: %s",
+                 len(images), count, first_error)
+    return images
+
+
+async def _gpt_one(url: str, headers: dict, body: dict,
+                   timeout: float) -> tuple[str, bytes]:
+    """Ein einzelner Bild-Aufruf gegen den OpenAI-Bildpfad."""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as cli:
+            r = await cli.post(url, headers=headers, json=body)
+    except httpx.TimeoutException as e:
+        raise ImageGenError(
+            f"Timeout nach {timeout:.0f}s: Bild zu komplex oder Gateway ueberlastet."
+        ) from e
+    except httpx.RequestError as e:
+        raise ImageGenError(f"Netzwerk-Fehler: {e}") from e
+
+    if r.status_code >= 400:
+        msg = r.text[:400]
+        try:
+            err = (r.json().get("error") or {})
+            msg = err.get("message") or msg
+        except Exception:
+            pass
+        log.warning("image-gen GPT HTTP %d: %s", r.status_code, msg)
+        if r.status_code == 429:
+            raise ImageGenError(
+                "Das Bild-Kontingent des Kontos ist gerade erschoepft. "
+                "Spaeter nochmal versuchen."
+            )
+        if r.status_code in (401, 403):
+            raise ImageGenError(
+                "Das Gateway erlaubt diesem Zugang keine Bilder. Ist das "
+                "Bildmodell fuer den Schluessel freigegeben?"
+            )
+        raise ImageGenError(f"Gateway-Fehler (HTTP {r.status_code}): {msg}")
+
+    try:
+        data = r.json()
+    except Exception as e:
+        raise ImageGenError(f"Antwort konnte nicht geparst werden: {e}") from e
+
+    items = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(items, list) or not items:
+        raise ImageGenError("Die Antwort enthielt kein Bild.")
+    first = items[0] if isinstance(items[0], dict) else {}
+    raw_b64 = first.get("b64_json")
+    if not raw_b64:
+        raise ImageGenError(
+            "Die Antwort enthielt kein Bild. Haeufig wurde der Prompt blockiert."
+        )
+    try:
+        raw = base64.b64decode(raw_b64)
+    except Exception as e:
+        raise ImageGenError(f"Das Bild war nicht lesbar: {e}") from e
+
+    fmt = (body.get("output_format") or "png").lower()
+    return f"image/{'jpeg' if fmt == 'jpeg' else fmt}", raw
 
 
 async def _generate_one(
@@ -308,10 +621,12 @@ def get_config() -> dict:
     """
     return {
         "models": AVAILABLE_MODELS,
+        "providers": IMAGE_PROVIDERS,
         "aspect_ratios": ASPECT_RATIOS,
         "image_sizes": IMAGE_SIZES,
         "max_candidates": MAX_CANDIDATES,
         "default_model": "",
+        "default_provider": PROVIDER_AUTO,
         "default_aspect": "1:1",
         "default_image_size": DEFAULT_IMAGE_SIZE,
     }

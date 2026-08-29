@@ -3702,6 +3702,7 @@ private fun ImageGenSection(vm: SettingsViewModel) {
                 cfg = cfg,
                 onSetSize = { vm.setImageDefaults(size = it) },
                 onSetAspect = { vm.setImageDefaults(aspectRatio = it) },
+                onSetProvider = { vm.setImageDefaults(provider = it) },
             )
 
             if (cfg == null) {
@@ -4330,6 +4331,7 @@ private fun ImageDefaultsRow(
     cfg: ImageConfigDto?,
     onSetSize: (String) -> Unit,
     onSetAspect: (String) -> Unit,
+    onSetProvider: (String) -> Unit,
 ) {
     if (cfg == null) return
 
@@ -4337,6 +4339,35 @@ private fun ImageDefaultsRow(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
+        // Anbieter. Nur zeigen, wenn es hier ueberhaupt etwas zu waehlen gibt:
+        // ohne GPT-Gateway steht in der Liste nur "Automatisch" und Gemini.
+        if (cfg.providers.size > 1) {
+            SubsectionLabel(stringResource(R.string.settings_image_provider_label))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                cfg.providers.forEach { item ->
+                    FilterChip(
+                        selected = cfg.defaults.provider == item.id,
+                        onClick = { onSetProvider(item.id) },
+                        label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    )
+                }
+            }
+            Text(
+                stringResource(R.string.settings_image_provider_auto_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         // 1. Standard-Bildgröße
         SubsectionLabel(stringResource(R.string.settings_image_default_size))
         FlowRow(

@@ -214,9 +214,11 @@ class ApiClient(
         size: String? = null,
         aspectRatio: String? = null,
         model: String? = null,
+        provider: String? = null,
     ): ImageConfigDto = putJson(
         "/images/defaults",
-        ImageDefaultsRequest(size = size, aspectRatio = aspectRatio, model = model),
+        ImageDefaultsRequest(size = size, aspectRatio = aspectRatio,
+                             model = model, provider = provider),
     )
 
     // ---------- Chat-Modelle (Claude plus Zusatz-Modelle) ----------

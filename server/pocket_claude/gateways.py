@@ -723,6 +723,25 @@ def _without_unsupported(model: ChatModel) -> ChatModel:
     )
 
 
+async def gpt_image_gateway() -> GatewayConfig | None:
+    """Das Gateway, das Bilder ueber den OpenAI-Bildpfad erzeugen kann.
+
+    Erkennungsmerkmal ist dasselbe wie bei der Websuche: nur CodexLB meldet
+    seine Denkstufen als Metadaten, und nur CodexLB bringt
+    `/v1/images/generations` mit. Das Bildmodell selbst steht in keiner
+    Modell-Liste, es laesst sich also nicht daran erkennen.
+    """
+    gws = gateway_configs()
+    if not gws:
+        return None
+    await list_models(force=False)
+    for gw in gws:
+        entry = _cache.get(gw.id)
+        if entry and any(m.native_web_search for m in entry.models):
+            return gw
+    return None
+
+
 async def image_target(preferred: str = "") -> tuple[GatewayConfig, str] | None:
     """Das Gateway und das Modell, mit dem Bilder erzeugt werden.
 

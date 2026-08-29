@@ -131,11 +131,23 @@ async def run(user_id: str, args: dict, defaults: dict | None = None) -> dict:
     except (TypeError, ValueError):
         count_val = 1
 
-    # Kein Schluessel mehr noetig: die Bilder entstehen ueber das Gateway und
-    # damit ueber die dort eingeloggten Google-Konten.
+    # Anbieter: Nutzer-Vorgabe, sonst richtet sich das Bild nach dem Modell,
+    # das gerade antwortet. Ein GPT-Chat zeichnet dann mit gpt-image-2, ein
+    # Gemini-Chat mit dem Gemini-Bildmodell.
+    provider = (
+        defaults.get("provider")
+        or defaults.get("image_provider")
+        or image_engine.PROVIDER_AUTO
+    )
+    family_hint = defaults.get("family_hint") or ""
+
+    # Kein Schluessel mehr noetig: die Bilder entstehen ueber die Gateways und
+    # damit ueber Konten, die ohnehin bezahlt sind.
     try:
         images = await image_engine.generate(
             prompt=prompt,
+            provider=provider,
+            family_hint=family_hint,
             model=model,
             aspect_ratio=aspect_ratio,
             image_size=size,

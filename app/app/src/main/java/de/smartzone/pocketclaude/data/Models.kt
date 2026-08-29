@@ -539,12 +539,15 @@ data class ImageAspectDto(
 @Serializable
 data class ImageConfigDto(
     val models: List<ImageModelDto>,
+    /** Bild-Anbieter, die dieser Server wirklich anbietet. Leer heisst: keiner. */
+    val providers: List<ImageProviderDto> = emptyList(),
     @SerialName("aspect_ratios") val aspectRatios: List<ImageAspectDto>,
     @SerialName("max_candidates") val maxCandidates: Int = 4,
     @SerialName("default_model") val defaultModel: String,
     @SerialName("default_aspect") val defaultAspect: String,
     @SerialName("image_sizes") val imageSizes: List<ImageSizeDto> = emptyList(),
     @SerialName("default_image_size") val defaultImageSize: String = "2K",
+    @SerialName("default_provider") val defaultProvider: String = "auto",
     val configured: Boolean = false,
     @SerialName("api_key_masked") val apiKeyMasked: String? = null,
     /** Die vom User gesetzten Standardwerte. Gelten für den Bilder-Screen UND
@@ -556,9 +559,13 @@ data class ImageConfigDto(
 data class ImageSizeDto(val id: String, val label: String)
 
 @Serializable
+data class ImageProviderDto(val id: String, val label: String)
+
+@Serializable
 data class ImageDefaultsDto(
     val size: String = "2K",
     @SerialName("aspect_ratio") val aspectRatio: String = "1:1",
+    val provider: String = "auto",
     val model: String = "",
 )
 
@@ -567,6 +574,7 @@ data class ImageDefaultsRequest(
     val size: String? = null,
     @SerialName("aspect_ratio") val aspectRatio: String? = null,
     val model: String? = null,
+    val provider: String? = null,
 )
 
 @Serializable
@@ -574,7 +582,12 @@ data class ImageGenerateRequest(
     val prompt: String,
     @SerialName("conversation_id") val conversationId: String? = null,
     val model: String? = null,
+    /** "auto", "gemini" oder "gpt". Leer heisst: die Vorgabe des Servers. */
+    val provider: String? = null,
     @SerialName("aspect_ratio") val aspectRatio: String? = null,
+    /** Aufloesungsstufe (1K/2K/4K). Fehlte bisher komplett, weshalb der
+     *  Bilder-Screen die eingestellte Aufloesung gar nicht anwenden konnte. */
+    @SerialName("image_size") val imageSize: String? = null,
     val count: Int = 1,
     @SerialName("reference_attachment_ids") val referenceAttachmentIds: List<String> = emptyList(),
 )

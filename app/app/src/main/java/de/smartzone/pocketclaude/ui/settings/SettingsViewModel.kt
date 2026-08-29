@@ -411,8 +411,9 @@ class SettingsViewModel(
     /** Standardwerte fuer erzeugte Bilder. Gelten fuer den Bilder-Screen UND
      *  fuer das Bild-Werkzeug im Chat, deshalb landen sie auf dem Server. */
     fun setImageDefaults(size: String? = null, aspectRatio: String? = null,
-                         model: String? = null) = viewModelScope.launch {
-        runCatching { chatRepo.setImageDefaults(size, aspectRatio, model) }
+                         model: String? = null,
+                         provider: String? = null) = viewModelScope.launch {
+        runCatching { chatRepo.setImageDefaults(size, aspectRatio, model, provider) }
             .onSuccess { _imageConfig.value = it }
         if (size != null) settingsRepo.setImageDefaultSize(size)
         if (aspectRatio != null) settingsRepo.setImageDefaultAspect(aspectRatio)

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -306,6 +307,25 @@ fun ImagesScreen(
     }
 }
 
+/**
+ * Eine beschriftete Reihe von Auswahl-Chips. Ohne Beschriftung standen im
+ * Generator drei Chip-Reihen untereinander, ohne dass erkennbar war, welche
+ * wofuer ist.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SubsectionRow(label: String, content: @Composable FlowRowScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), content = content)
+    }
+}
+
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
@@ -333,44 +353,49 @@ private fun GeneratorCard(state: ImageGenUiState, vm: ImageGenViewModel) {
                 enabled = !state.isGenerating,
             )
 
-            // Modell-Dropdown
-            var modelMenu by remember { mutableStateOf(false) }
-            val modelDefaultLabel = stringResource(R.string.image_model_label)
-            val currentLabel = cfg.models.firstOrNull { it.id == state.selectedModel }?.label
-                ?: state.selectedModel ?: modelDefaultLabel
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.weight(1f)) {
-                    AssistChip(
-                        onClick = { modelMenu = true },
-                        label = { Text(currentLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingIcon = {
-                            Icon(Icons.Filled.AutoAwesome, contentDescription = null,
-                                modifier = Modifier.size(16.dp))
-                        },
-                        enabled = !state.isGenerating,
-                    )
-                    DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                        cfg.models.forEach { m ->
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(m.label, style = MaterialTheme.typography.bodyMedium)
-                                        if (m.description.isNotBlank()) Text(
-                                            m.description,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                },
-                                onClick = { vm.setModel(m.id); modelMenu = false },
-                            )
-                        }
+            // Anbieter. Die frueher hier stehende Modellwahl ist entfallen:
+            // welches Bildmodell laeuft, sagt der jeweilige Anbieter.
+            if (cfg.providers.size > 1) {
+                SubsectionRow(stringResource(R.string.image_provider_label)) {
+                    cfg.providers.forEach { p ->
+                        FilterChip(
+                            selected = p.id == state.selectedProvider,
+                            onClick = { vm.setProvider(p.id) },
+                            label = { Text(p.label) },
+                            enabled = !state.isGenerating,
+                        )
                     }
                 }
             }
 
-            // Aspect-Ratio
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Aufloesung. Fehlte bisher komplett, obwohl der Server sie laengst
+            // versteht: die Einstellung war nur als Vorgabe da und wurde vom
+            // Bilder-Screen nie mitgeschickt.
+            if (cfg.imageSizes.isNotEmpty()) {
+                SubsectionRow(stringResource(R.string.image_size_label)) {
+                    cfg.imageSizes.forEach { s ->
+                        FilterChip(
+                            selected = s.id == state.selectedSize,
+                            onClick = { vm.setSize(s.id) },
+                            label = { Text(s.id) },
+                            enabled = !state.isGenerating,
+                        )
+                    }
+                }
+            }
+
+            // Bei GPT sind Aufloesung und Seitenverhaeltnis nur ein Wunsch. Das
+            // gehoert dazugesagt, sonst wirkt es wie ein Fehler.
+            if (state.selectedProvider == "gpt") {
+                Text(
+                    stringResource(R.string.image_gpt_size_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // Seitenverhaeltnis
+            SubsectionRow(stringResource(R.string.image_aspect_label)) {
                 cfg.aspectRatios.forEach { a ->
                     FilterChip(
                         selected = a.id == state.selectedAspect,

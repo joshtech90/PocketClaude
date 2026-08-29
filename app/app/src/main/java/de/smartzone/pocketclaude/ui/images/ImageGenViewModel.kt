@@ -37,6 +37,8 @@ data class ImageGenUiState(
     val configError: String? = null,
     val selectedModel: String? = null,
     val selectedAspect: String = "1:1",
+    val selectedSize: String = "2K",
+    val selectedProvider: String = "auto",
     val count: Int = 1,
     val prompt: String = "",
     val isGenerating: Boolean = false,
@@ -77,7 +79,9 @@ class ImageGenViewModel(
                         configLoading = false,
                         config = cfg,
                         selectedModel = it.selectedModel ?: cfg.defaultModel,
-                        selectedAspect = if (it.selectedAspect == "1:1") cfg.defaultAspect else it.selectedAspect,
+                        selectedAspect = if (it.selectedAspect == "1:1") cfg.defaults.aspectRatio else it.selectedAspect,
+                        selectedSize = if (it.selectedSize == "2K") cfg.defaults.size else it.selectedSize,
+                        selectedProvider = if (it.selectedProvider == "auto") cfg.defaults.provider else it.selectedProvider,
                     )
                 }
             }
@@ -91,6 +95,8 @@ class ImageGenViewModel(
     fun setPrompt(value: String) = _state.update { it.copy(prompt = value) }
     fun setModel(id: String) = _state.update { it.copy(selectedModel = id) }
     fun setAspect(id: String) = _state.update { it.copy(selectedAspect = id) }
+    fun setSize(id: String) = _state.update { it.copy(selectedSize = id) }
+    fun setProvider(id: String) = _state.update { it.copy(selectedProvider = id) }
     fun setCount(n: Int) = _state.update {
         it.copy(count = n.coerceIn(1, it.config?.maxCandidates ?: 4))
     }
@@ -101,7 +107,9 @@ class ImageGenViewModel(
         val s = _state.value
         val cfg = s.config
         if (cfg == null || !cfg.configured) {
-            _state.update { it.copy(generationError = "Kein API-Key gesetzt — siehe Einstellungen → Bilder.") }
+            _state.update {
+                it.copy(generationError = "Auf dem Server ist gerade kein Bild-Anbieter erreichbar.")
+            }
             return@launch
         }
         val prompt = s.prompt.trim()
@@ -115,7 +123,9 @@ class ImageGenViewModel(
                     // Bewusst KEINE conversationId — Bilder hängen nicht an einem Chat.
                     conversationId = null,
                     model = s.selectedModel,
+                    provider = s.selectedProvider,
                     aspectRatio = s.selectedAspect,
+                    imageSize = s.selectedSize,
                     count = s.count,
                     referenceAttachmentIds = emptyList(),
                 )

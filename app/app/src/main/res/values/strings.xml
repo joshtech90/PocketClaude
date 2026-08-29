@@ -881,6 +881,12 @@
     <string name="settings_effort_gemini">Gemini</string>
     <string name="settings_effort_gpt">GPT</string>
     <string name="settings_image_default_size">Default resolution</string>
+    <string name="image_provider_label">Provider</string>
+    <string name="image_size_label">Resolution</string>
+    <string name="image_aspect_label">Aspect ratio</string>
+    <string name="image_gpt_size_hint">GPT keeps the aspect ratio but picks the resolution itself, usually around 1 to 2 megapixels. Gemini keeps to both exactly.</string>
+    <string name="settings_image_provider_label">Which provider draws the image</string>
+    <string name="settings_image_provider_auto_hint">Automatic means the model answering in the chat draws with its own provider. Claude has none of its own, so Gemini takes over there.</string>
     <string name="settings_image_default_aspect">Default aspect ratio</string>
     <string name="settings_image_default_model">Default image model</string>
     <string name="settings_image_in_chat">Create images in chat</string>
