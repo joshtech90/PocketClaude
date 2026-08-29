@@ -20,6 +20,7 @@ from fastapi import (
     HTTPException,
     Path as PathParam,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -38,6 +39,7 @@ from pocket_claude.auth import (
     require_user,
     require_user_header_or_query,
 )
+from pocket_claude.login_throttle import client_ip, login_throttler, throttle_error
 from pocket_claude.config import settings
 from pocket_claude.models import (
     AttachmentOut,
@@ -2494,12 +2496,26 @@ async def get_me(user=Depends(require_user)):
 # ---------- Auth (Login/Logout/Password) ----------
 
 @app.post("/auth/login")
-async def auth_login(body: dict, user_agent: str | None = Header(default=None, alias="User-Agent")):
+async def auth_login(
+    request: Request,
+    body: dict,
+    user_agent: str | None = Header(default=None, alias="User-Agent"),
+):
     """Login mit Username + Passwort. Erstellt eine neue Session und liefert
     `{token, user}` zurück. Bei Migration aus der Token-Only-Zeit akzeptiert
     der `password`-Wert auch das alte Bearer-Token (einmalig, bis ein echtes
     Passwort gesetzt wurde — `must_change_password=true` im Response signalisiert
     das dem Client)."""
+    source_ip = client_ip(request)
+    login_attempt = login_throttler.reserve(source_ip)
+    if login_attempt.retry_after:
+        log.warning(
+            "LOGIN_THROTTLED ip=%s retry_after=%ds",
+            source_ip,
+            login_attempt.retry_after,
+        )
+        raise throttle_error(login_attempt.retry_after)
+
     if not isinstance(body, dict):
         raise HTTPException(400, "JSON-Objekt erwartet.")
     username = (body.get("username") or "").strip()
@@ -2534,6 +2550,7 @@ async def auth_login(body: dict, user_agent: str | None = Header(default=None, a
     if not pw_ok:
         raise HTTPException(401, "Username oder Passwort falsch.")
 
+    login_throttler.record_success(login_attempt)
     token = await db.create_session(target["id"], user_agent=user_agent)
     return {
         "token": token,
