@@ -298,6 +298,7 @@ class ChatViewModel(
      */
     fun rewindTo(messageId: Long, modelKey: String? = null) = viewModelScope.launch {
         if (_state.value.isStreaming) return@launch
+        val vorher = _state.value.modelKey
         _state.update { it.copy(isLoading = true, errorMessage = null) }
         runCatching {
             val res = repo.rewind(cid, messageId, modelKey)
@@ -307,6 +308,16 @@ class ChatViewModel(
             res.chatModel?.let { m ->
                 _state.update { st -> st.copy(modelKey = m) }
                 settingsRepo.setChatModelKey(m)
+                // Nur bei einem ECHTEN Wechsel die Denktiefe anheben. Der
+                // Endpunkt gibt das Modell auch dann zurueck, wenn es gleich
+                // geblieben ist; ohne diese Pruefung wuerde schon ein reiner
+                // Ruecksprung die gespeicherte Denktiefe dauerhaft verstellen.
+                if (m != vorher) {
+                    val family = familyForKey(m)
+                    if (cachedSettings?.effortFor(family) != "high") {
+                        settingsRepo.setEffortForFamily(family, "high")
+                    }
+                }
             }
         }
             .onSuccess { refresh() }

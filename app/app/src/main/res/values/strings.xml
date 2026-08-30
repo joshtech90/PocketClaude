@@ -378,11 +378,11 @@
     <string name="image_reference_hint_active">Describe what should change. Everything not mentioned stays as it is.</string>
     <string name="image_edit_prompt_placeholder">What should change on the image?</string>
     <string name="image_edit_button">Edit image</string>
-    <string name="image_editing">Editing…</string>
+    <string name="image_editing">Editing</string>
     <string name="image_use_as_reference">Edit this image further</string>
     <string name="image_model_label">Model</string>
     <string name="image_variants_label">Variants:</string>
-    <string name="image_generating">Generating…</string>
+    <string name="image_generating">Generating</string>
     <string name="image_generate_button">Generate</string>
     <string name="image_remove_entry">Remove entry</string>
     <string name="image_meta_line">%1$s · %2$s · %3$d× image</string>
@@ -900,7 +900,7 @@
     <string name="image_provider_label">Provider</string>
     <string name="image_size_label">Resolution</string>
     <string name="image_aspect_label">Aspect ratio</string>
-    <string name="image_gpt_size_hint">GPT keeps the aspect ratio but picks the resolution itself, usually around 1 to 2 megapixels. Gemini keeps to both exactly.</string>
+    <string name="image_gpt_size_hint">Both draw at the same time here, so you can compare. Gemini keeps exactly to resolution and aspect ratio. GPT keeps the aspect ratio but picks the resolution itself, whatever you ask for.</string>
     <string name="settings_image_provider_label">Which provider draws the image</string>
     <string name="settings_image_provider_auto_hint">Automatic means the model answering in the chat draws with its own provider. Claude has none of its own, so Gemini takes over there.</string>
     <string name="settings_image_default_aspect">Default aspect ratio</string>

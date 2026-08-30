@@ -81,7 +81,11 @@ async def store_images(images: list[image_engine.GeneratedImage], user_id: str) 
         disk_name = f"img_{secrets.token_urlsafe(10)}.{ext}"
         target = settings.uploads_dir / disk_name
         await asyncio.to_thread(target.write_bytes, img.data)
-        filename = f"gemini-image-{img.index + 1}.{ext}"
+        # Der Anbieter gehoert in den Dateinamen: im Modus "beide" haengen zwei
+        # Bilder nebeneinander, und ohne Namen sieht man nicht, welches von wem
+        # ist. Ohne Angabe bleibt es beim neutralen "bild".
+        quelle = img.provider or "bild"
+        filename = f"{quelle}-{img.index + 1}.{ext}"
         aid = await db.add_attachment(
             filename=filename,
             mime_type=img.mime_type,
@@ -186,7 +190,7 @@ async def run(user_id: str, args: dict, defaults: dict | None = None) -> dict:
     provider = (
         defaults.get("provider")
         or defaults.get("image_provider")
-        or image_engine.PROVIDER_AUTO
+        or image_engine.PROVIDER_BOTH
     )
     family_hint = defaults.get("family_hint") or ""
 

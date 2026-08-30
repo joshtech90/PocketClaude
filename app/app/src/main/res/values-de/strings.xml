@@ -378,11 +378,11 @@
     <string name="image_reference_hint_active">Beschreib, was sich ändern soll. Alles was Du nicht erwähnst, bleibt wie es ist.</string>
     <string name="image_edit_prompt_placeholder">Was soll sich am Bild ändern?</string>
     <string name="image_edit_button">Bild bearbeiten</string>
-    <string name="image_editing">Bearbeite…</string>
+    <string name="image_editing">Bearbeite</string>
     <string name="image_use_as_reference">Dieses Bild weiterbearbeiten</string>
     <string name="image_model_label">Modell</string>
     <string name="image_variants_label">Varianten:</string>
-    <string name="image_generating">Erzeuge…</string>
+    <string name="image_generating">Erzeuge</string>
     <string name="image_generate_button">Erzeugen</string>
     <string name="image_remove_entry">Eintrag entfernen</string>
     <string name="image_meta_line">%1$s · %2$s · %3$d× Bild</string>
@@ -900,7 +900,7 @@
     <string name="image_provider_label">Anbieter</string>
     <string name="image_size_label">Auflösung</string>
     <string name="image_aspect_label">Seitenverhältnis</string>
-    <string name="image_gpt_size_hint">GPT hält das Seitenverhältnis ein, wählt die Auflösung aber selbst und bleibt meist bei 1 bis 2 Megapixeln. Gemini hält sich an beides genau.</string>
+    <string name="image_gpt_size_hint">Hier zeichnen beide gleichzeitig, so kannst Du vergleichen. Gemini hält sich genau an Auflösung und Seitenverhältnis. GPT hält das Seitenverhältnis ein, wählt die Auflösung aber selbst, egal was man anfordert.</string>
     <string name="settings_image_provider_label">Wer das Bild zeichnet</string>
     <string name="settings_image_provider_auto_hint">Automatisch heißt: es zeichnet der Anbieter des Modells, das im Chat antwortet. Claude hat keinen eigenen, dort übernimmt Gemini.</string>
     <string name="settings_image_default_aspect">Standard-Seitenverhältnis</string>

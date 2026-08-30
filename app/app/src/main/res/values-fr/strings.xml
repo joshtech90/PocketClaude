@@ -375,11 +375,11 @@
     <string name="image_reference_hint_active">Décrivez ce qui doit changer. Tout ce qui n\'est pas mentionné reste inchangé.</string>
     <string name="image_edit_prompt_placeholder">Que souhaitez-vous modifier sur l\'image ?</string>
     <string name="image_edit_button">Modifier l\'image</string>
-    <string name="image_editing">Modification en cours…</string>
+    <string name="image_editing">Édition</string>
     <string name="image_use_as_reference">Continuer à modifier cette image</string>
     <string name="image_model_label">Modèle</string>
     <string name="image_variants_label">Variantes :</string>
-    <string name="image_generating">Génération en cours…</string>
+    <string name="image_generating">Génération</string>
     <string name="image_generate_button">Générer</string>
     <string name="image_remove_entry">Supprimer l\'entrée</string>
     <string name="image_meta_line">%1$s · %2$s · %3$d× image</string>
@@ -862,7 +862,7 @@
     <string name="image_provider_label">Fournisseur</string>
     <string name="image_size_label">Résolution</string>
     <string name="image_aspect_label">Format d\'image</string>
-    <string name="image_gpt_size_hint">GPT conserve le rapport d\'aspect mais choisit lui-même la résolution, généralement autour de 1 à 2 mégapixels. Gemini respecte exactement les deux.</string>
+    <string name="image_gpt_size_hint">Les deux dessinent en même temps ici, ce qui vous permet de comparer. Gemini respecte exactement la résolution et le format d\'image. GPT conserve le format d\'image mais choisit lui-même la résolution, peu importe ce que vous demandez.</string>
     <string name="settings_image_provider_label">Quel fournisseur génère l\'image</string>
     <string name="settings_image_provider_auto_hint">Automatique signifie que le fournisseur du modèle qui répond dans le chat génère l\'image. Claude n\'en a pas, Gemini prend donc le relais.</string>
     <string name="settings_image_default_aspect">Format d\'image par défaut</string>

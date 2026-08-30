@@ -801,13 +801,16 @@ fun ChatScreen(
                                 val onSpeakClick: (() -> Unit)? = if (msg != null) {
                                     { vm.speak(msg.id) }
                                 } else null
-                                // Zurueckspringen gibt es nur bei fertigen
-                                // Antworten, und nicht bei der letzten: dort
-                                // waere nichts zu verwerfen, man tippt einfach
-                                // weiter.
+                                // An JEDER fertigen Antwort, auch an der
+                                // letzten. Dort ist zwar nichts zu verwerfen,
+                                // aber genau da will man oft das Modell
+                                // wechseln und nochmal ansetzen. Frueher fehlte
+                                // der Knopf an der letzten Antwort, und nach
+                                // einem Ruecksprung war er dadurch scheinbar
+                                // ganz verschwunden.
                                 val onRewindClick: (() -> Unit)? =
                                     if (msg != null && !state.isStreaming &&
-                                        msgs.any { it.id > msg.id }
+                                        msg.role == "assistant"
                                     ) {
                                         { rewindTarget = msg }
                                     } else null
@@ -1542,7 +1545,10 @@ private fun InputBar(
     ) {
     Row(
         modifier = Modifier.padding(5.dp),
-        verticalAlignment = Alignment.Bottom,
+        // Mittig statt unten: das Textfeld ist hoeher als die 48dp-Knoepfe,
+        // deshalb sassen Heftklammer, Mikrofon und Senden bei einzeiliger
+        // Eingabe sichtbar zu tief.
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
             IconButton(onClick = { attachMenu = true }) {

@@ -375,11 +375,11 @@
     <string name="image_reference_hint_active">変更したい内容を入力してください。指定のない部分はそのまま維持されます。</string>
     <string name="image_edit_prompt_placeholder">画像のどこを変更しますか？</string>
     <string name="image_edit_button">画像を編集</string>
-    <string name="image_editing">編集中…</string>
+    <string name="image_editing">編集中</string>
     <string name="image_use_as_reference">この画像をさらに編集</string>
     <string name="image_model_label">モデル</string>
     <string name="image_variants_label">バリエーション:</string>
-    <string name="image_generating">生成中…</string>
+    <string name="image_generating">生成中</string>
     <string name="image_generate_button">生成</string>
     <string name="image_remove_entry">エントリを削除</string>
     <string name="image_meta_line">%1$s · %2$s · %3$d枚の画像</string>
@@ -862,7 +862,7 @@
     <string name="image_provider_label">プロバイダー</string>
     <string name="image_size_label">解像度</string>
     <string name="image_aspect_label">アスペクト比</string>
-    <string name="image_gpt_size_hint">GPTはアスペクト比を維持しますが、解像度は自身で決定し、通常は1から2メガピクセル程度になります。Geminiは両方を正確に維持します。</string>
+    <string name="image_gpt_size_hint">ここでは両方が同時に描画するため、比較できます。Geminiは解像度とアスペクト比を正確に維持します。GPTはアスペクト比を維持しますが、指定内容に関わらず解像度は自身で選択します。</string>
     <string name="settings_image_provider_label">画像を生成するプロバイダー</string>
     <string name="settings_image_provider_auto_hint">自動の場合、チャットで回答しているモデルのプロバイダーが画像を生成します。Claudeには独自のプロバイダーがないため、Geminiが引き継ぎます。</string>
     <string name="settings_image_default_aspect">デフォルトのアスペクト比</string>

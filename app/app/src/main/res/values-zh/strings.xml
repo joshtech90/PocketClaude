@@ -375,11 +375,11 @@
     <string name="image_reference_hint_active">描述需要修改的内容。未提及的部分将保持原样。</string>
     <string name="image_edit_prompt_placeholder">想要修改图片的什么内容？</string>
     <string name="image_edit_button">编辑图片</string>
-    <string name="image_editing">正在编辑…</string>
+    <string name="image_editing">编辑中</string>
     <string name="image_use_as_reference">继续编辑此图片</string>
     <string name="image_model_label">模型</string>
     <string name="image_variants_label">变体数:</string>
-    <string name="image_generating">生成中…</string>
+    <string name="image_generating">生成中</string>
     <string name="image_generate_button">生成</string>
     <string name="image_remove_entry">移除条目</string>
     <string name="image_meta_line">%1$s · %2$s · %3$d× 图片</string>
@@ -862,7 +862,7 @@
     <string name="image_provider_label">提供商</string>
     <string name="image_size_label">分辨率</string>
     <string name="image_aspect_label">宽高比</string>
-    <string name="image_gpt_size_hint">GPT会保持宽高比，但会自行选择分辨率，通常在100万到200万像素左右。Gemini则两者都会严格遵循。</string>
+    <string name="image_gpt_size_hint">两者会在此同时绘制，以便你进行对比。Gemini会严格保持分辨率和宽高比。GPT会保持宽高比，但无论你要求什么，都会自行选择分辨率。</string>
     <string name="settings_image_provider_label">由哪个提供商生成图片</string>
     <string name="settings_image_provider_auto_hint">自动表示由聊天中回复的模型所属提供商生成图片。Claude没有自己的提供商，因此由Gemini接管。</string>
     <string name="settings_image_default_aspect">默认宽高比</string>

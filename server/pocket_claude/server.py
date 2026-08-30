@@ -2614,7 +2614,7 @@ async def images_generate(body: dict, user=Depends(require_user)):
             prompt=prompt,
             provider=(body.get("provider") or "").strip()
                      or (kv_img.get(_KV_IMAGE_PROVIDER) or "").strip()
-                     or image_engine.PROVIDER_AUTO,
+                     or image_engine.PROVIDER_BOTH,
             model=body.get("model"),
             aspect_ratio=body.get("aspect_ratio"),
             image_size=image_size,

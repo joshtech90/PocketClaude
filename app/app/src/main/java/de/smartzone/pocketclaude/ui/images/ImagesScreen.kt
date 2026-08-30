@@ -440,7 +440,9 @@ private fun GeneratorCard(
 
             // Bei GPT sind Aufloesung und Seitenverhaeltnis nur ein Wunsch. Das
             // gehoert dazugesagt, sonst wirkt es wie ein Fehler.
-            if (state.selectedProvider == "gpt") {
+            // Auch bei direkter GPT-Wahl zeigen: dort ist der Hinweis
+            // mindestens genauso wichtig wie im Vergleichsmodus.
+            if (state.selectedProvider == "both" || state.selectedProvider == "gpt") {
                 Text(
                     stringResource(R.string.image_gpt_size_hint),
                     style = MaterialTheme.typography.bodySmall,
@@ -490,10 +492,17 @@ private fun GeneratorCard(
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(16.dp),
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(
-                        if (state.isEditing) R.string.image_editing else R.string.image_generating
-                    ))
+                    Spacer(Modifier.width(10.dp))
+                    // Einzeilig und ohne Kuerzung: sonst schob sich der Text in
+                    // das Auslassungszeichen und es sah aus wie ein Fehler.
+                    Text(
+                        stringResource(
+                            if (state.isEditing) R.string.image_editing
+                            else R.string.image_generating
+                        ),
+                        maxLines = 1,
+                        softWrap = false,
+                    )
                 } else {
                     Icon(
                         if (state.isEditing) Icons.Filled.Brush else Icons.Filled.AutoAwesome,

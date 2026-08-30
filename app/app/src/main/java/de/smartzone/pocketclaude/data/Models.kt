@@ -547,7 +547,7 @@ data class ImageConfigDto(
     @SerialName("default_aspect") val defaultAspect: String,
     @SerialName("image_sizes") val imageSizes: List<ImageSizeDto> = emptyList(),
     @SerialName("default_image_size") val defaultImageSize: String = "2K",
-    @SerialName("default_provider") val defaultProvider: String = "auto",
+    @SerialName("default_provider") val defaultProvider: String = "both",
     val configured: Boolean = false,
     @SerialName("api_key_masked") val apiKeyMasked: String? = null,
     /** Die vom User gesetzten Standardwerte. Gelten für den Bilder-Screen UND
@@ -565,7 +565,7 @@ data class ImageProviderDto(val id: String, val label: String)
 data class ImageDefaultsDto(
     val size: String = "2K",
     @SerialName("aspect_ratio") val aspectRatio: String = "1:1",
-    val provider: String = "auto",
+    val provider: String = "both",
     val model: String = "",
 )
 

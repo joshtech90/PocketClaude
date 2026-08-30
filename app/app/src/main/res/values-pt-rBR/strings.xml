@@ -375,11 +375,11 @@
     <string name="image_reference_hint_active">Descreva o que deve mudar. Tudo o que não for mencionado permanecerá como está.</string>
     <string name="image_edit_prompt_placeholder">O que deve mudar na imagem?</string>
     <string name="image_edit_button">Editar imagem</string>
-    <string name="image_editing">Editando…</string>
+    <string name="image_editing">Editando</string>
     <string name="image_use_as_reference">Continuar editando esta imagem</string>
     <string name="image_model_label">Modelo</string>
     <string name="image_variants_label">Variantes:</string>
-    <string name="image_generating">Gerando…</string>
+    <string name="image_generating">Gerando</string>
     <string name="image_generate_button">Gerar</string>
     <string name="image_remove_entry">Remover entrada</string>
     <string name="image_meta_line">%1$s · %2$s · %3$d× imagem</string>
@@ -862,7 +862,7 @@
     <string name="image_provider_label">Provedor</string>
     <string name="image_size_label">Resolução</string>
     <string name="image_aspect_label">Proporção</string>
-    <string name="image_gpt_size_hint">O GPT mantém a proporção da imagem, mas escolhe a resolução por conta própria, geralmente em torno de 1 a 2 megapixels. O Gemini respeita ambos com exatidão.</string>
+    <string name="image_gpt_size_hint">Ambos desenham ao mesmo tempo aqui para você poder comparar. O Gemini respeita exatamente a resolução e a proporção. O GPT mantém a proporção, mas escolhe a resolução por conta própria, não importa o que você pedir.</string>
     <string name="settings_image_provider_label">Qual provedor gera a imagem</string>
     <string name="settings_image_provider_auto_hint">Automático significa que o provedor do modelo que responde no chat gera a imagem. Como o Claude não tem um próprio, o Gemini assume.</string>
     <string name="settings_image_default_aspect">Proporção padrão</string>

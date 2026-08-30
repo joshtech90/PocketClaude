@@ -49,7 +49,7 @@ data class ImageGenUiState(
     val selectedModel: String? = null,
     val selectedAspect: String = "1:1",
     val selectedSize: String = "2K",
-    val selectedProvider: String = "auto",
+    val selectedProvider: String = "both",
     val count: Int = 1,
     val prompt: String = "",
     val isGenerating: Boolean = false,
@@ -106,7 +106,7 @@ class ImageGenViewModel(
                         selectedModel = it.selectedModel ?: cfg.defaultModel,
                         selectedAspect = if (it.selectedAspect == "1:1") cfg.defaults.aspectRatio else it.selectedAspect,
                         selectedSize = if (it.selectedSize == "2K") cfg.defaults.size else it.selectedSize,
-                        selectedProvider = if (it.selectedProvider == "auto") cfg.defaults.provider else it.selectedProvider,
+                        selectedProvider = if (it.selectedProvider == "both") cfg.defaults.provider else it.selectedProvider,
                     )
                 }
             }

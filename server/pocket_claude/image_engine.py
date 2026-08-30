@@ -51,12 +51,18 @@ AVAILABLE_MODELS: list[dict] = []
 # konkrete Pixelgroesse und behandelt sie als Wunsch: das Seitenverhaeltnis
 # kommt ungefaehr an, die genaue Kantenlaenge nicht. Am 29.08.2026 gemessen,
 # zum Beispiel 3840x2160 angefordert und 1536x1024 zurueckbekommen.
-PROVIDER_AUTO = "auto"
+# "Beide" ersetzt das frühere "Automatisch". Automatisch war eine Entscheidung
+# hinter dem Rücken des Nutzers: er sah am Ergebnis nicht, wer gezeichnet hat.
+# Beide gleichzeitig zu fragen kostet nichts extra (beide Konten sind ohnehin
+# bezahlt) und macht den Unterschied auf einen Blick sichtbar.
+PROVIDER_BOTH = "both"
 PROVIDER_GEMINI = "gemini"
 PROVIDER_GPT = "gpt"
+# Alter Wert, damit gespeicherte Einstellungen weiter gelesen werden koennen.
+PROVIDER_AUTO = "auto"
 
 IMAGE_PROVIDERS: list[dict] = [
-    {"id": PROVIDER_AUTO, "label": "Automatisch"},
+    {"id": PROVIDER_BOTH, "label": "Beide"},
     {"id": PROVIDER_GEMINI, "label": "Gemini"},
     {"id": PROVIDER_GPT, "label": "GPT"},
 ]
@@ -65,83 +71,54 @@ IMAGE_PROVIDERS: list[dict] = [
 # Endpunkt /v1/images/generations. Deshalb fest verdrahtet.
 GPT_IMAGE_MODEL = "gpt-image-2"
 
-# Grenzen von gpt-image-2, aus der Validierung von CodexLB uebernommen: beide
-# Kanten Vielfache von 16, laengste Kante hoechstens 3840, Seitenverhaeltnis
-# hoechstens 3:1 und die Pixelzahl innerhalb dieser Schranken.
-_GPT_MIN_PIXELS = 655_360
-_GPT_MAX_PIXELS = 8_294_400
-_GPT_MAX_EDGE = 3840
-_GPT_STEP = 16
+# Groessen von gpt-image-2. NICHT gerechnet, sondern die nativen Werte aus der
+# Modell-Dokumentation: das Modell kennt feste Stufen, und eine selbst
+# ausgerechnete Groesse dazwischen laesst es auf seine eigene zurueckfallen.
+# Genau daran lag es, dass angeforderte Aufloesungen frueher nicht ankamen.
+#
+# Regeln, die dabei gelten: beide Kanten durch 16 teilbar, Seitenverhaeltnis
+# zwischen 1:3 und 3:1, laengste Kante hoechstens 3840. Alles ueber 2560x1440
+# gilt beim Anbieter als experimentell, deshalb ist 4K hier moeglich, aber
+# nicht die Vorgabe.
+GPT_SIZES: dict[str, dict[str, str]] = {
+    "1:1":  {"1K": "1280x1280", "2K": "2048x2048", "4K": "2880x2880"},
+    "16:9": {"1K": "1280x720",  "2K": "2048x1152", "4K": "3840x2160"},
+    "9:16": {"1K": "720x1280",  "2K": "1152x2048", "4K": "2160x3840"},
+    "4:3":  {"1K": "1280x960",  "2K": "2048x1536", "4K": "3312x2480"},
+    "3:4":  {"1K": "960x1280",  "2K": "1536x2048", "4K": "2480x3312"},
+}
 
-# Zielgroesse in Pixeln je Aufloesungsstufe. Die Stufen heissen wie bei Gemini,
-# damit der Nutzer nicht zwei Skalen lernen muss.
-_TARGET_PIXELS = {"1K": 1_048_576, "2K": 2_359_296, "4K": 8_294_400}
+# Detailtiefe bei gpt-image-2. Der Unterschied ist nicht die Groesse, sondern
+# wie lange das Modell rechnet: `low` 3 bis 8 Sekunden, `medium` 20 bis 40,
+# `high` 150 bis 280. `high` war hier fest verdrahtet und damit die Ursache
+# fuer Zeitueberschreitungen. `medium` ist die vernuenftige Vorgabe.
+GPT_QUALITY_BY_SIZE = {"1K": "medium", "2K": "medium", "4K": "high"}
+
+# Zeitgrenze fuer einen Bildaufruf. Bewusst grosszuegig: gpt-image-2 rechnet in
+# hoher Detailtiefe bis zu viereinhalb Minuten. Das ist die VORGABE, kein
+# Mindestwert; ein Aufrufer mit knapperem Budget darf weniger uebergeben.
+DEFAULT_TIMEOUT_SECONDS = 330.0
+
+# Wie lange im Modus "beide" auf den zweiten Anbieter gewartet wird, nachdem der
+# erste fertig ist. Danach zaehlt das vorhandene Bild mehr als Vollstaendigkeit.
+BOTH_GRACE_SECONDS = 45.0
 
 
 def gpt_size(aspect_ratio: str | None, image_size: str | None) -> str:
-    """Rechnet Seitenverhaeltnis und Aufloesungsstufe in eine Pixelgroesse um.
+    """Die native Pixelgroesse von gpt-image-2 fuer Verhaeltnis und Stufe.
 
-    Rueckgabe ist die Form ``BREITExHOEHE``, die gpt-image-2 erwartet, immer
-    innerhalb der oben genannten Grenzen. Bei unbekannten Eingaben wird auf
-    ein Quadrat in 2K zurueckgefallen, statt eine Ausnahme zu werfen: eine
-    ungueltige Groesse soll die Bilderzeugung nicht verhindern.
+    Unbekannte Eingaben fallen auf Quadrat in 2K zurueck, statt eine Ausnahme
+    zu werfen: eine ungueltige Groesse soll die Bilderzeugung nicht verhindern.
     """
-    target = _TARGET_PIXELS.get((image_size or "").strip().upper(), _TARGET_PIXELS["2K"])
-    try:
-        w_part, h_part = (aspect_ratio or "1:1").split(":")
-        w_ratio, h_ratio = float(w_part), float(h_part)
-        if w_ratio <= 0 or h_ratio <= 0:
-            raise ValueError
-    except (ValueError, AttributeError):
-        w_ratio = h_ratio = 1.0
+    aspect = (aspect_ratio or "1:1").strip()
+    size = (image_size or "2K").strip().upper()
+    row = GPT_SIZES.get(aspect) or GPT_SIZES["1:1"]
+    return row.get(size) or row["2K"]
 
-    # Ein Verhaeltnis jenseits von 3:1 lehnt das Gateway ab, also vorher kappen.
-    ratio = w_ratio / h_ratio
-    ratio = max(1 / 3, min(3.0, ratio))
 
-    # Aus Zielflaeche und Verhaeltnis die Kanten ableiten, dann auf ein
-    # Vielfaches von 16 runden und in die Schranken zwingen.
-    height = (target / ratio) ** 0.5
-    width = height * ratio
-
-    def _snap(value: float) -> int:
-        stepped = int(round(value / _GPT_STEP)) * _GPT_STEP
-        return max(_GPT_STEP, min(_GPT_MAX_EDGE, stepped))
-
-    w, h = _snap(width), _snap(height)
-
-    # Nach dem Runden kann die Flaeche aus den Schranken gefallen sein. Beide
-    # Kanten gemeinsam skalieren, damit das Verhaeltnis erhalten bleibt.
-    for _ in range(8):
-        pixels = w * h
-        if pixels < _GPT_MIN_PIXELS:
-            factor = (_GPT_MIN_PIXELS / pixels) ** 0.5 * 1.02
-        elif pixels > _GPT_MAX_PIXELS:
-            factor = (_GPT_MAX_PIXELS / pixels) ** 0.5 * 0.98
-        else:
-            break
-        w, h = _snap(w * factor), _snap(h * factor)
-
-    # Das Runden auf Vielfache von 16 kann das Verhaeltnis knapp ueber 3:1
-    # heben, und genau das lehnt das Gateway ab. Bei 3:1 in 2K kam so
-    # 2656x880 heraus, also 3,018:1. Deshalb die KURZE Kante anheben statt die
-    # lange zu kuerzen: das haelt die Flaeche, statt sie unter das Minimum zu
-    # druecken.
-    for _ in range(4):
-        if max(w, h) <= min(w, h) * 3:
-            break
-        needed = -(-max(w, h) // 3)  # aufrunden
-        stepped = -(-needed // _GPT_STEP) * _GPT_STEP
-        if w > h:
-            h = min(_GPT_MAX_EDGE, stepped)
-        else:
-            w = min(_GPT_MAX_EDGE, stepped)
-        # Falls das die Flaeche ueber die Obergrenze hebt, beide Kanten
-        # gemeinsam wieder herunterskalieren.
-        if w * h > _GPT_MAX_PIXELS:
-            factor = (_GPT_MAX_PIXELS / (w * h)) ** 0.5 * 0.98
-            w, h = _snap(w * factor), _snap(h * factor)
-    return f"{w}x{h}"
+def gpt_quality(image_size: str | None) -> str:
+    """Detailtiefe passend zur Aufloesungsstufe."""
+    return GPT_QUALITY_BY_SIZE.get((image_size or "2K").strip().upper(), "medium")
 
 
 ASPECT_RATIOS: list[dict] = [
@@ -222,6 +199,9 @@ class GeneratedImage:
     mime_type: str       # i.d.R. "image/png"
     data: bytes          # rohe Bild-Bytes
     text: str | None = None  # falls das Modell Text zusaetzlich produziert hat
+    # Wer es gezeichnet hat. Wichtig im Modus "beide", sonst sieht der Nutzer
+    # zwei Bilder und weiss nicht, welches von wem ist.
+    provider: str = ""
 
 
 @dataclass
@@ -234,14 +214,14 @@ class ReferenceImage:
 async def generate(
     *,
     prompt: str,
-    provider: str = PROVIDER_AUTO,
+    provider: str = PROVIDER_BOTH,
     family_hint: str = "",
     model: str | None = None,
     aspect_ratio: str | None = None,
     image_size: str | None = None,
     count: int = 1,
     references: list[ReferenceImage] | None = None,
-    timeout: float = 120.0,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> list[GeneratedImage]:
     """Erzeugt `count` Bilder aus `prompt`, optional mit `references` als Vorlage.
 
@@ -263,19 +243,75 @@ async def generate(
             "Gateway meldet ein Bildmodell. Laeuft das Gateway?"
         )
 
+    # "Beide" heisst wirklich beide: je ein Bild von jedem Anbieter, nebeneinander
+    # im Ergebnis. Faellt einer aus, kommt trotzdem das des anderen an; nur wenn
+    # beide scheitern, gibt es einen Fehler.
+    if (provider or "").strip().lower() == PROVIDER_BOTH and len(order) > 1:
+        # Die gewuenschte Anzahl gilt fuer das ERGEBNIS, nicht je Anbieter.
+        # Sonst wuerden aus "vier Varianten" acht Bilder und die doppelte
+        # Wartezeit, ohne dass irgendwo danach gefragt wurde.
+        per_provider = max(1, min(int(count), MAX_CANDIDATES) // len(order))
+        tasks = {
+            asyncio.create_task(
+                _run_provider(kind, gw=gpt_gw, prompt=prompt, model=model,
+                              aspect_ratio=aspect_ratio, image_size=image_size,
+                              count=per_provider, references=references,
+                              timeout=timeout)
+            ): kind
+            for kind in order
+        }
+        # NICHT auf beide warten, sondern nach dem ersten Ergebnis nur noch eine
+        # kurze Gnadenfrist. Sonst haengt ein fertiges Bild hinter einem
+        # Anbieter fest, der in sein Zeitlimit laeuft, und der Nutzer wartet
+        # minutenlang auf etwas, das laengst da ist.
+        done, pending = await asyncio.wait(
+            tasks, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+        if pending:
+            more, pending = await asyncio.wait(pending, timeout=BOTH_GRACE_SECONDS)
+            done |= more
+        for task in pending:
+            task.cancel()
+            log.warning("image-gen: %s war zu langsam und wurde abgebrochen",
+                        tasks[task])
+
+        images: list[GeneratedImage] = []
+        first_error: BaseException | None = None
+        for task in done:
+            kind = tasks[task]
+            exc = task.exception()
+            if exc is not None:
+                if first_error is None:
+                    first_error = exc
+                log.warning("image-gen: %s ist ausgefallen: %s: %s",
+                            kind, type(exc).__name__, exc)
+                continue
+            for img in task.result():
+                images.append(GeneratedImage(
+                    index=len(images), mime_type=img.mime_type, data=img.data,
+                    text=img.text, provider=kind,
+                ))
+        if not images:
+            if isinstance(first_error, ImageGenError):
+                raise first_error
+            if first_error is not None:
+                # Den echten Grund nennen statt ihn nur ins Log zu schreiben.
+                raise ImageGenError(
+                    f"Kein Anbieter hat ein Bild geliefert "
+                    f"({type(first_error).__name__}: {first_error})."
+                )
+            raise ImageGenError("Kein Anbieter hat rechtzeitig ein Bild geliefert.")
+        if len(images) < len(order) * per_provider:
+            log.info("image-gen: nur %d von %d Bildern, ein Anbieter fiel aus",
+                     len(images), len(order) * per_provider)
+        return images
+
     last_error: ImageGenError | None = None
     for pos, kind in enumerate(order):
         try:
-            if kind == PROVIDER_GPT:
-                return await _generate_gpt(
-                    gw=gpt_gw, prompt=prompt, aspect_ratio=aspect_ratio,
-                    image_size=image_size, count=count, timeout=timeout,
-                    references=references,
-                )
-            return await _generate_gemini(
-                prompt=prompt, model=model, aspect_ratio=aspect_ratio,
-                image_size=image_size, count=count, references=references,
-                timeout=timeout,
+            return await _run_provider(
+                kind, gw=gpt_gw, prompt=prompt, model=model,
+                aspect_ratio=aspect_ratio, image_size=image_size,
+                count=count, references=references, timeout=timeout,
             )
         except ImageGenError as exc:
             last_error = exc
@@ -283,6 +319,28 @@ async def generate(
                 log.warning("image-gen: %s ist ausgefallen (%s), versuche %s",
                             kind, exc, order[pos + 1])
     raise last_error or ImageGenError("Es kam kein Bild zurueck.")
+
+
+async def _run_provider(
+    kind: str, *, gw, prompt: str, model: str | None, aspect_ratio: str | None,
+    image_size: str | None, count: int, references, timeout: float,
+) -> list[GeneratedImage]:
+    """Ruft genau einen Anbieter auf und markiert die Bilder mit seinem Namen."""
+    if kind == PROVIDER_GPT:
+        out = await _generate_gpt(
+            gw=gw, prompt=prompt, aspect_ratio=aspect_ratio,
+            image_size=image_size, count=count, timeout=timeout,
+            references=references,
+        )
+    else:
+        out = await _generate_gemini(
+            prompt=prompt, model=model, aspect_ratio=aspect_ratio,
+            image_size=image_size, count=count, references=references,
+            timeout=timeout,
+        )
+    for img in out:
+        img.provider = kind
+    return out
 
 
 async def _provider_order(
@@ -309,8 +367,11 @@ async def _provider_order(
     if not available:
         return [], gpt_gw
 
-    wanted = (provider or PROVIDER_AUTO).strip().lower()
-    if wanted == PROVIDER_AUTO:
+    wanted = (provider or PROVIDER_BOTH).strip().lower()
+    if wanted in (PROVIDER_BOTH, PROVIDER_AUTO):
+        # Bei "beide" ist die Reihenfolge die Liste selbst. Bei dem alten
+        # "automatisch" aus gespeicherten Einstellungen beginnt der Anbieter des
+        # antwortenden Modells, der Rest bleibt als Rueckfall dahinter.
         first = PROVIDER_GPT if (family_hint or "").lower() == "gpt" else PROVIDER_GEMINI
         if first not in available:
             first = available[0]
@@ -450,7 +511,9 @@ async def _generate_gpt(
         "model": GPT_IMAGE_MODEL,
         "prompt": prompt.strip(),
         "size": size,
-        "quality": "high",
+        # NICHT fest auf "high": das laesst das Modell 150 bis 280 Sekunden
+        # rechnen und lief zuverlaessig in eine Zeitueberschreitung.
+        "quality": gpt_quality(image_size),
         # Das Gateway lehnt n groesser eins ab, mehrere Varianten entstehen
         # deshalb wie bei Gemini durch mehrere Aufrufe.
         "n": 1,
@@ -529,6 +592,9 @@ async def _gpt_one(url: str, headers: dict, fields: dict,
         except Exception:
             pass
         log.warning("image-gen GPT HTTP %d: %s", r.status_code, msg)
+        block = explain_block(msg) if r.status_code in _BLOCK_STATUS else None
+        if block:
+            raise ImageGenError(block)
         if r.status_code == 429:
             raise ImageGenError(
                 "Das Bild-Kontingent des Kontos ist gerade erschoepft. "
@@ -552,9 +618,9 @@ async def _gpt_one(url: str, headers: dict, fields: dict,
     first = items[0] if isinstance(items[0], dict) else {}
     raw_b64 = first.get("b64_json")
     if not raw_b64:
-        raise ImageGenError(
-            "Die Antwort enthielt kein Bild. Haeufig wurde der Prompt blockiert."
-        )
+        block = explain_block(str(first.get("revised_prompt") or ""),
+                              str(data.get("error") or ""))
+        raise ImageGenError(block or "Die Antwort enthielt kein Bild.")
     try:
         raw = base64.b64decode(raw_b64)
     except Exception as e:
@@ -562,6 +628,58 @@ async def _gpt_one(url: str, headers: dict, fields: dict,
 
     fmt = (fields.get("output_format") or "png").lower()
     return f"image/{'jpeg' if fmt == 'jpeg' else fmt}", raw
+
+
+# Gruende, aus denen ein Anbieter ein Bild verweigert, in verstaendlichem
+# Deutsch. Ohne diese Uebersetzung sieht der Nutzer nur "HTTP 502" oder
+# "finishReason: IMAGE_SAFETY" und haelt es fuer eine Stoerung, obwohl es eine
+# bewusste Ablehnung war.
+# Die Muster sind bewusst eng gefasst. Ein frueherer Entwurf suchte nach
+# Bruchstuecken wie "face", "minor", "blocked" oder "not allowed", und die
+# stecken auch in "interface", einer Versionsnummer, einer Firewall-Meldung
+# oder in "405 Method Not Allowed". Eine Netzwerkstoerung als Inhalts-Ablehnung
+# auszugeben waere schlimmer als gar keine Erklaerung.
+_BLOCK_HINTS: list[tuple[tuple[str, ...], str]] = [
+    (("image_safety", "imagesafety", "safety_filter", "safety filter",
+      "safety system", "safety_system", "sicherheitsgr"),
+     "Der Anbieter hat das Bild aus Sicherheitsgruenden abgelehnt."),
+    (("prohibited_content", "moderation_blocked", "content_policy",
+      "content policy", "content_filter", "content filter", "responsible_ai",
+      "blocklist", "usage policies", "usage policy", "rejected by our",
+      "safety_violation", "policy violation"),
+     "Der Anbieter hat den Bildwunsch als unzulaessig abgelehnt."),
+    (("person_generation", "celebrity", "public_figure", "real person",
+      "recognizable person"),
+     "Der Anbieter erzeugt oder veraendert keine Bilder von erkennbaren Personen."),
+    (("recitation",),
+     "Der Anbieter hat abgelehnt, weil das Ergebnis zu nah an geschuetztem "
+     "Material waere."),
+    (("copyright", "trademark", "intellectual_property"),
+     "Der Anbieter hat wegen geschuetzter Inhalte abgelehnt."),
+    (("csam", "child_safety", "child safety", "minor_safety"),
+     "Der Anbieter hat den Bildwunsch abgelehnt: er beruehrt den Schutz "
+     "Minderjaehriger."),
+]
+
+
+# HTTP-Status, bei denen eine Ablehnung ueberhaupt plausibel ist. Alles andere
+# (429 Kontingent, 5xx Stoerung) ist technisch, egal was im Text steht.
+_BLOCK_STATUS = frozenset({400, 403, 422})
+
+
+def explain_block(*fragments: str | None) -> str | None:
+    """Sucht in Fehlertexten und Abbruchgruenden nach einer Ablehnung.
+
+    Gibt eine erklaerende Meldung zurueck, oder None wenn es nach einer
+    technischen Stoerung aussieht statt nach einer bewussten Ablehnung.
+    """
+    haystack = " ".join(f for f in fragments if f).lower()
+    if not haystack:
+        return None
+    for needles, message in _BLOCK_HINTS:
+        if any(n in haystack for n in needles):
+            return message
+    return None
 
 
 def _ext_for(mime: str) -> str:
@@ -662,6 +780,11 @@ async def _generate_one(
         except Exception:
             pass
         log.warning("image-gen HTTP %d: %s", r.status_code, msg)
+        # Nur bei Status, die eine Ablehnung sein KOENNEN. Ein 502 oder 429 ist
+        # eine Stoerung, auch wenn im Text zufaellig ein Reizwort steht.
+        block = explain_block(msg) if r.status_code in _BLOCK_STATUS else None
+        if block:
+            raise ImageGenError(block)
         if r.status_code == 429:
             raise ImageGenError(
                 "Das Bild-Kontingent des Kontos ist gerade erschoepft. "
@@ -676,11 +799,29 @@ async def _generate_one(
 
     images = _extract_images(data)
     if not images:
-        reasons = [c.get("finishReason") for c in data.get("candidates", [])
+        reasons = [str(c.get("finishReason")) for c in data.get("candidates", [])
                    if c.get("finishReason")]
+        feedback = data.get("promptFeedback") or {}
+        block = explain_block(
+            *reasons,
+            str(feedback.get("blockReason") or ""),
+            _collect_text((data.get("candidates") or [{}])[0].get("content") or {}),
+        )
+        if block:
+            raise ImageGenError(block)
+        # Kommt kein Bild und nennt der Anbieter auch keinen Grund, ist die
+        # haeufigste Ursache trotzdem eine Ablehnung: Gemini schweigt bei
+        # manchen Faellen einfach. Das gehoert gesagt, sonst sucht der Nutzer
+        # den Fehler bei sich oder beim Server.
+        # Ohne genannten Grund NICHT behaupten, es sei eine Ablehnung gewesen:
+        # dieselbe Lage entsteht auch, wenn das Modell nur Text liefert oder
+        # sich das Antwortformat geaendert hat.
         raise ImageGenError(
-            f"Kein Bild erhalten (Grund: {', '.join(reasons) or 'unbekannt'}). "
-            "Haeufig wurde der Prompt blockiert oder das Modell hat nur Text geliefert."
+            "Der Anbieter hat kein Bild geliefert"
+            + (f" (Grund: {', '.join(reasons)})" if reasons else
+               " und keinen Grund genannt")
+            + ". Das kann eine Inhalts-Ablehnung sein, etwa bei erkennbaren "
+              "Personen, oder eine Stoerung beim Anbieter."
         )
     return images
 
@@ -725,7 +866,7 @@ def get_config() -> dict:
         "image_sizes": IMAGE_SIZES,
         "max_candidates": MAX_CANDIDATES,
         "default_model": "",
-        "default_provider": PROVIDER_AUTO,
+        "default_provider": PROVIDER_BOTH,
         "default_aspect": "1:1",
         "default_image_size": DEFAULT_IMAGE_SIZE,
     }
