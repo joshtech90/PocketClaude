@@ -88,6 +88,7 @@ import de.smartzone.pocketclaude.PocketClaudeApp
 import de.smartzone.pocketclaude.R
 import de.smartzone.pocketclaude.data.AppSettings
 import de.smartzone.pocketclaude.data.ImageGenerateAttachment
+import de.smartzone.pocketclaude.data.ImageProviderDto
 import de.smartzone.pocketclaude.ui.components.PocketBackdrop
 import de.smartzone.pocketclaude.ui.components.PocketIconButton
 import de.smartzone.pocketclaude.ui.components.PocketScreenTitle
@@ -357,6 +358,22 @@ private fun SubsectionRow(label: String, content: @Composable FlowRowScope.() ->
 }
 
 
+/**
+ * Anzeigename eines Bild-Anbieters.
+ *
+ * Der Server liefert zwar ein `label`, das ist aber ein fester deutscher Text
+ * und wuerde in den anderen sechs Sprachen durchschlagen. Fuer die bekannten
+ * Kennungen wird deshalb uebersetzt, unbekannte behalten das Server-Label:
+ * so taucht ein spaeter dazukommender Anbieter trotzdem auf.
+ */
+@Composable
+private fun imageProviderLabel(p: ImageProviderDto): String = when (p.id) {
+    "both" -> stringResource(R.string.image_provider_both)
+    "gemini" -> "Gemini"
+    "gpt" -> "GPT"
+    else -> p.label
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GeneratorCard(
@@ -415,7 +432,7 @@ private fun GeneratorCard(
                         FilterChip(
                             selected = p.id == state.selectedProvider,
                             onClick = { vm.setProvider(p.id) },
-                            label = { Text(p.label) },
+                            label = { Text(imageProviderLabel(p)) },
                             enabled = !state.isGenerating,
                         )
                     }
@@ -438,13 +455,17 @@ private fun GeneratorCard(
                 }
             }
 
-            // Bei GPT sind Aufloesung und Seitenverhaeltnis nur ein Wunsch. Das
-            // gehoert dazugesagt, sonst wirkt es wie ein Fehler.
-            // Auch bei direkter GPT-Wahl zeigen: dort ist der Hinweis
-            // mindestens genauso wichtig wie im Vergleichsmodus.
-            if (state.selectedProvider == "both" || state.selectedProvider == "gpt") {
+            // Je Auswahl ein eigener Hinweis. Frueher stand hier ein einziger
+            // Text, der von "beide zeichnen gleichzeitig" sprach: bei direkter
+            // GPT-Wahl war das schlicht falsch.
+            val providerHint = when (state.selectedProvider) {
+                "both" -> R.string.image_both_hint
+                "gpt" -> R.string.image_gpt_size_hint
+                else -> null
+            }
+            if (providerHint != null) {
                 Text(
-                    stringResource(R.string.image_gpt_size_hint),
+                    stringResource(providerHint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

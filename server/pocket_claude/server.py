@@ -674,10 +674,10 @@ async def send_message(cid: str, body: SendMessageRequest, user=Depends(require_
         "size": (user_kv.get(_KV_IMAGE_DEFAULT_SIZE) or "").strip() or None,
         "aspect_ratio": (user_kv.get(_KV_IMAGE_DEFAULT_ASPECT) or "").strip() or None,
         "model": (user_kv.get(_KV_IMAGE_DEFAULT_MODEL) or "").strip() or None,
-        "provider": (user_kv.get(_KV_IMAGE_PROVIDER) or "").strip() or None,
+        "provider": image_engine.canonical_provider(user_kv.get(_KV_IMAGE_PROVIDER)),
         # Die Bilder dieser Nachricht, falls das Modell sie bearbeiten soll.
         "attachment_ids": list(body.attachment_ids or []),
-        # Steht die Vorgabe auf "automatisch", zeichnet das Bild der Anbieter
+        # Zeichnet nur ein Anbieter, weil das zweite Gateway fehlt, dann der
         # des Modells, das gerade antwortet. Claude hat keinen eigenen, dort
         # bleibt es bei Gemini.
         "family_hint": (gw_model.family if gw_model is not None else ""),
@@ -2237,21 +2237,33 @@ async def images_config(user=Depends(require_user)):
     gemini_ok = await gateways.image_target() is not None
     gpt_ok = await gateways.gpt_image_gateway() is not None
     cfg["configured"] = bool(gemini_ok or gpt_ok)
-    # Nur die Anbieter anbieten, die es hier auch wirklich gibt.
-    available = {image_engine.PROVIDER_AUTO}
+    # Nur die Anbieter anbieten, die es hier auch wirklich gibt. "Beide" nur,
+    # wenn es auch wirklich zwei gibt: mit einem Anbieter waere es dasselbe wie
+    # dessen eigener Knopf und nur eine Auswahl ohne Unterschied.
+    available: set[str] = set()
     if gemini_ok:
         available.add(image_engine.PROVIDER_GEMINI)
     if gpt_ok:
         available.add(image_engine.PROVIDER_GPT)
+    if gemini_ok and gpt_ok:
+        available.add(image_engine.PROVIDER_BOTH)
     cfg["providers"] = [p for p in cfg["providers"] if p["id"] in available]
     cfg["api_key_masked"] = None
     # Die vom User gesetzten Standardwerte. Nicht gesetzt = der Wert aus
     # image_engine, damit der Client immer etwas Sinnvolles vorbelegen kann.
+    # Kanonisiert, damit ein gespeichertes "auto" von frueher hier und beim
+    # Zeichnen dasselbe bedeutet: sonst stuende in der App "Beide", waehrend
+    # der Server nur einen Anbieter beauftragt.
+    provider = image_engine.canonical_provider(kv.get(_KV_IMAGE_PROVIDER))
+    # Der Wert kann trotzdem wegfallen, wenn ein Gateway nicht mehr laeuft.
+    # Dann stuende in der App kein Knopf auf ausgewaehlt.
+    if provider not in available:
+        provider = next((p["id"] for p in cfg["providers"]), "")
     cfg["defaults"] = {
         "size": (kv.get(_KV_IMAGE_DEFAULT_SIZE) or "").strip() or cfg["default_image_size"],
         "aspect_ratio": (kv.get(_KV_IMAGE_DEFAULT_ASPECT) or "").strip() or cfg["default_aspect"],
         "model": (kv.get(_KV_IMAGE_DEFAULT_MODEL) or "").strip() or cfg["default_model"],
-        "provider": (kv.get(_KV_IMAGE_PROVIDER) or "").strip() or cfg["default_provider"],
+        "provider": provider,
     }
     return cfg
 
@@ -2612,9 +2624,10 @@ async def images_generate(body: dict, user=Depends(require_user)):
     try:
         images = await image_engine.generate(
             prompt=prompt,
-            provider=(body.get("provider") or "").strip()
-                     or (kv_img.get(_KV_IMAGE_PROVIDER) or "").strip()
-                     or image_engine.PROVIDER_BOTH,
+            provider=image_engine.canonical_provider(
+                (body.get("provider") or "").strip()
+                or (kv_img.get(_KV_IMAGE_PROVIDER) or "").strip()
+            ),
             model=body.get("model"),
             aspect_ratio=body.get("aspect_ratio"),
             image_size=image_size,

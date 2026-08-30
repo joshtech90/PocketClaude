@@ -862,9 +862,11 @@
     <string name="image_provider_label">提供商</string>
     <string name="image_size_label">分辨率</string>
     <string name="image_aspect_label">宽高比</string>
-    <string name="image_gpt_size_hint">两者会在此同时绘制，以便你进行对比。Gemini会严格保持分辨率和宽高比。GPT会保持宽高比，但无论你要求什么，都会自行选择分辨率。</string>
+    <string name="image_provider_both">两者</string>
+    <string name="image_both_hint">两者会同时绘制，以便你进行对比。Gemini会严格遵循分辨率和宽高比，而GPT仅保持宽高比，分辨率由其自行决定。</string>
+    <string name="image_gpt_size_hint">GPT会保持宽高比，但无论请求什么，它都会自行选择分辨率。</string>
     <string name="settings_image_provider_label">由哪个提供商生成图片</string>
-    <string name="settings_image_provider_auto_hint">自动表示由聊天中回复的模型所属提供商生成图片。Claude没有自己的提供商，因此由Gemini接管。</string>
+    <string name="settings_image_provider_hint">“两者”表示Gemini和GPT同时绘制，你可以并排对比哪个更合适。Claude没有自己的图像提供商，其图像也由这两者绘制。</string>
     <string name="settings_image_default_aspect">默认宽高比</string>
     <string name="settings_image_default_model">默认图像模型</string>
     <string name="settings_image_in_chat">在聊天中生成图像</string>

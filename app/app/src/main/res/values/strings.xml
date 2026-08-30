@@ -900,9 +900,11 @@
     <string name="image_provider_label">Provider</string>
     <string name="image_size_label">Resolution</string>
     <string name="image_aspect_label">Aspect ratio</string>
-    <string name="image_gpt_size_hint">Both draw at the same time here, so you can compare. Gemini keeps exactly to resolution and aspect ratio. GPT keeps the aspect ratio but picks the resolution itself, whatever you ask for.</string>
+    <string name="image_provider_both">Both</string>
+    <string name="image_both_hint">Both draw at the same time, so you can compare. Gemini keeps exactly to resolution and aspect ratio, GPT only keeps the aspect ratio and picks the resolution itself.</string>
+    <string name="image_gpt_size_hint">GPT keeps the aspect ratio, but it picks the resolution itself, whatever you ask for.</string>
     <string name="settings_image_provider_label">Which provider draws the image</string>
-    <string name="settings_image_provider_auto_hint">Automatic means the model answering in the chat draws with its own provider. Claude has none of its own, so Gemini takes over there.</string>
+    <string name="settings_image_provider_hint">Both means Gemini and GPT draw at the same time, so you see side by side which one fits better. Claude has no image provider of its own, its images come from these two as well.</string>
     <string name="settings_image_default_aspect">Default aspect ratio</string>
     <string name="settings_image_default_model">Default image model</string>
     <string name="settings_image_in_chat">Create images in chat</string>

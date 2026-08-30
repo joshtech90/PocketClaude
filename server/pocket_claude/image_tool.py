@@ -187,10 +187,8 @@ async def run(user_id: str, args: dict, defaults: dict | None = None) -> dict:
     # Anbieter: Nutzer-Vorgabe, sonst richtet sich das Bild nach dem Modell,
     # das gerade antwortet. Ein GPT-Chat zeichnet dann mit gpt-image-2, ein
     # Gemini-Chat mit dem Gemini-Bildmodell.
-    provider = (
-        defaults.get("provider")
-        or defaults.get("image_provider")
-        or image_engine.PROVIDER_BOTH
+    provider = image_engine.canonical_provider(
+        defaults.get("provider") or defaults.get("image_provider")
     )
     family_hint = defaults.get("family_hint") or ""
 

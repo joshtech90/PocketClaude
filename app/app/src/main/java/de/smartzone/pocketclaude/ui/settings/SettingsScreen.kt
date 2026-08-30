@@ -116,6 +116,7 @@ import de.smartzone.pocketclaude.data.EFFORT_LEVELS
 import de.smartzone.pocketclaude.data.EFFORT_LEVELS_ALL
 import de.smartzone.pocketclaude.data.ChatModelOption
 import de.smartzone.pocketclaude.data.ImageConfigDto
+import de.smartzone.pocketclaude.data.ImageProviderDto
 import de.smartzone.pocketclaude.data.GemDto
 import de.smartzone.pocketclaude.data.LocalePrefs
 import de.smartzone.pocketclaude.data.SystemPromptMode
@@ -4323,6 +4324,18 @@ private fun DefaultModelPicker(
 }
 
 /**
+ * Anzeigename eines Bild-Anbieters, uebersetzt statt vom Server uebernommen.
+ * Begruendung steht bei der gleichnamigen Funktion im Bilder-Screen.
+ */
+@Composable
+private fun imageProviderLabel(p: ImageProviderDto): String = when (p.id) {
+    "both" -> stringResource(R.string.image_provider_both)
+    "gemini" -> "Gemini"
+    "gpt" -> "GPT"
+    else -> p.label
+}
+
+/**
  * Standard-Einstellungen für die Bildgenerierung: Größe, Seitenverhältnis und Modell.
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -4340,7 +4353,7 @@ private fun ImageDefaultsRow(
         modifier = Modifier.fillMaxWidth(),
     ) {
         // Anbieter. Nur zeigen, wenn es hier ueberhaupt etwas zu waehlen gibt:
-        // ohne GPT-Gateway steht in der Liste nur "Automatisch" und Gemini.
+        // ohne zweites Gateway meldet der Server nur einen einzigen Anbieter.
         if (cfg.providers.size > 1) {
             SubsectionLabel(stringResource(R.string.settings_image_provider_label))
             FlowRow(
@@ -4352,7 +4365,12 @@ private fun ImageDefaultsRow(
                     FilterChip(
                         selected = cfg.defaults.provider == item.id,
                         onClick = { onSetProvider(item.id) },
-                        label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
+                        label = {
+                            Text(
+                                imageProviderLabel(item),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        },
                         shape = RoundedCornerShape(10.dp),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.primary,
@@ -4362,7 +4380,7 @@ private fun ImageDefaultsRow(
                 }
             }
             Text(
-                stringResource(R.string.settings_image_provider_auto_hint),
+                stringResource(R.string.settings_image_provider_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

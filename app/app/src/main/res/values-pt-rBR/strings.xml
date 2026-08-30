@@ -862,9 +862,11 @@
     <string name="image_provider_label">Provedor</string>
     <string name="image_size_label">Resolução</string>
     <string name="image_aspect_label">Proporção</string>
-    <string name="image_gpt_size_hint">Ambos desenham ao mesmo tempo aqui para você poder comparar. O Gemini respeita exatamente a resolução e a proporção. O GPT mantém a proporção, mas escolhe a resolução por conta própria, não importa o que você pedir.</string>
+    <string name="image_provider_both">Ambos</string>
+    <string name="image_both_hint">Ambos desenham ao mesmo tempo para você comparar. O Gemini mantém exatamente a resolução e a proporção, enquanto o GPT mantém apenas a proporção e escolhe a resolução por conta própria.</string>
+    <string name="image_gpt_size_hint">O GPT mantém a proporção, mas escolhe a resolução por conta própria, não importa o que for solicitado.</string>
     <string name="settings_image_provider_label">Qual provedor gera a imagem</string>
-    <string name="settings_image_provider_auto_hint">Automático significa que o provedor do modelo que responde no chat gera a imagem. Como o Claude não tem um próprio, o Gemini assume.</string>
+    <string name="settings_image_provider_hint">“Ambos” significa: Gemini e GPT desenham ao mesmo tempo para você ver lado a lado qual se sai melhor. O Claude não tem um provedor de imagens próprio, então esses dois também desenham para ele.</string>
     <string name="settings_image_default_aspect">Proporção padrão</string>
     <string name="settings_image_default_model">Modelo de imagem padrão</string>
     <string name="settings_image_in_chat">Criar imagens no chat</string>

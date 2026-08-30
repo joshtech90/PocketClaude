@@ -67,6 +67,20 @@ IMAGE_PROVIDERS: list[dict] = [
     {"id": PROVIDER_GPT, "label": "GPT"},
 ]
 
+def canonical_provider(value: str | None) -> str:
+    """Hebt einen gespeicherten Anbieterwert auf den heutigen Stand.
+
+    Der fruehere Wert "auto" liegt bei Bestandsnutzern noch im KV-Store. Er
+    wird zu "beide": die App zeigt fuer so einen Nutzer den Knopf "Beide" an,
+    und es waere irrefuehrend, wenn im Chat trotzdem nur ein Anbieter
+    zeichnete. Leer heisst ebenfalls "beide", das ist die Vorgabe.
+    """
+    wanted = (value or "").strip().lower()
+    if wanted in ("", PROVIDER_AUTO):
+        return PROVIDER_BOTH
+    return wanted
+
+
 # Das Bildmodell von CodexLB steht in keiner Modell-Liste, es gibt dort nur den
 # Endpunkt /v1/images/generations. Deshalb fest verdrahtet.
 GPT_IMAGE_MODEL = "gpt-image-2"
@@ -226,9 +240,10 @@ async def generate(
     """Erzeugt `count` Bilder aus `prompt`, optional mit `references` als Vorlage.
 
     Beide Wege laufen ueber Konten, die ohnehin bezahlt sind, und kosten nichts
-    pro Bild. `provider` waehlt zwischen Gemini und GPT; bei "auto" entscheidet
-    `family_hint`, also die Familie des Modells, das gerade antwortet, damit ein
-    GPT-Chat seine eigenen Bilder zeichnet.
+    pro Bild. `provider` waehlt zwischen Gemini, GPT und beiden zugleich. Ein
+    gespeichertes "auto" von frueher wird zu "beide"; nur wenn danach genau ein
+    Anbieter uebrig bleibt, entscheidet `family_hint`, also die Familie des
+    Modells, das gerade antwortet.
 
     Wirft `ImageGenError`, wenn gar nichts zustande kommt; kommen einzelne der
     gewuenschten Varianten nicht durch, werden die uebrigen trotzdem geliefert.
@@ -236,6 +251,7 @@ async def generate(
     if not prompt or not prompt.strip():
         raise ImageGenError("Prompt darf nicht leer sein.")
 
+    provider = canonical_provider(provider)
     order, gpt_gw = await _provider_order(provider, family_hint, bool(references))
     if not order:
         raise ImageGenError(
@@ -246,7 +262,7 @@ async def generate(
     # "Beide" heisst wirklich beide: je ein Bild von jedem Anbieter, nebeneinander
     # im Ergebnis. Faellt einer aus, kommt trotzdem das des anderen an; nur wenn
     # beide scheitern, gibt es einen Fehler.
-    if (provider or "").strip().lower() == PROVIDER_BOTH and len(order) > 1:
+    if provider == PROVIDER_BOTH and len(order) > 1:
         # Die gewuenschte Anzahl gilt fuer das ERGEBNIS, nicht je Anbieter.
         # Sonst wuerden aus "vier Varianten" acht Bilder und die doppelte
         # Wartezeit, ohne dass irgendwo danach gefragt wurde.
@@ -352,11 +368,12 @@ async def _provider_order(
     GPT-Gateway, damit es nicht ein zweites Mal gesucht werden muss: zwischen
     zwei Abfragen koennte der Cache ablaufen und die zweite None liefern.
 
-    Bei "auto" darf gewechselt werden, wenn ein Anbieter ausfaellt. Bei einer
-    ausdruecklichen Wahl nicht: wer GPT anklickt und stillschweigend ein
-    Gemini-Bild bekaeme, wuerde den Unterschied nie bemerken. Nur wenn der
-    gewaehlte Anbieter ueberhaupt nicht eingerichtet ist, springt der andere
-    ein, denn gar kein Bild ist die schlechtere Antwort.
+    Bei "beide" stehen beide in der Liste, und faellt einer aus, bleibt der
+    andere. Bei einer ausdruecklichen Wahl wird nicht gewechselt: wer GPT
+    anklickt und stillschweigend ein Gemini-Bild bekaeme, wuerde den
+    Unterschied nie bemerken. Nur wenn der gewaehlte Anbieter ueberhaupt nicht
+    eingerichtet ist, springt der andere ein, denn gar kein Bild ist die
+    schlechtere Antwort.
     """
     gpt_gw = await gateways.gpt_image_gateway()
     gemini_ok = await gateways.image_target() is not None
@@ -367,11 +384,11 @@ async def _provider_order(
     if not available:
         return [], gpt_gw
 
-    wanted = (provider or PROVIDER_BOTH).strip().lower()
-    if wanted in (PROVIDER_BOTH, PROVIDER_AUTO):
-        # Bei "beide" ist die Reihenfolge die Liste selbst. Bei dem alten
-        # "automatisch" aus gespeicherten Einstellungen beginnt der Anbieter des
-        # antwortenden Modells, der Rest bleibt als Rueckfall dahinter.
+    wanted = canonical_provider(provider)
+    if wanted == PROVIDER_BOTH:
+        # Die Reihenfolge zaehlt nur, wenn hier gar nicht beide gleichzeitig
+        # zeichnen koennen, weil nur ein Gateway laeuft. Dann faengt der
+        # Anbieter des antwortenden Modells an.
         first = PROVIDER_GPT if (family_hint or "").lower() == "gpt" else PROVIDER_GEMINI
         if first not in available:
             first = available[0]
